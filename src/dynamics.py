@@ -239,97 +239,19 @@ class Aircraft:
         self._qbar = ca.Function('qbar', [self.state, self.control], [qbar])
         return qbar
     
-    # @property
-    # def coefficients(self):
-    #     """
-    #     Cessna 172 implementation of aerodynamic coefficients from:
-    #     https://forums.flightsimulator.com/t/physics-and-aerodynamic-on-directional-stability-part-2-getting-to-the-root-of-the-problem/396095
-
-    #     https://www.researchgate.net/publication/353752543_Cessna_172_Flight_Simulation_Data/link/610e73f81e95fe241ab730b6/download?_tp=eyJjb250ZXh0Ijp7ImZpcnN0UGFnZSI6InB1YmxpY2F0aW9uIiwicGFnZSI6InB1YmxpY2F0aW9uIn19
-
-    #     Read:
-    #     https://docs.flightsimulator.com/html/mergedProjects/How_To_Make_An_Aircraft/Contents/Files/The_Flight_Model.htm
-    #     """
-    #     inputs = ca.vertcat(
-    #         self.qbar, 
-    #         self.alpha, 
-    #         self.beta, 
-    #         self.aileron, 
-    #         self.elevator
-    #         )
-        
-    #     CL0 = -0.31# flip
-    #     CLq = -3.9 # flip
-    #     CLalpha = -5.143 # flip
-    #     CLde = 0.43
-
-    #     CL = CL0 + CLq * self.omega_b_i_frd[1] + CLalpha * self.alpha + CLde * self.elevator
-
-    #     CZ = CL
-
-    #     CD0 = 0.031
-    #     k = 0.054
-        
-    #     CD = CD0 + k * CL ** 2
-    #     CX = -CD
-
-    #     CY0 = 0
-    #     CYbeta = -0.31
-    #     CYr = -0.21 #flip
-    #     CYp = -0.037
-    #     CYda = 0
-    #     CYdr = 0.187
-
-    #     CY = CY0 + CYbeta * self.beta + CYr * self.omega_b_i_frd[2] + CYp * self.omega_b_i_frd[0] + CYda * self.aileron + CYdr * self.rudder
-
-    #     Cl0 = 0
-    #     Clbeta = 0.089#flip
-    #     Clr = 0.096
-    #     Clp = -0.47 
-    #     Clda = -0.178
-    #     Cldr = 0.0147
-
-    #     Cl = Cl0 + Clbeta * self.beta + Clr * self.omega_b_i_frd[2] + Clp * self.omega_b_i_frd[0] + Clda * self.aileron + Cldr * self.rudder
-
-    #     Cm0 = -0.015
-    #     Cmq = -12.4
-    #     Cmalpha = -0.89
-    #     Cmde = -1.28
-
-    #     Cm = Cm0 + Cmq * self.omega_b_i_frd[1] + Cmalpha * self.alpha + Cmde * self.elevator
-
-    #     Cn0 = 0
-    #     Cnbeta = -0.065
-    #     Cnr = -0.099
-    #     Cnp = -0.03
-    #     Cnda = -0.053
-    #     Cndr = -0.0657
-
-    #     Cn = Cn0 + Cnbeta * self.beta + Cnr * self.omega_b_i_frd[2] + Cnp * self.omega_b_i_frd[0] + Cnda * self.aileron + Cndr * self.rudder
-        
-    #     outputs = ca.vertcat(CX, CY, CZ, Cl, Cm, Cn)
-
-    #     self._coefficients = ca.Function(
-    #         'coefficients', 
-    #         [self.state, self.control], 
-    #         [outputs]
-    #         )
-        
-    #     return outputs
-
     @property
-    def coefficients(self):
+    def cessna_coefficients(self):
         """
-        Forward pass of the ml model to retrieve aerodynamic coefficients.
+        Cessna 172 implementation of aerodynamic coefficients from:
+        https://forums.flightsimulator.com/t/physics-and-aerodynamic-on-directional-stability-part-2-getting-to-the-root-of-the-problem/396095
+
+        https://www.researchgate.net/publication/353752543_Cessna_172_Flight_Simulation_Data/
+
+        Documentation:
+        https://docs.flightsimulator.com/html/mergedProjects/How_To_Make_An_Aircraft/Contents/Files/The_Flight_Model.htm
+
+        NOTE: Used for testing only
         """
-        # inputs = ca.vertcat(
-        #     self.qbar, 
-        #     self.alpha, 
-        #     self.beta, 
-        #     self.aileron, 
-        #     self.elevator
-        #     )
-        
         inputs = ca.vertcat(
             self.qbar, 
             self.alpha, 
@@ -338,30 +260,79 @@ class Aircraft:
             self.elevator
             )
         
-        # numeric = np.array(
-        #     float(self.qbar),
-        #     float(self.alpha), 
-        #     float(self.beta),
-        #     float(self.aileron),
-        #     float(self.elevator)
-        #     )
-        
-        # print(inputs)
-        # x_sym = ca.MX.sym('model_input', 5, 1)
-        # print(DEVICE)
-        # self.l4c_model = RealTimeL4CasADi(model, device=str(DEVICE), name='AeroModel', approximation_order=1)
-        # outputs = self.l4c_model(x_sym)
+        CL0 = -0.31# flip
+        CLq = -3.9 # flip
+        CLalpha = -5.143 # flip
+        CLde = 0.43
 
-        # def to_np_array(inputs):
-        #     inputs = np.array([float(input_val) for input_val in inputs])
-        #     return self.l4c_model.get_params(to_np_array(inputs))
+        CL = CL0 + CLq * self.omega_b_i_frd[1] + CLalpha * self.alpha + CLde * self.elevator
 
+        CZ = CL
+
+        CD0 = 0.031
+        k = 0.054
         
-        # self.model = ca.Function('coefficients', [x_sym, self.l4c_model.get_sym_params()], [outputs])
-        # self._coefficients = ca.Function('coefficients', [self.state, self.control], [self.model(inputs, self.l4c_model.get_params(numeric))])
+        CD = CD0 + k * CL ** 2
+        CX = -CD
+
+        CY0 = 0
+        CYbeta = -0.31
+        CYr = -0.21 #flip
+        CYp = -0.037
+        CYda = 0
+        CYdr = 0.187
+
+        CY = CY0 + CYbeta * self.beta + CYr * self.omega_b_i_frd[2] + CYp * self.omega_b_i_frd[0] + CYda * self.aileron + CYdr * self.rudder
+
+        Cl0 = 0
+        Clbeta = 0.089#flip
+        Clr = 0.096
+        Clp = -0.47 
+        Clda = -0.178
+        Cldr = 0.0147
+
+        Cl = Cl0 + Clbeta * self.beta + Clr * self.omega_b_i_frd[2] + Clp * self.omega_b_i_frd[0] + Clda * self.aileron + Cldr * self.rudder
+
+        Cm0 = -0.015
+        Cmq = -12.4
+        Cmalpha = -0.89
+        Cmde = -1.28
+
+        Cm = Cm0 + Cmq * self.omega_b_i_frd[1] + Cmalpha * self.alpha + Cmde * self.elevator
+
+        Cn0 = 0
+        Cnbeta = -0.065
+        Cnr = -0.099
+        Cnp = -0.03
+        Cnda = -0.053
+        Cndr = -0.0657
+
+        Cn = Cn0 + Cnbeta * self.beta + Cnr * self.omega_b_i_frd[2] + Cnp * self.omega_b_i_frd[0] + Cnda * self.aileron + Cndr * self.rudder
+        
+        outputs = ca.vertcat(CX, CY, CZ, Cl, Cm, Cn)
+
+        self._coefficients = ca.Function(
+            'coefficients', 
+            [self.state, self.control], 
+            [outputs]
+            )
+        
+        return outputs
+
+    @property
+    def coefficients(self):
+        """
+        Forward pass of the ml model to retrieve aerodynamic coefficients.
+        """
+        inputs = ca.vertcat(
+            self.qbar, 
+            self.alpha, 
+            self.beta, 
+            self.aileron, 
+            self.elevator
+            )
         
         outputs = self.model(inputs)
-        # outputs = self.model(inputs, self.l4c_model.get_sym_params())
 
         self._coefficients = ca.Function(
             'coefficients', 
@@ -390,6 +361,12 @@ class Aircraft:
         Cnr ~ -0.1
 
         We scale this down by a factor of 100
+
+        NOTE:
+
+        We flip the yaw moment, TODO: investigate
+        We scale the roll moment down by a factor of 4 meaning we use the 
+        windtunnel scale rather than the sim scale.
         """
         scale = 1
         # roll moment rates
@@ -411,7 +388,6 @@ class Aircraft:
         #     [outputs]
         #     )
 
-        # outputs = ca.vertcat(outputs[0],0,outputs[2],0,outputs[5],0)
         return outputs
 
     @property
@@ -570,14 +546,13 @@ class Aircraft:
     def integrate_quaternion(self, state, dt):
         """
         Integrate quaternion using angular velocity.
+
+        NOTE: This is computationally expensive and should only be used if you
+        notice that the quaternion is deviating significantly from unit norm.
+
         """
-        # Extract the quaternion (first 4 elements of state)
         q0 = Quaternion(state[:4])
-        
-        # Extract the angular velocity (last 3 elements of state)
         omega = state[10:]
-        
-        # Calculate the magnitude of the angular velocity
         omega_norm = ca.norm_2(omega)
         
         # Handle the case where omega_norm is small to avoid division by zero
@@ -585,24 +560,25 @@ class Aircraft:
         omega_norm_safe = ca.if_else(omega_norm < small_angle, 
                                      small_angle, omega_norm)
         
-        # Compute the quaternion that represents the angular displacement
-        theta = 0.5 * dt * omega_norm_safe  # Half-angle theta
-        axis = omega / omega_norm_safe  # Normalized axis of rotation
+        theta = 0.5 * dt * omega_norm_safe 
+        axis = omega / omega_norm_safe
         
         # Compute the quaternion corresponding to the angular displacement
         dq = Quaternion(ca.vertcat(ca.sin(theta) * axis, ca.cos(theta)))
         
         # Integrate the quaternion
         q1 = q0 * dq
-        
-        # Normalize the resulting quaternion
         q1 = q1.normalize()
-        
-        # Return the coefficients of the integrated quaternion
+
         return q1.coeffs()
     
     # @jit
     def state_step(self, state, control, dt_scaled):
+        """ 
+        Runge kutta step for state update. Due to the multiplicative nature
+        of the quaternion integration we cannot rely on conventional 
+        integerators. 
+        """
         temp_state = state
         # k1
         k1 = self.dynamics(state, control)
@@ -624,7 +600,7 @@ class Aircraft:
 
         # Update state with combined increments from Runge-Kutta
         state = state + dt_scaled / 6 * (k1 + 2 * k2 + 2 * k3 + k4)
-        state[:4] = self.integrate_quaternion(temp_state, dt_scaled)
+        # state[:4] = self.integrate_quaternion(temp_state, dt_scaled)
 
         return state
 
@@ -657,8 +633,6 @@ class Aircraft:
 
 if __name__ == '__main__':
     aircraft_params = json.load(open(os.path.join(BASEPATH, 'data', 'glider', 'glider_fs.json')))
-
-    # aircraft_params = json.load(open(os.path.join(BASEPATH, 'data', 'glider', 'cessna.json')))
 
     model = load_model()
     
