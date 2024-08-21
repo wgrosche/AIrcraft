@@ -1,0 +1,13 @@
+{
+    "mass": 2.0,
+    "Ixx": 0.155,
+    "Iyy": 0.114,
+    "Izz": 0.262,
+    "Ixz": 0.01,
+    "span": 2.0,
+    "chord": 0.124605,
+    "chord2": 1.0,
+    "reference_area": 0.238,
+    "aero_centre_offset":[0.133, 0, 0.003]
+    
+}
