@@ -1,6 +1,6 @@
 # Exclude data
 /data/raw
-/data/processed
+# /data/processed
 
 # mypy
 .mypy_cache/
