@@ -222,14 +222,14 @@ class Aircraft:
     @property
     def alpha(self):
         v_frd_rel = self.v_frd_rel
-        alpha = ca.atan2(v_frd_rel[2], v_frd_rel[0] + self.EPSILON)
+        alpha = ca.atan2(v_frd_rel[2], v_frd_rel[0] + self.EPSILON)#v_frd_rel[2] /(v_frd_rel[0] + self.EPSILON)#
         self._alpha = ca.Function('alpha', [self.state, self.control], [alpha])
         return alpha
     
     @property
     def beta(self):
         v_frd_rel = self.v_frd_rel
-        beta = ca.asin(v_frd_rel[1] / self.airspeed)
+        beta = ca.asin(v_frd_rel[1] / self.airspeed)#v_frd_rel[1] / self.airspeed#ca.asin(v_frd_rel[1] / self.airspeed)
         self._beta = ca.Function('beta', [self.state, self.control], [beta])
         return beta
     
@@ -401,9 +401,9 @@ class Aircraft:
             [forces]
             )
         return forces
-
+    
     @property
-    def moments_frd(self):
+    def moments_aero(self):
         moments_aero = (self.coefficients[3:] 
                         * self.qbar 
                         * self.S 
@@ -415,7 +415,10 @@ class Aircraft:
             [self.state, self.control], 
             [moments_aero]
             )
-
+        return moments_aero
+    
+    @property
+    def moments_from_forces(self):
         moments_from_forces = ca.cross(self.com, self.forces_frd)
 
         self._moments_from_forces = ca.Function(
@@ -423,8 +426,12 @@ class Aircraft:
             [self.state, self.control], 
             [moments_from_forces]
             )
+        return moments_from_forces
+    
+    @property
+    def moments_frd(self):
 
-        moments = moments_aero + moments_from_forces
+        moments = self.moments_aero + self.moments_from_forces
 
         self._moments_frd = ca.Function(
             'moments_frd', 
@@ -670,6 +677,7 @@ if __name__ == '__main__':
         else:
             state_list[:, i] = state.full().flatten()
             state = aircraft.state_update(state, control, dt)
+            control[6:9] += 2 * (np.random.rand(3) - 0.5)
             t += 1
 
     # state_list = state_list[:, :t-10]

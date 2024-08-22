@@ -57,4 +57,9 @@ governed by the dynamics of the system, control inputs, wind, rotation of the ea
 - Wind
 - $\vec{\omega} _{i\rightarrow e}$
 
+## Perturbation
+
+The simulation in [dynamics](../src/dynamics.py) contains perturbation in the
+wind vecor to test dynamic stability.
+
 [return to main](../README.md)
