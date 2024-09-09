@@ -109,7 +109,48 @@ class Control:
                                self.centre_of_mass])
     
 
-class AircraftParameters:
+from collections import namedtuple
+
+Bound = namedtuple('Bound', ['lb', 'ub'])
+
+class TrajectoryConfiguration:
+    class State:
+        def __init__(
+                self,
+                params
+                ):
+            self.aileron = Bound(np.array(params.get("aileron_limit", 
+                                np.array([-5, 5])))[0],
+                                np.array(params.get("aileron_limit", 
+                                np.array([-5, 5])))[1])
+            self.ub = ub
+
+        @property
+        def aileron(self):
+            , lb, ub
+            return Bound(lb, ub)
+        
+        @property
+        def elevator(self):
+
+            , lb, ub
+            return Bound(lb, ub)
+
+        @property
+        def airspeed(self):
+            , lb, ub
+            return Bound(lb, ub)
+        
+    class Control:
+        def __init__(self, lb, ub):
+            self.lb = lb
+            self.ub = ub
+
+    class Aircraft:
+        def __init__(self):
+            pass
+
+    
     def __init__(self, params:dict = {}):
         
         self.aileron = np.array(params.get("aileron_limit", 
@@ -131,6 +172,30 @@ class AircraftParameters:
                                                   np.deg2rad(15)])))
         self.airspeed = np.array(params.get("aileron", 
                                             np.array([30, 100])))
+        
+    
+        
+    @property
+    def control(self):
+        lb = np.concatenate([
+                self.aileron[0],
+                self.elevator[0],
+                self.rudder[0],
+                self.throttle[0],
+                self.centre_of_mass[0]])
+        
+        ub = np.concatenate([
+                self.aileron[1],
+                self.elevator[1],
+                self.rudder[1],
+                self.throttle[1],
+                self.centre_of_mass[1]])
+
+        return Control(lb, ub)
+    
+    @property
+    def state(self):
+
 
     def lb(self):
         return np.concatenate([
