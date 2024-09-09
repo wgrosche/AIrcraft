@@ -47,12 +47,13 @@ NUM_NODES = 30
 # DEBUG MODE
 DEBUG = False
 
-aircraft_params = AircraftParameters(params = json.load(open(os.path.join(
-    BASEPATH, 
-    'data', 
-    'glider', 
-    'glider_fs.json'
-    ))))
+aircraft_params = AircraftParameters(
+    params = json.load(open(os.path.join(
+                        BASEPATH, 
+                        'data', 
+                        'glider', 
+                        'glider_fs.json'
+                                    ))))
 
 
 
