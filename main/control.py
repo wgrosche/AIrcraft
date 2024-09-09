@@ -176,7 +176,7 @@ def control_constraints(
         #     )
         # )
     
-    opti.subject_to(control[6:9,:] == [0,0,0]
+    opti.subject_to(control[6:9,:] == [0, 0, 0]
         # opti.bounded(
         #     [0, 0, 0],
         #     control[6:9,:],

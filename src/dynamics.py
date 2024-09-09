@@ -640,6 +640,7 @@ class Aircraft:
 
 if __name__ == '__main__':
     aircraft_params = json.load(open(os.path.join(BASEPATH, 'data', 'glider', 'glider_fs.json')))
+    perturbation = True
 
     model = load_model()
     
@@ -677,7 +678,8 @@ if __name__ == '__main__':
         else:
             state_list[:, i] = state.full().flatten()
             state = aircraft.state_update(state, control, dt)
-            control[6:9] += 2 * (np.random.rand(3) - 0.5)
+            if perturbation:
+                control[6:9] += 2 * (np.random.rand(3) - 0.5)
             t += 1
 
     # state_list = state_list[:, :t-10]
