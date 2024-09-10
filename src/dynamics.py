@@ -610,37 +610,99 @@ class Aircraft:
         # state[:4] = self.integrate_quaternion(temp_state, dt_scaled)
 
         return state
+    
+    def rk45_step(self, state, control, dt):
+        k1 = dt * self.dynamics(state, control)
+        k2 = dt * self.dynamics(state + 1/4 * k1, control)
+        k3 = dt * self.dynamics(state + 3/32 * k1 + 9/32 * k2, control)
+        k4 = dt * self.dynamics(state + 1932/2197 * k1 - 7200/2197 * k2 + 7296/2197 * k3, control)
+        k5 = dt * self.dynamics(state + 439/216 * k1 - 8 * k2 + 3680/513 * k3 - 845/4104 * k4, control)
+        k6 = dt * self.dynamics(state - 8/27 * k1 + 2 * k2 - 3544/2565 * k3 + 1859/4104 * k4 - 11/40 * k5, control)
+        
+        # 4th-order estimate
+        y4 = state + 25/216 * k1 + 1408/2565 * k3 + 2197/4104 * k4 - 1/5 * k5
+        
+        # 5th-order estimate
+        y5 = state + 16/135 * k1 + 6656/12825 * k3 + 28561/56430 * k4 - 9/50 * k5 + 2/55 * k6
+        
+        return y4, y5
 
+    def adaptive_rk45(self, state_0, control, dt, initial_step:float = 1e0, tol=1e-6, normalisation_interval:int = 10):
+        t = 0
+        state = state_0
+        step = initial_step
+        t_values = [t]
+        states = [state]
+        i = 0
+        while t < t + dt:
+            i += 1
+            state_4, state_5 = self.rk45_step(state, control, step)
+
+            error = np.linalg.norm(state_5 - state_4, ord = np.inf)
+
+            if error < tol:
+                t += step
+                state = state_5
+                if i % normalisation_interval == 0:
+                    state[:4] = Quaternion(state[:4]).normalize().coeffs()
+                state[:4] = Quaternion(state[:4]).normalize().coeffs()
+                t_values.append(t)
+                states.append(state)
+
+            safety_factor = 0.9
+            if error == 0:
+                new_step = step * 2
+            else:
+                new_step = step * safety_factor * (tol / error) ** (1/4)
+
+            step = min(new_step, dt - t)
+
+        return np.array(t_values), np.array(states)
+    
     @property
-    # @jit
-    def state_update(self, normalisation_interval: int = 10):
-        """
-        Runge Kutta integration with quaternion update, for loop over self.STEPS
-        """
+    def state_update(self):
         dt = ca.MX.sym('dt')
         state = self.state
         control_sym = self.control
-        num_steps = self.STEPS
 
-        dt_scaled = dt / num_steps
+        t_values, states = self.adaptive_rk45(state, control_sym, dt)
 
-        for i in range(num_steps):
-            state = self.state_step(state, control_sym, dt_scaled)
-
-            if i % normalisation_interval == 0:
-                state[:4] = Quaternion(state[:4]).normalize().coeffs()
-        state[:4] = Quaternion(state[:4]).normalize().coeffs()
         return ca.Function(
             'state_update', 
             [self.state, self.control, dt], 
-            [state]
-            ) #, {'jit':True}
+            [states[-1]])
+
+
+    # @property
+    # # @jit
+    # def state_update(self, normalisation_interval: int = 10):
+    #     """
+    #     Runge Kutta integration with quaternion update, for loop over self.STEPS
+    #     """
+    #     dt = ca.MX.sym('dt')
+    #     state = self.state
+    #     control_sym = self.control
+    #     num_steps = self.STEPS
+
+    #     dt_scaled = dt / num_steps
+
+    #     for i in range(num_steps):
+    #         state = self.state_step(state, control_sym, dt_scaled)
+
+    #         if i % normalisation_interval == 0:
+    #             state[:4] = Quaternion(state[:4]).normalize().coeffs()
+    #     state[:4] = Quaternion(state[:4]).normalize().coeffs()
+    #     return ca.Function(
+    #         'state_update', 
+    #         [self.state, self.control, dt], 
+    #         [state]
+    #         ) #, {'jit':True}
 
    
 
 if __name__ == '__main__':
     aircraft_params = json.load(open(os.path.join(BASEPATH, 'data', 'glider', 'glider_fs.json')))
-    perturbation = True
+    perturbation = False
 
     model = load_model()
     
@@ -659,7 +721,7 @@ if __name__ == '__main__':
 
         state = ca.vertcat(q0, x0, v0, omega0)
         control = np.zeros(aircraft.num_controls)
-        control[1] = -5
+        control[0] = 5
         control[-3:] = aircraft_params['aero_centre_offset']
 
     dyn = aircraft.state_update

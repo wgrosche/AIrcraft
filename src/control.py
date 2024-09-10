@@ -12,12 +12,7 @@ sys.path.append(BASEPATH)
 from src.dynamics import Aircraft, load_model
 from collections import namedtuple
 from scipy.spatial.transform import Rotation as R
-
-
-
-ControlEnvelope = namedtuple('control', ['lb', 'ub'])
-StateEnvelope
-Envelope = namedtuple('envelope', ['control', 'state'], [ControlEnvelope, StateEnvelope])
+from src.utils import TrajectoryConfiguration
 
 
 def cumulative_waypoint_distances(
@@ -234,7 +229,7 @@ class ControlProblem:
         return (tau_guess, lambda_guess, mu_guess)
 
 
-    def state_guess(self):
+    def state_guess(self, trajectory:TrajectoryConfiguration):
         # def x_guess(state:ca.MX, waypoints:np.ndarray, initial_pos:np.ndarray, velocity_guess:float):
         """
         Initial guess for the state variables.
