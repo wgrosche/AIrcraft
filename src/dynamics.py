@@ -160,9 +160,9 @@ class Aircraft:
             self.elevator, 
             self.rudder, 
             self.throttle, 
+            self.com,
             self.v_wind_ecf_e, 
-            self.omega_e_i_ecf, 
-            self.com
+            self.omega_e_i_ecf
             )
         
         self.num_controls = self.control.size()[0]
@@ -634,8 +634,7 @@ class Aircraft:
         t_values = [t]
         states = [state]
         i = 0
-        while t < t + dt:
-            i += 1
+        while t < ca.Function('t_end', [dt], [t + dt])(dt):
             state_4, state_5 = self.rk45_step(state, control, step)
 
             error = np.linalg.norm(state_5 - state_4, ord = np.inf)
@@ -659,44 +658,44 @@ class Aircraft:
 
         return np.array(t_values), np.array(states)
     
-    @property
-    def state_update(self):
-        dt = ca.MX.sym('dt')
-        state = self.state
-        control_sym = self.control
-
-        t_values, states = self.adaptive_rk45(state, control_sym, dt)
-
-        return ca.Function(
-            'state_update', 
-            [self.state, self.control, dt], 
-            [states[-1]])
-
-
     # @property
-    # # @jit
-    # def state_update(self, normalisation_interval: int = 10):
-    #     """
-    #     Runge Kutta integration with quaternion update, for loop over self.STEPS
-    #     """
+    # def state_update(self):
     #     dt = ca.MX.sym('dt')
     #     state = self.state
     #     control_sym = self.control
-    #     num_steps = self.STEPS
 
-    #     dt_scaled = dt / num_steps
+    #     t_values, states = self.adaptive_rk45(state, control_sym, dt)
 
-    #     for i in range(num_steps):
-    #         state = self.state_step(state, control_sym, dt_scaled)
-
-    #         if i % normalisation_interval == 0:
-    #             state[:4] = Quaternion(state[:4]).normalize().coeffs()
-    #     state[:4] = Quaternion(state[:4]).normalize().coeffs()
     #     return ca.Function(
     #         'state_update', 
     #         [self.state, self.control, dt], 
-    #         [state]
-    #         ) #, {'jit':True}
+    #         [states[-1]])
+
+
+    @property
+    # @jit
+    def state_update(self, normalisation_interval: int = 10):
+        """
+        Runge Kutta integration with quaternion update, for loop over self.STEPS
+        """
+        dt = ca.MX.sym('dt')
+        state = self.state
+        control_sym = self.control
+        num_steps = self.STEPS
+
+        dt_scaled = dt / num_steps
+
+        for i in range(num_steps):
+            state = self.state_step(state, control_sym, dt_scaled)
+
+            if i % normalisation_interval == 0:
+                state[:4] = Quaternion(state[:4]).normalize().coeffs()
+        state[:4] = Quaternion(state[:4]).normalize().coeffs()
+        return ca.Function(
+            'state_update', 
+            [self.state, self.control, dt], 
+            [state]
+            ) #, {'jit':True}
 
    
 
@@ -721,8 +720,8 @@ if __name__ == '__main__':
 
         state = ca.vertcat(q0, x0, v0, omega0)
         control = np.zeros(aircraft.num_controls)
-        control[0] = 5
-        control[-3:] = aircraft_params['aero_centre_offset']
+        control[0] = 0
+        control[6:9] = aircraft_params['aero_centre_offset']
 
     dyn = aircraft.state_update
 
@@ -740,8 +739,8 @@ if __name__ == '__main__':
         else:
             state_list[:, i] = state.full().flatten()
             state = aircraft.state_update(state, control, dt)
-            if perturbation:
-                control[6:9] += 2 * (np.random.rand(3) - 0.5)
+            # if perturbation:
+            #     control[6:9] += 2 * (np.random.rand(3) - 0.5)
             t += 1
 
     # state_list = state_list[:, :t-10]

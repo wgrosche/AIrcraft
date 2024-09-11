@@ -28,7 +28,7 @@ from src.waypoints import waypoint_distances, setup_progress_vars, x_guess
 from src.models import ScaledModel, MiniModel
 # from src.visualisation import plot
 from src.plotting import plot, debug
-from src.utils import Control, State, AircraftParameters
+from src.utils import Control, State, TrajectoryConfiguration
 
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else 
                       ("mps" if torch.backends.mps.is_available() else "cpu"))
@@ -47,15 +47,16 @@ NUM_NODES = 30
 # DEBUG MODE
 DEBUG = False
 
-aircraft_params = AircraftParameters(
-    params = json.load(open(os.path.join(
-                        BASEPATH, 
-                        'data', 
-                        'glider', 
-                        'glider_fs.json'
-                                    ))))
+# aircraft_params = AircraftParameters(
+#     params = json.load(open(os.path.join(
+#                         BASEPATH, 
+#                         'data', 
+#                         'glider', 
+#                         'glider_fs.json'
+#                                     ))))
 
 
+aircraft_params = json.load(open('data/glider/problem_definition.json'),)['aircraft']
 
 def check_constraints(opti:ca.Opti):
     """ Function to evaluate the constraints and their Jacobian """
@@ -245,19 +246,19 @@ def main():
     state = scale_state * opti.variable(aircraft.num_states, NUM_NODES + 1)
     control = scale_control * opti.variable(aircraft.num_controls, NUM_NODES)
 
-    flight_envelope_constraints(
-        opti, 
-        flight_envelope, 
-        state, 
-        control, 
-        aircraft
-        )
+    # flight_envelope_constraints(
+    #     opti, 
+    #     flight_envelope, 
+    #     state, 
+    #     control, 
+    #     aircraft
+    #     )
     
-    control_constraints(
-        opti, 
-        control, 
-        control_limits
-        )
+    # control_constraints(
+    #     opti, 
+    #     control, 
+    #     control_limits
+    #     )
     
     setup_progress_vars(
         opti, 

@@ -4,6 +4,7 @@ import os
 import sys
 import numpy as np
 from collections import namedtuple
+import json
 
 BASEPATH = os.path.dirname(os.path.abspath(__file__)).split('src')[0]
 sys.path.append(BASEPATH)
@@ -144,20 +145,19 @@ class TrajectoryConfiguration:
                                     np.array([[0,0,0], [0,0,0]])))
             self.centre_of_mass = np.array(control_dict.get("centre_of_mass_limit", 
                                     np.array([[-0.5, -0.1, -0.1], [0.5, 0.1, 0.1]])))
-
-            self.lb = np.concatenate([
+            self.lb = np.array([
                 self.aileron[0],
                 self.elevator[0],
                 self.rudder[0],
-                self.throttle[0],
-                self.centre_of_mass[0]])
+                *self.throttle[0],
+                *self.centre_of_mass[0]])
             
-            self.ub = np.concatenate([
+            self.ub = np.array([
                 self.aileron[1],
                 self.elevator[1],
                 self.rudder[1],
-                self.throttle[1],
-                self.centre_of_mass[1]])
+                *self.throttle[1],
+                *self.centre_of_mass[1]])
 
     class Aircraft:
         def __init__(self, aircraft_dict:dict):
@@ -175,14 +175,20 @@ class TrajectoryConfiguration:
     class Waypoints:
         def __init__(self, waypoint_dict:dict):
             self.waypoints = np.array(waypoint_dict.get("waypoints", 
-                                    np.array([[0,0,0], [0,0,0], [0,0,0]])))
+                                    np.array([[0,0,0], [0,0,0], [0,0,0]]))).T
             if waypoint_dict.get('initial_state') is not None:
                 self.initial_state = np.array(waypoint_dict.get('initial_state'))
                 self.initial_position = np.array(self.initial_state[4:7])
+                self.waypoints = np.insert(self.waypoints, 0, self.initial_position, axis=1)
             else:
                 self.initial_position = self.waypoints[0, :]
 
             self.final_position = self.waypoints[-1, :]
+            self.default_velocity = waypoint_dict.get("default_velocity", 50)
+            self.objective_dimension = self.final_position.shape[0]
+
+        def __call__(self):
+            return self.waypoints
 
     
     def __init__(self, trajectory_dict:dict):
@@ -227,6 +233,7 @@ class TrajectoryConfiguration:
         self._control = self.ControlEnvelope(control_dict)
         self._waypoints = self.Waypoints(waypoint_dict)
         self._aircraft = self.Aircraft(aircraft_dict)
+        self.trajectory_dict = trajectory_dict
         
     @property
     def control(self):
@@ -244,4 +251,14 @@ class TrajectoryConfiguration:
     def aircraft(self):
         return self._aircraft
     
+    def __repr__(self):
+        return str(self.trajectory_dict)
 
+def main():
+    traj_dict = json.load(open('data/glider/problem_definition.json'),)
+    config = TrajectoryConfiguration(traj_dict)
+
+    print(config)
+
+if __name__ == "__main__":
+    main()
