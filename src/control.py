@@ -153,12 +153,24 @@ class ControlProblem:
     #     self.mu = self.opti.variable(self.num_waypoints, self.num_control_nodes)
 
 
-    # def node(self, node, control, state, control_envelope, state_envelope):
-    #     control_node = control[:, node]
-    #     state_node = state[:, node]
-
-    #     self.control_constraint(control_node, control_envelope)
-    #     self.state_constraint(state_node, control_node, state_envelope)
+    # def node(self, input, control, state, control_envelope, state_envelope):
+    #     node = input[0]
+    #     waypoint_node = input[1]
+    #     state_node = input[:]
+    #     next_node = input[:]
+    #     control_node = input[]
+    #     dt = input[-1]
+    #     self.state_constraint(state_node, next_node, control_node, self.trajectory.state, dt)
+    #     self.control_constraint(control_node, self.trajectory.control)
+    #     self.waypoint_constraint(
+    #         self.mu,
+    #         self.tau,
+    #         self.lam,
+    #         self.state[:, node],
+    #         node,
+    #         waypoint_node,
+    #         self.switching_variable
+    #     )
 
     def control_constraint(self, control_node, control_envelope):
         self.opti.subject_to(
@@ -270,6 +282,8 @@ class ControlProblem:
                 self.switching_variable
             )
             # print(node)
+
+        
 
         self.opti.subject_to(self.state[4, -1] ==  self.waypoints[-1,:])
         self.opti.subject_to(self.mu[:, -1] == [0] * self.num_waypoints)

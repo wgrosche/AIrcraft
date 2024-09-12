@@ -29,7 +29,6 @@ from src.models import ScaledModel
 from src.utils import load_model
 from src.plotting import plot_state
 
-
 print(DEVICE)
 
 def load_model(
@@ -176,7 +175,7 @@ class Aircraft:
 
         self.mass = params['mass']
         
-        self.model = L4CasADi(model, name = 'AeroModel')
+        self.model = L4CasADi(model, name = 'AeroModel', generate_jac_jac=True)
         self.qbar
         self.beta
         self.alpha
@@ -332,8 +331,9 @@ class Aircraft:
             self.elevator
             )
         
-        outputs = self.model(inputs)
-
+        outputs = self.model(ca.reshape(inputs, 1, -1))
+        outputs = ca.vertcat(outputs)
+        print(f"Output shape: {outputs.shape}")  # Debugging statement
         self._coefficients = ca.Function(
             'coefficients', 
             [self.state, self.control], 
@@ -684,12 +684,13 @@ class Aircraft:
         num_steps = self.STEPS
 
         dt_scaled = dt / num_steps
-
+        # folded_update = ca.Function('folder', [self.state], [self.state_step(self.state, control_sym, dt_scaled)])
         for i in range(num_steps):
             state = self.state_step(state, control_sym, dt_scaled)
-
+        # F = folded_update.fold(num_steps)
             if i % normalisation_interval == 0:
                 state[:4] = Quaternion(state[:4]).normalize().coeffs()
+        # state = F(state)
         state[:4] = Quaternion(state[:4]).normalize().coeffs()
         return ca.Function(
             'state_update', 
