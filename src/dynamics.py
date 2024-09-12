@@ -175,7 +175,9 @@ class Aircraft:
 
         self.mass = params['mass']
         
-        self.model = L4CasADi(model, name = 'AeroModel', generate_jac_jac=True)
+        self.model = L4CasADi(model, name = 'AeroModel'
+                            #   , generate_jac_jac=True
+                              )
         self.qbar
         self.beta
         self.alpha
@@ -332,7 +334,7 @@ class Aircraft:
             )
         
         outputs = self.model(ca.reshape(inputs, 1, -1))
-        outputs = ca.vertcat(outputs)
+        outputs = ca.vertcat(outputs.T)
         print(f"Output shape: {outputs.shape}")  # Debugging statement
         self._coefficients = ca.Function(
             'coefficients', 
@@ -684,19 +686,72 @@ class Aircraft:
         num_steps = self.STEPS
 
         dt_scaled = dt / num_steps
-        # folded_update = ca.Function('folder', [self.state], [self.state_step(self.state, control_sym, dt_scaled)])
-        for i in range(num_steps):
-            state = self.state_step(state, control_sym, dt_scaled)
-        # F = folded_update.fold(num_steps)
-            if i % normalisation_interval == 0:
-                state[:4] = Quaternion(state[:4]).normalize().coeffs()
-        # state = F(state)
+        input_to_fold = ca.vertcat(self.state, self.control, dt)
+        fold_output = ca.vertcat(self.state_step(state, control_sym, dt_scaled), control_sym, dt)
+        folded_update = ca.Function('folder', [input_to_fold], [fold_output])
+        
+        F = folded_update.fold(num_steps)
+        state = F(input_to_fold)[:self.num_states]
+        # for i in range(num_steps):
+        #     state = self.state_step(state, control_sym, dt_scaled)
+        
+        #     if i % normalisation_interval == 0:
+        #         state[:4] = Quaternion(state[:4]).normalize().coeffs()
+        
         state[:4] = Quaternion(state[:4]).normalize().coeffs()
         return ca.Function(
             'state_update', 
             [self.state, self.control, dt], 
             [state]
             ) #, {'jit':True}
+    
+    # @property
+    # def state_update(self, normalisation_interval: int = 10):
+    #     """
+    #     Runge Kutta integration with quaternion update, for loop over self.STEPS
+    #     """
+    #     dt = ca.MX.sym('dt')
+    #     state = self.state
+    #     control_sym = self.control
+    #     num_steps = self.STEPS
+
+    #     dt_scaled = dt / num_steps
+
+    #     # Create foldable state update function, including normalization at the right interval
+    #     def fold_step(state_control_dt):
+    #         # Split the input back into state, control, and dt
+    #         state = state_control_dt[:self.state.shape[0]]
+    #         control_sym = state_control_dt[self.state.shape[0]:self.state.shape[0] + self.control.shape[0]]
+    #         dt = state_control_dt[-1]
+
+    #         # Update the state with one step of the dynamics
+    #         state = self.state_step(state, control_sym, dt_scaled)
+
+    #         # Apply quaternion normalization every few steps
+    #         step_number = ca.MX.sym('step_number')  # Add the step number as input
+    #         state[:4] = ca.if_else(step_number % normalisation_interval == 0, 
+    #                             Quaternion(state[:4]).normalize().coeffs(), 
+    #                             state[:4])
+
+    #         # Return updated state only, as control and dt don't change
+    #         return state
+
+    #     # Vectorize inputs to fold
+    #     input_to_fold = ca.vertcat(state, control_sym, dt)
+
+    #     # Use a casadi function to implement the fold step
+    #     fold_step_function = ca.Function('fold_step', [input_to_fold], [fold_step(input_to_fold)])
+
+    #     # Apply the fold for num_steps
+    #     F = fold_step_function.fold(num_steps)
+
+    #     # Return the full state update function
+    #     return ca.Function(
+    #         'state_update', 
+    #         [self.state, self.control, dt], 
+    #         [F(input_to_fold)]
+    #     )
+
 
    
 
@@ -726,8 +781,8 @@ if __name__ == '__main__':
 
     dyn = aircraft.state_update
 
-    dt = .1
-    tf = 10.0
+    dt = 1
+    tf = 100.0
     state_list = np.zeros((aircraft.num_states, int(tf / dt)))
 
     dt_sym = ca.MX.sym('dt', 1)
