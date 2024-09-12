@@ -272,15 +272,15 @@ class ControlProblem:
         for node in range(self.num_control_nodes):
             self.state_constraint(self.state[:, node], self.state[:, node + 1], self.control[:, node], self.trajectory.state, self.dt)
             self.control_constraint(self.control[:, node], self.trajectory.control)
-            self.waypoint_constraint(
-                self.mu,
-                self.tau,
-                self.lam,
-                self.state[:, node],
-                node,
-                waypoint_node,
-                self.switching_variable
-            )
+            # self.waypoint_constraint(
+            #     self.mu,
+            #     self.tau,
+            #     self.lam,
+            #     self.state[:, node],
+            #     node,
+            #     waypoint_node,
+            #     self.switching_variable
+            # )
             # print(node)
 
         
