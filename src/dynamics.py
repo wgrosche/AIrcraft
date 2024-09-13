@@ -336,16 +336,36 @@ class Aircraft:
         outputs = self.model(ca.reshape(inputs, 1, -1))
         outputs = ca.vertcat(outputs.T)
         print(f"Output shape: {outputs.shape}")  # Debugging statement
+
+        stall_angle_alpha = np.deg2rad(10)
+        stall_angle_beta = np.deg2rad(10)
+
+        steepness = 2
+
+        alpha_scaling = 1 / (1 + ca.exp(steepness * (self.alpha - stall_angle_alpha)))
+        beta_scaling = 1 / (1 + ca.exp(steepness * (self.beta - stall_angle_beta)))
+        
+        
+        outputs[2] *= alpha_scaling
+        outputs[2] *= beta_scaling
+
+        outputs[4] *= alpha_scaling
+        outputs[4] *= beta_scaling
+
+
         self._coefficients = ca.Function(
             'coefficients', 
             [self.state, self.control], 
             [outputs]
             )
+        
+        
+
 
         # angular rate contributions
-        # outputs[0] += 0.05 * self.state[11]
-        # outputs[1] += -0.05 * self.omega_b_i_frd[2]
-        # # outputs[2] += -0.05 * self.state[11]
+        # outputs[0] += 0.05 * self.omega_b_i_frd[0]
+        outputs[1] += -0.05 * self.omega_b_i_frd[2]
+        outputs[2] += -0.1 * self.omega_b_i_frd[0]
 
         """
         The relative amplitudes of the damping factors are taken from the cessna
@@ -776,13 +796,13 @@ if __name__ == '__main__':
 
         state = ca.vertcat(q0, x0, v0, omega0)
         control = np.zeros(aircraft.num_controls)
-        control[0] = 0
+        control[0] = 5
         control[6:9] = aircraft_params['aero_centre_offset']
 
     dyn = aircraft.state_update
 
-    dt = 1
-    tf = 100.0
+    dt = .1
+    tf = 10.0
     state_list = np.zeros((aircraft.num_states, int(tf / dt)))
 
     dt_sym = ca.MX.sym('dt', 1)

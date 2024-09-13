@@ -102,12 +102,12 @@ class ControlProblem:
 
         for i in range(self.num_control_nodes + 1):  # For states, we need num_control_nodes + 1
             # State variables for each time step i
-            state_t = scale_state * self.opti.variable(self.aircraft.num_states)
+            state_t = ca.DM(scale_state) * self.opti.variable(self.aircraft.num_states)
             state_list.append(state_t)
 
             if i < self.num_control_nodes:
                 # Control variables for each time step i
-                control_t = scale_control * self.opti.variable(self.aircraft.num_controls)
+                control_t = ca.DM(scale_control) * self.opti.variable(self.aircraft.num_controls)
                 tau_t = self.opti.variable(self.num_waypoints)
                 lam_t = self.opti.variable(self.num_waypoints)
                 mu_t = self.opti.variable(self.num_waypoints)
@@ -172,12 +172,12 @@ class ControlProblem:
     #         self.switching_variable
     #     )
 
-    def control_constraint(self, control_node, control_envelope):
+    def control_constraint(self, control_node, control_envelope, fix_com = True):
         self.opti.subject_to(
             self.opti.bounded(
-                control_envelope.lb,
-                control_node[:9],
-                control_envelope.ub
+                control_envelope.lb[:6],
+                control_node[:6],
+                control_envelope.ub[:6]
                 )
         )
         self.opti.subject_to(
@@ -187,6 +187,14 @@ class ControlProblem:
                 np.zeros(control_node[9:].shape)
                 )
         )
+        if fix_com:
+            self.opti.subject_to(
+                self.opti.bounded(
+                    [0.133, 0, 0.003],
+                    control_node[6:9],
+                    [0.133, 0, 0.003]
+                    )
+            )
         pass
 
     def state_constraint(self, state_node, next_state, control_node, state_envelope, dt):
@@ -213,7 +221,7 @@ class ControlProblem:
                 state_envelope.airspeed.ub
             )
         )
-        self.opti.subject_to(next_state == self.aircraft.state_update(state_node, control_node, dt))
+        self.opti.subject_to(next_state == self.aircraft.state_update(state_node, control_node, dt)) # find way to remove dependency on dt in every timestep to improve sparsity
         pass
 
     def waypoint_constraint(
@@ -265,7 +273,7 @@ class ControlProblem:
         self.opti.subject_to(ca.dot(self.state[10:, 0], self.state[10:, 0]) < 0.1)
         self.opti.subject_to(ca.dot(self.state[7:10, 0], self.state[7:10, 0]) == 50**2)
 
-
+        
         self.opti.subject_to(self.mu[:, 0] == [1] * self.num_waypoints)
 
         waypoint_node = 0
@@ -291,6 +299,11 @@ class ControlProblem:
         self.initialise(self.tau, self.mu, self.lam, self.state, self.control, self.time)
 
         self.opti.minimize(self.loss(time = self.time))
+
+        constraints = self.opti.g
+        # for i, constraint in enumerate(constraints):
+        print(f"Constraint : {constraints}")
+
 
     def plot_sparsity(self, ax:plt.axes):
         jacobian = self.opti.debug.value(ca.jacobian(self.opti.g,self.opti.x)).toarray()
