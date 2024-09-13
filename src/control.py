@@ -308,9 +308,21 @@ class ControlProblem:
     def plot_sparsity(self, ax:plt.axes):
         jacobian = self.opti.debug.value(ca.jacobian(self.opti.g,self.opti.x)).toarray()
         # print(jacobian)
+        ax.clear()
         ax.spy(jacobian)
         plt.draw()
-        plt.pause(10.0)
+        plt.pause(.01)
+
+    def plot_trajectory(self, ax:plt.axes):
+        state = self.opti.debug.value(self.state)
+        ax.clear()
+        ax.plot(state[4, :], state[5, :], state[6, :])
+        plt.draw()
+        plt.pause(0.01)
+
+    def callback(self, axs:List[plt.axes]):
+        self.plot_sparsity(axs[0])
+        self.plot_trajectory(axs[1])
 
     def solve(
             self, 
@@ -323,14 +335,16 @@ class ControlProblem:
                             'hessian_approximation': 'limited-memory'
                         },
                         'print_time': 10,
+                        # 'expand' : True
                         },
             save:bool = True
             ):
         fig = plt.figure(figsize=(10, 10))
-        ax = fig.add_subplot(111)
-
+        ax = fig.add_subplot(211)
+        ax2 = fig.add_subplot(212, projection = '3d')
+        # TODO: investigate fig.add_subfigure for better plotting
         self.opti.solver('ipopt', opts)
-        self.opti.callback(lambda i: self.plot_sparsity(ax))
+        self.opti.callback(lambda i: self.callback([ax, ax2]))
         
         sol = self.opti.solve()
 
