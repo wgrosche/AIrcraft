@@ -174,8 +174,11 @@ class Aircraft:
         self.c = params['chord']
 
         self.mass = params['mass']
-        
-        self.model = L4CasADi(model, name = 'AeroModel'
+        Realtime = False
+        if Realtime:
+            self.model = RealTimeL4CasADi(model, approximation_order=1)
+        else:
+            self.model = L4CasADi(model, name = 'AeroModel'
                             #   , generate_jac_jac=True
                               )
         self.qbar
@@ -796,13 +799,13 @@ if __name__ == '__main__':
 
         state = ca.vertcat(q0, x0, v0, omega0)
         control = np.zeros(aircraft.num_controls)
-        control[0] = 5
+        control[0] = 1
         control[6:9] = aircraft_params['aero_centre_offset']
 
     dyn = aircraft.state_update
 
     dt = .1
-    tf = 10.0
+    tf = 100.0
     state_list = np.zeros((aircraft.num_states, int(tf / dt)))
 
     dt_sym = ca.MX.sym('dt', 1)

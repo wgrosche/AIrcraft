@@ -74,18 +74,18 @@ class ControlProblem:
     def setup_opti_vars(self, 
                         scale_state = ca.vertcat(
                             [1, 1, 1, 1],
-                            [1e-3, 1e-3, 1e-3],
-                            [1e-2, 1e-2, 1e-2],
+                            [1e3, 1e3, 1e3],
+                            [1e2, 1e2, 1e2],
                             [1, 1, 1]
                             ), 
                         scale_control = ca.vertcat(
-                            0.2,
-                            0.2,
-                            0.2,
-                            [1e-2, 1e-2, 1e-2],
-                            [1e-2, 1e-2, 1e-2],
+                            5,
+                            5,
+                            5,
+                            [1e2, 1e2, 1e2],
+                            [1e2, 1e2, 1e2],
                             [1, 1, 1],
-                            [1e1, 1e1, 1e1]
+                            [.1, .1, .1]
                             ), 
                         scale_time = 1):
         
@@ -293,7 +293,7 @@ class ControlProblem:
 
         
 
-        self.opti.subject_to(self.state[4, -1] ==  self.waypoints[-1,:])
+        self.opti.subject_to(self.state[4, -1] ==  100)#self.waypoints[-1,:])
         self.opti.subject_to(self.mu[:, -1] == [0] * self.num_waypoints)
 
         self.initialise(self.tau, self.mu, self.lam, self.state, self.control, self.time)
@@ -305,24 +305,29 @@ class ControlProblem:
         print(f"Constraint : {constraints}")
 
 
-    def plot_sparsity(self, ax:plt.axes):
-        jacobian = self.opti.debug.value(ca.jacobian(self.opti.g,self.opti.x)).toarray()
-        # print(jacobian)
-        ax.clear()
-        ax.spy(jacobian)
-        plt.draw()
-        plt.pause(.01)
+    def plot_sparsity(self, ax:plt.axes, iteration:int):
+        if iteration % 100 == 0:
+            jacobian = self.opti.debug.value(ca.jacobian(self.opti.g,self.opti.x)).toarray()
+            # print(jacobian)
+            ax.clear()
+            ax.spy(jacobian)
+            plt.draw()
+            plt.pause(.01)
 
-    def plot_trajectory(self, ax:plt.axes):
-        state = self.opti.debug.value(self.state)
-        ax.clear()
-        ax.plot(state[4, :], state[5, :], state[6, :])
-        plt.draw()
-        plt.pause(0.01)
+    def plot_trajectory(self, ax:plt.axes, iteration:int):
+        if iteration % 10 == 0:
+            state = self.opti.debug.value(self.state)
+            ax.clear()
+            ax.plot(state[4, :], state[5, :], state[6, :])
+            plt.draw()
+            plt.pause(0.01)
 
-    def callback(self, axs:List[plt.axes]):
-        self.plot_sparsity(axs[0])
-        self.plot_trajectory(axs[1])
+    def plot_convergence(self, ax:plt.axes, iteration:int):
+        plt.semilogy
+
+    def callback(self, axs:List[plt.axes], iteration:int):
+        self.plot_sparsity(axs[0], iteration)
+        self.plot_trajectory(axs[1], iteration)
 
     def solve(
             self, 
@@ -344,7 +349,7 @@ class ControlProblem:
         ax2 = fig.add_subplot(212, projection = '3d')
         # TODO: investigate fig.add_subfigure for better plotting
         self.opti.solver('ipopt', opts)
-        self.opti.callback(lambda i: self.callback([ax, ax2]))
+        self.opti.callback(lambda i: self.callback([ax, ax2], i))
         
         sol = self.opti.solve()
 
@@ -465,7 +470,7 @@ def main():
     model = load_model()
     traj_dict = json.load(open('data/glider/problem_definition.json'),)
     trajectory_config = TrajectoryConfiguration(traj_dict)
-    num_control_nodes = 9
+    num_control_nodes = 40
     aircraft = Aircraft(traj_dict['aircraft'], model)
     problem = ControlProblem(opti, aircraft, trajectory_config, num_control_nodes)
 

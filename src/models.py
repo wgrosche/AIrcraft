@@ -98,6 +98,9 @@ class MiniModel(nn.Module):
         
         return core_output
 
+class L4CasadiModel():
+    def __init__(self):
+        pass
 
 class ScaledModel(nn.Module):
     """
