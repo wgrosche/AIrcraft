@@ -179,7 +179,7 @@ class Aircraft:
             self.model = RealTimeL4CasADi(model, approximation_order=1)
         else:
             self.model = L4CasADi(model, name = 'AeroModel'
-                            #   , generate_jac_jac=True
+                              , generate_jac_jac=True
                               )
         self.qbar
         self.beta
