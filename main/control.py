@@ -28,6 +28,7 @@ from src.waypoints import waypoint_distances, setup_progress_vars, x_guess
 from src.models import ScaledModel, MiniModel
 # from src.visualisation import plot
 from src.plotting import plot, debug
+from src.utils import Control, State, TrajectoryConfiguration
 
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else 
                       ("mps" if torch.backends.mps.is_available() else "cpu"))
@@ -46,44 +47,16 @@ NUM_NODES = 30
 # DEBUG MODE
 DEBUG = False
 
-aircraft_params = json.load(open(os.path.join(
-    BASEPATH, 
-    'data', 
-    'glider', 
-    'glider_fs.json'
-    )))
-
-control_limits = {
-    "aileron": [-5, 5],
-    "elevator": [-5, 5],
-    "rudder": [-5, 5],
-    "throttle": [0, 10],
-    "mass": [1.9, 2.1]
-}
-
-flight_envelope = {
-    "airspeed": [5, 200],
-    "alpha": [-np.deg2rad(20), np.deg2rad(20)],
-    "beta": [-np.deg2rad(20), np.deg2rad(20)]
-}
+# aircraft_params = AircraftParameters(
+#     params = json.load(open(os.path.join(
+#                         BASEPATH, 
+#                         'data', 
+#                         'glider', 
+#                         'glider_fs.json'
+#                                     ))))
 
 
-x0 = np.zeros(3)
-v0 = np.array([60, 0, 0])
-q0 = np.array([1, 0, 0, 0])
-omega0 = np.array([0, 0, 0])
-
-
-initial_state = ca.vertcat(q0, x0, v0, omega0)
-        
-
-control = np.zeros(15)
-control[-3:] = aircraft_params['aero_centre_offset']
-initial_controls = ca.DM(
-    control
-    )
-
-waypoints = np.array([[100]])
+aircraft_params = json.load(open('data/glider/problem_definition.json'),)['aircraft']
 
 def check_constraints(opti:ca.Opti):
     """ Function to evaluate the constraints and their Jacobian """
@@ -196,25 +169,53 @@ def control_constraints(
             control[2,:],
             control_limits['rudder'][1]
             )
+        ) # TODO: IMPLEMENT CONTROL LIMITS
+    opti.subject_to(control[3:6,:] == control_limits['throttle'][0])
+        # opti.bounded(
+        #     control_limits['throttle'][0],
+        #     control[3:6,:],
+        #     control_limits['throttle'][1]
+        #     )
+        # )
+    
+    opti.subject_to(control[6:9,:] == [0, 0, 0]
+        # opti.bounded(
+        #     [0, 0, 0],
+        #     control[6:9,:],
+        #     [0, 0, 0]
+        #     )
         )
-    opti.subject_to(
-        opti.bounded(
-            control_limits['throttle'][0],
-            control[3,:],
-            control_limits['throttle'][1]
-            )
-        )
-    opti.subject_to(
-        opti.bounded(
-            control_limits['mass'][0],
-            control[4,:],
-            control_limits['mass'][1]
-            )
-        )
+    
+    # opti.subject_to(
+        # opti.bounded(
+        #     [0, 0, 0],
+        #     control[6:9,:],
+        #     [0, 0, 0]
+        #     )
+        # )
+    
+    opti.subject_to(control[9:12,:] == [0,0,0])
+        # opti.bounded(
+        #     [0, 0, 0],
+        #     control[9:12,:],
+        #     [0, 0, 0]
+        #     )
+        # )
+
     return None
 
 
 def main():
+    initial_state = State(
+    orientation = np.array([1, 0, 0, 0]), 
+    velocity = np.array([60, 0, 0])
+        )
+
+    initial_controls = Control(
+        centre_of_mass=aircraft_params['aero_centre_offset']
+        )
+
+    waypoints = np.array([[100]])
     opti = ca.Opti()
 
     model = load_model()
@@ -245,19 +246,19 @@ def main():
     state = scale_state * opti.variable(aircraft.num_states, NUM_NODES + 1)
     control = scale_control * opti.variable(aircraft.num_controls, NUM_NODES)
 
-    flight_envelope_constraints(
-        opti, 
-        flight_envelope, 
-        state, 
-        control, 
-        aircraft
-        )
+    # flight_envelope_constraints(
+    #     opti, 
+    #     flight_envelope, 
+    #     state, 
+    #     control, 
+    #     aircraft
+    #     )
     
-    control_constraints(
-        opti, 
-        control, 
-        control_limits
-        )
+    # control_constraints(
+    #     opti, 
+    #     control, 
+    #     control_limits
+    #     )
     
     setup_progress_vars(
         opti, 
@@ -318,18 +319,19 @@ def main():
     ax = fig.add_subplot(211, projection='3d')
     ax2 = fig.add_subplot(212)
     filepath = os.path.join(DATAPATH, "trajectories", "physical_solution_new.h5")
-
+    
     # if the file exists, delete it
     if os.path.exists(filepath):
         os.remove(filepath)
     if DEBUG:
-        opti.callback(lambda i: debug(
-            opti, 
-            opti.debug.value(state), 
-            opti.debug.value(control), 
-            aircraft, 
-            opti.debug.value(opti.debug.g)
-            ))
+        # opti.callback(lambda i: debug(
+        #     opti, 
+        #     opti.debug.value(state), 
+        #     opti.debug.value(control), 
+        #     aircraft, 
+        #     opti.debug.value(opti.debug.g)
+        #     ))
+        opti.callback(lambda i: spy(opti.debug.value(ca.jacobian(opti.g,opti.x))))
     else:
         opti.callback(lambda i: plot(
             ax, 

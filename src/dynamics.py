@@ -29,7 +29,6 @@ from src.models import ScaledModel
 from src.utils import load_model
 from src.plotting import plot_state
 
-
 print(DEVICE)
 
 def load_model(
@@ -160,9 +159,9 @@ class Aircraft:
             self.elevator, 
             self.rudder, 
             self.throttle, 
+            self.com,
             self.v_wind_ecf_e, 
-            self.omega_e_i_ecf, 
-            self.com
+            self.omega_e_i_ecf
             )
         
         self.num_controls = self.control.size()[0]
@@ -175,8 +174,13 @@ class Aircraft:
         self.c = params['chord']
 
         self.mass = params['mass']
-        
-        self.model = L4CasADi(model, name = 'AeroModel')
+        Realtime = False
+        if Realtime:
+            self.model = RealTimeL4CasADi(model, approximation_order=1)
+        else:
+            self.model = L4CasADi(model, name = 'AeroModel'
+                              , generate_jac_jac=True
+                              )
         self.qbar
         self.beta
         self.alpha
@@ -222,14 +226,14 @@ class Aircraft:
     @property
     def alpha(self):
         v_frd_rel = self.v_frd_rel
-        alpha = ca.atan2(v_frd_rel[2], v_frd_rel[0] + self.EPSILON)
+        alpha = ca.atan2(v_frd_rel[2], v_frd_rel[0] + self.EPSILON)#v_frd_rel[2] /(v_frd_rel[0] + self.EPSILON)#
         self._alpha = ca.Function('alpha', [self.state, self.control], [alpha])
         return alpha
     
     @property
     def beta(self):
         v_frd_rel = self.v_frd_rel
-        beta = ca.asin(v_frd_rel[1] / self.airspeed)
+        beta = ca.asin(v_frd_rel[1] / self.airspeed)#v_frd_rel[1] / self.airspeed#ca.asin(v_frd_rel[1] / self.airspeed)
         self._beta = ca.Function('beta', [self.state, self.control], [beta])
         return beta
     
@@ -332,18 +336,39 @@ class Aircraft:
             self.elevator
             )
         
-        outputs = self.model(inputs)
+        outputs = self.model(ca.reshape(inputs, 1, -1))
+        outputs = ca.vertcat(outputs.T)
+        print(f"Output shape: {outputs.shape}")  # Debugging statement
+
+        stall_angle_alpha = np.deg2rad(10)
+        stall_angle_beta = np.deg2rad(10)
+
+        steepness = 2
+
+        alpha_scaling = 1 / (1 + ca.exp(steepness * (self.alpha - stall_angle_alpha)))
+        beta_scaling = 1 / (1 + ca.exp(steepness * (self.beta - stall_angle_beta)))
+        
+        
+        outputs[2] *= alpha_scaling
+        outputs[2] *= beta_scaling
+
+        outputs[4] *= alpha_scaling
+        outputs[4] *= beta_scaling
+
 
         self._coefficients = ca.Function(
             'coefficients', 
             [self.state, self.control], 
             [outputs]
             )
+        
+        
+
 
         # angular rate contributions
-        # outputs[0] += 0.05 * self.state[11]
-        # outputs[1] += -0.05 * self.omega_b_i_frd[2]
-        # # outputs[2] += -0.05 * self.state[11]
+        # outputs[0] += 0.05 * self.omega_b_i_frd[0]
+        outputs[1] += -0.05 * self.omega_b_i_frd[2]
+        outputs[2] += -0.1 * self.omega_b_i_frd[0]
 
         """
         The relative amplitudes of the damping factors are taken from the cessna
@@ -401,9 +426,9 @@ class Aircraft:
             [forces]
             )
         return forces
-
+    
     @property
-    def moments_frd(self):
+    def moments_aero(self):
         moments_aero = (self.coefficients[3:] 
                         * self.qbar 
                         * self.S 
@@ -415,7 +440,10 @@ class Aircraft:
             [self.state, self.control], 
             [moments_aero]
             )
-
+        return moments_aero
+    
+    @property
+    def moments_from_forces(self):
         moments_from_forces = ca.cross(self.com, self.forces_frd)
 
         self._moments_from_forces = ca.Function(
@@ -423,8 +451,12 @@ class Aircraft:
             [self.state, self.control], 
             [moments_from_forces]
             )
+        return moments_from_forces
+    
+    @property
+    def moments_frd(self):
 
-        moments = moments_aero + moments_from_forces
+        moments = self.moments_aero + self.moments_from_forces
 
         self._moments_frd = ca.Function(
             'moments_frd', 
@@ -603,6 +635,67 @@ class Aircraft:
         # state[:4] = self.integrate_quaternion(temp_state, dt_scaled)
 
         return state
+    
+    def rk45_step(self, state, control, dt):
+        k1 = dt * self.dynamics(state, control)
+        k2 = dt * self.dynamics(state + 1/4 * k1, control)
+        k3 = dt * self.dynamics(state + 3/32 * k1 + 9/32 * k2, control)
+        k4 = dt * self.dynamics(state + 1932/2197 * k1 - 7200/2197 * k2 + 7296/2197 * k3, control)
+        k5 = dt * self.dynamics(state + 439/216 * k1 - 8 * k2 + 3680/513 * k3 - 845/4104 * k4, control)
+        k6 = dt * self.dynamics(state - 8/27 * k1 + 2 * k2 - 3544/2565 * k3 + 1859/4104 * k4 - 11/40 * k5, control)
+        
+        # 4th-order estimate
+        y4 = state + 25/216 * k1 + 1408/2565 * k3 + 2197/4104 * k4 - 1/5 * k5
+        
+        # 5th-order estimate
+        y5 = state + 16/135 * k1 + 6656/12825 * k3 + 28561/56430 * k4 - 9/50 * k5 + 2/55 * k6
+        
+        return y4, y5
+
+    def adaptive_rk45(self, state_0, control, dt, initial_step:float = 1e0, tol=1e-6, normalisation_interval:int = 10):
+        t = 0
+        state = state_0
+        step = initial_step
+        t_values = [t]
+        states = [state]
+        i = 0
+        while t < ca.Function('t_end', [dt], [t + dt])(dt):
+            state_4, state_5 = self.rk45_step(state, control, step)
+
+            error = np.linalg.norm(state_5 - state_4, ord = np.inf)
+
+            if error < tol:
+                t += step
+                state = state_5
+                if i % normalisation_interval == 0:
+                    state[:4] = Quaternion(state[:4]).normalize().coeffs()
+                state[:4] = Quaternion(state[:4]).normalize().coeffs()
+                t_values.append(t)
+                states.append(state)
+
+            safety_factor = 0.9
+            if error == 0:
+                new_step = step * 2
+            else:
+                new_step = step * safety_factor * (tol / error) ** (1/4)
+
+            step = min(new_step, dt - t)
+
+        return np.array(t_values), np.array(states)
+    
+    # @property
+    # def state_update(self):
+    #     dt = ca.MX.sym('dt')
+    #     state = self.state
+    #     control_sym = self.control
+
+    #     t_values, states = self.adaptive_rk45(state, control_sym, dt)
+
+    #     return ca.Function(
+    #         'state_update', 
+    #         [self.state, self.control, dt], 
+    #         [states[-1]])
+
 
     @property
     # @jit
@@ -616,23 +709,78 @@ class Aircraft:
         num_steps = self.STEPS
 
         dt_scaled = dt / num_steps
-
-        for i in range(num_steps):
-            state = self.state_step(state, control_sym, dt_scaled)
-
-            if i % normalisation_interval == 0:
-                state[:4] = Quaternion(state[:4]).normalize().coeffs()
+        input_to_fold = ca.vertcat(self.state, self.control, dt)
+        fold_output = ca.vertcat(self.state_step(state, control_sym, dt_scaled), control_sym, dt)
+        folded_update = ca.Function('folder', [input_to_fold], [fold_output])
+        
+        F = folded_update.fold(num_steps)
+        state = F(input_to_fold)[:self.num_states]
+        # for i in range(num_steps):
+        #     state = self.state_step(state, control_sym, dt_scaled)
+        
+        #     if i % normalisation_interval == 0:
+        #         state[:4] = Quaternion(state[:4]).normalize().coeffs()
+        
         state[:4] = Quaternion(state[:4]).normalize().coeffs()
         return ca.Function(
             'state_update', 
             [self.state, self.control, dt], 
             [state]
             ) #, {'jit':True}
+    
+    # @property
+    # def state_update(self, normalisation_interval: int = 10):
+    #     """
+    #     Runge Kutta integration with quaternion update, for loop over self.STEPS
+    #     """
+    #     dt = ca.MX.sym('dt')
+    #     state = self.state
+    #     control_sym = self.control
+    #     num_steps = self.STEPS
+
+    #     dt_scaled = dt / num_steps
+
+    #     # Create foldable state update function, including normalization at the right interval
+    #     def fold_step(state_control_dt):
+    #         # Split the input back into state, control, and dt
+    #         state = state_control_dt[:self.state.shape[0]]
+    #         control_sym = state_control_dt[self.state.shape[0]:self.state.shape[0] + self.control.shape[0]]
+    #         dt = state_control_dt[-1]
+
+    #         # Update the state with one step of the dynamics
+    #         state = self.state_step(state, control_sym, dt_scaled)
+
+    #         # Apply quaternion normalization every few steps
+    #         step_number = ca.MX.sym('step_number')  # Add the step number as input
+    #         state[:4] = ca.if_else(step_number % normalisation_interval == 0, 
+    #                             Quaternion(state[:4]).normalize().coeffs(), 
+    #                             state[:4])
+
+    #         # Return updated state only, as control and dt don't change
+    #         return state
+
+    #     # Vectorize inputs to fold
+    #     input_to_fold = ca.vertcat(state, control_sym, dt)
+
+    #     # Use a casadi function to implement the fold step
+    #     fold_step_function = ca.Function('fold_step', [input_to_fold], [fold_step(input_to_fold)])
+
+    #     # Apply the fold for num_steps
+    #     F = fold_step_function.fold(num_steps)
+
+    #     # Return the full state update function
+    #     return ca.Function(
+    #         'state_update', 
+    #         [self.state, self.control, dt], 
+    #         [F(input_to_fold)]
+    #     )
+
 
    
 
 if __name__ == '__main__':
     aircraft_params = json.load(open(os.path.join(BASEPATH, 'data', 'glider', 'glider_fs.json')))
+    perturbation = False
 
     model = load_model()
     
@@ -651,13 +799,13 @@ if __name__ == '__main__':
 
         state = ca.vertcat(q0, x0, v0, omega0)
         control = np.zeros(aircraft.num_controls)
-        control[1] = -5
-        control[-3:] = aircraft_params['aero_centre_offset']
+        control[0] = 1
+        control[6:9] = aircraft_params['aero_centre_offset']
 
     dyn = aircraft.state_update
 
     dt = .1
-    tf = 10.0
+    tf = 100.0
     state_list = np.zeros((aircraft.num_states, int(tf / dt)))
 
     dt_sym = ca.MX.sym('dt', 1)
@@ -670,6 +818,8 @@ if __name__ == '__main__':
         else:
             state_list[:, i] = state.full().flatten()
             state = aircraft.state_update(state, control, dt)
+            # if perturbation:
+            #     control[6:9] += 2 * (np.random.rand(3) - 0.5)
             t += 1
 
     # state_list = state_list[:, :t-10]

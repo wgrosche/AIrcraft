@@ -1,0 +1,30 @@
+{
+    "waypoints": {
+        "waypoints" : [[10, 0, 0], [50, 0 , 0], [100, 0 , 0]],
+        "initial_state" : [1, 0, 0, 0, 0, 0, 0, 50, 0, 0, 0, 0, 0],
+        "default_velocity" : 50
+    },
+    "aircraft" : {
+        "mass"  : 2.0,
+        "span"  : 2.0,
+        "chord" : 0.124605,
+        "reference_area": 0.238,
+        "aero_centre_offset":[0.133, 0, 0.003],
+        "Ixx": 0.155,
+        "Iyy": 0.114,
+        "Izz": 0.262,
+        "Ixz": 0.01
+    },
+    "state"    : {
+        "alpha" : [-15, 15],
+        "beta"  : [-15, 15],
+        "airspeed" : [30, 100]
+    },
+    "control"  : {
+        "aileron_limit" : [-5, 5],
+        "elevator_limit" : [-5, 5],
+        "rudder_limit" : [-5, 5],
+        "throttle_limit" : [[0, 0, 0], [0, 0, 0]],
+        "centre_of_mass_limit" : [[-0.5, -0.1, -0.1], [0.5, 0.1, 0.1]]
+    }
+}
