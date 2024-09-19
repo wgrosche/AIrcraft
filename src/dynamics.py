@@ -247,87 +247,6 @@ class Aircraft:
         return qbar
     
     @property
-    def cessna_coefficients(self):
-        """
-        Cessna 172 implementation of aerodynamic coefficients from:
-        https://forums.flightsimulator.com/t/physics-and-aerodynamic-on-directional-stability-part-2-getting-to-the-root-of-the-problem/396095
-
-        https://www.researchgate.net/publication/353752543_Cessna_172_Flight_Simulation_Data/
-
-        Documentation:
-        https://docs.flightsimulator.com/html/mergedProjects/How_To_Make_An_Aircraft/Contents/Files/The_Flight_Model.htm
-
-        NOTE: Used for testing only
-        """
-        inputs = ca.vertcat(
-            self.qbar, 
-            self.alpha, 
-            self.beta, 
-            self.aileron, 
-            self.elevator
-            )
-        
-        CL0 = -0.31# flip
-        CLq = -3.9 # flip
-        CLalpha = -5.143 # flip
-        CLde = 0.43
-
-        CL = CL0 + CLq * self.omega_b_i_frd[1] + CLalpha * self.alpha + CLde * self.elevator
-
-        CZ = CL
-
-        CD0 = 0.031
-        k = 0.054
-        
-        CD = CD0 + k * CL ** 2
-        CX = -CD
-
-        CY0 = 0
-        CYbeta = -0.31
-        CYr = -0.21 #flip
-        CYp = -0.037
-        CYda = 0
-        CYdr = 0.187
-
-        CY = CY0 + CYbeta * self.beta + CYr * self.omega_b_i_frd[2] + CYp * self.omega_b_i_frd[0] + CYda * self.aileron + CYdr * self.rudder
-
-        Cl0 = 0
-        Clbeta = 0.089#flip
-        Clr = 0.096
-        Clp = -0.47 
-        Clda = -0.178
-        Cldr = 0.0147
-
-        Cl = Cl0 + Clbeta * self.beta + Clr * self.omega_b_i_frd[2] + Clp * self.omega_b_i_frd[0] + Clda * self.aileron + Cldr * self.rudder
-
-        Cm0 = -0.015
-        Cmq = -12.4
-        Cmalpha = -0.89
-        Cmde = -1.28
-
-        Cm = Cm0 + Cmq * self.omega_b_i_frd[1] + Cmalpha * self.alpha + Cmde * self.elevator
-
-        Cn0 = 0
-        Cnbeta = -0.065
-        Cnr = -0.099
-        Cnp = -0.03
-        Cnda = -0.053
-        Cndr = -0.0657
-
-        Cn = Cn0 + Cnbeta * self.beta + Cnr * self.omega_b_i_frd[2] + Cnp * self.omega_b_i_frd[0] + Cnda * self.aileron + Cndr * self.rudder
-        
-        outputs = ca.vertcat(CX, CY, CZ, Cl, Cm, Cn)
-
-        self._coefficients = ca.Function(
-            'coefficients', 
-            [self.state, self.control], 
-            [outputs]
-            )
-        
-        return outputs
-
-
-    @property
     def coefficients(self):
         """
         Forward pass of the linear model to retrieve aerodynamic coefficients.
@@ -516,7 +435,7 @@ class Aircraft:
     @property
     def forces_frd(self):
         forces = self.coefficients[:3] * self.qbar * self.S
-        forces *= ca.vertcat(1, 1, 1)
+        # forces *= ca.vertcat(1, 1, 1)
         forces += self.throttle
         self._forces_frd = ca.Function(
             'forces_frd', 
@@ -531,7 +450,7 @@ class Aircraft:
                         * self.qbar 
                         * self.S 
                         * ca.vertcat(self.b, self.c, self.b))
-        moments_aero *= ca.vertcat(1, 1, 1)
+        # moments_aero *= ca.vertcat(1, 1, 1)
 
         self._moments_aero = ca.Function(
             'moments_aero', 
@@ -897,12 +816,12 @@ if __name__ == '__main__':
 
         state = ca.vertcat(q0, x0, v0, omega0)
         control = np.zeros(aircraft.num_controls)
-        control[0] = 1
+        control[0] = 0
         control[6:9] = aircraft_params['aero_centre_offset']
 
     dyn = aircraft.state_update
 
-    dt = .1
+    dt = 1
     tf = 100.0
     state_list = np.zeros((aircraft.num_states, int(tf / dt)))
 
@@ -915,7 +834,7 @@ if __name__ == '__main__':
             break
         else:
             state_list[:, i] = state.full().flatten()
-            state = aircraft.state_update(state, control, dt)
+            state = dyn(state, control, dt)
             # if perturbation:
             #     control[6:9] += 2 * (np.random.rand(3) - 0.5)
             t += 1

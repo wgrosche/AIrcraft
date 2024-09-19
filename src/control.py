@@ -58,6 +58,11 @@ class ControlProblem:
         ):
         self.opti = opti
         self.aircraft = aircraft
+
+        self.dynamics = aircraft.state_update
+        self.alpha = aircraft._alpha
+        self.beta = aircraft._beta
+        self.airspeed = aircraft._airspeed
         self.num_control_nodes = num_control_nodes
         self.waypoints = trajectory_config.waypoints()
         self.trajectory = trajectory_config
@@ -127,32 +132,6 @@ class ControlProblem:
         self.mu = ca.hcat(mu_list)           # Mu matrix: [num_waypoints x num_control_nodes]
 
 
-
-
-
-    # def setup_opti_vars(self, 
-    #                     scale_state, 
-    #                     scale_control, 
-    #                     scale_time):
-        
-        
-    #     self.time = scale_time * self.opti.variable()
-    #     self.dt = self.time /  self.num_control_nodes
-    #     self.state = scale_state * self.opti.variable(
-    #         self.aircraft.num_states, 
-    #         self.num_control_nodes + 1
-    #         )
-    #     self.control = scale_control * self.opti.variable(
-    #         self.aircraft.num_controls, 
-    #         self.num_control_nodes)
-        
-    #     self.tau = self.opti.variable(self.num_waypoints, self.num_control_nodes)
-
-    #     self.lam = self.opti.variable(self.num_waypoints, self.num_control_nodes)
-
-    #     self.mu = self.opti.variable(self.num_waypoints, self.num_control_nodes)
-
-
     # def node(self, input, control, state, control_envelope, state_envelope):
     #     node = input[0]
     #     waypoint_node = input[1]
@@ -201,7 +180,7 @@ class ControlProblem:
         self.opti.subject_to(
             self.opti.bounded(
                 state_envelope.alpha.lb,
-                self.aircraft._alpha(state_node, control_node),
+                self.alpha(state_node, control_node),
                 state_envelope.alpha.ub
             )
         )
@@ -209,7 +188,7 @@ class ControlProblem:
         self.opti.subject_to(
             self.opti.bounded(
                 state_envelope.beta.lb,
-                self.aircraft._beta(state_node, control_node),
+                self.beta(state_node, control_node),
                 state_envelope.beta.ub
             )
         )
@@ -217,11 +196,11 @@ class ControlProblem:
         self.opti.subject_to(
             self.opti.bounded(
                 state_envelope.airspeed.lb,
-                self.aircraft._airspeed(state_node, control_node),
+                self.airspeed(state_node, control_node),
                 state_envelope.airspeed.ub
             )
         )
-        self.opti.subject_to(next_state == self.aircraft.state_update(state_node, control_node, dt)) # find way to remove dependency on dt in every timestep to improve sparsity
+        self.opti.subject_to(next_state == self.dynamics(state_node, control_node, dt)) # find way to remove dependency on dt in every timestep to improve sparsity
         pass
 
     def waypoint_constraint(
@@ -326,7 +305,7 @@ class ControlProblem:
         plt.semilogy
 
     def callback(self, axs:List[plt.axes], iteration:int):
-        self.plot_sparsity(axs[0], iteration)
+        # self.plot_sparsity(axs[0], iteration)
         self.plot_trajectory(axs[1], iteration)
 
     def solve(
@@ -470,7 +449,7 @@ def main():
     model = load_model()
     traj_dict = json.load(open('data/glider/problem_definition.json'),)
     trajectory_config = TrajectoryConfiguration(traj_dict)
-    num_control_nodes = 40
+    num_control_nodes = 10
     aircraft = Aircraft(traj_dict['aircraft'], model)
     problem = ControlProblem(opti, aircraft, trajectory_config, num_control_nodes)
 
