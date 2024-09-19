@@ -374,14 +374,18 @@ def main():
     # print(model_CX(dataset).coef_)
     
     tabulated_coeffs = {}
-    for feature in output_features:
+    coeff_dframe = pd.DataFrame(np.zeros((len(output_features), len(input_features) + 1)), columns = input_features + ['intercept'])
+    for i, feature in enumerate(output_features):
         reg = model_C_coeff(dataset, feature)
 
         tabulated_coeffs[feature] = {'coefs' : list(reg.coef_), 'intercept' : reg.intercept_}
+        coeff_dframe.iloc[i, :-1] = list(reg.coef_)
+        coeff_dframe.iloc[i, -1] = reg.intercept_
     tabulated_coeffs['CX'] = model_CX(dataset)
     print(tabulated_coeffs)
     with open(os.path.join(DATAPATH, 'glider', 'linearised.json'), 'w') as f:
         json.dump(tabulated_coeffs, f)
+    coeff_dframe.to_csv(os.path.join(DATAPATH, 'glider', 'linearised.csv'), index=None)
 
     # train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=num_workers)
     # test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)

@@ -340,7 +340,7 @@ class ControlProblem:
                             'hessian_approximation': 'limited-memory'
                         },
                         'print_time': 10,
-                        'expand' : True
+                        # 'expand' : True
                         },
             save:bool = True
             ):
