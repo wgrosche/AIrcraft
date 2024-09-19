@@ -124,11 +124,23 @@ class Aircraft:
         EPSILON: smoothing parameter for non-smoothly-differentiable functions
         STEPS: number of integration steps in each state update
         """
-
+        Ixx = params['Ixx']
+        Iyy = params['Iyy']
+        Ixz = params['Ixz']
+        Izz = params['Izz']
         self._inertia_tensor = ca.vertcat(
-            ca.horzcat(params['Ixx'],  0,             params['Ixz']),
-            ca.horzcat(0,              params['Iyy'], 0            ),
-            ca.horzcat(params['Ixz'],  0,             params['Izz'])
+            ca.horzcat(Ixx, 0  , Ixz),
+            ca.horzcat(0  , Iyy, 0  ),
+            ca.horzcat(Ixz, 0  , Izz)
+        )
+        # Determinant of the inertia tensor
+        det_I = Ixx * Iyy * Izz - Ixz**2 * Iyy
+
+        # Inverse inertia tensor
+        self.inv_inertia_tensor = (1 / det_I) * ca.vertcat(
+            ca.horzcat(Iyy * Izz, 0, -Ixz * Iyy),
+            ca.horzcat(0, Ixx * Izz - Ixz**2, 0),
+            ca.horzcat(-Ixz * Iyy, 0, Ixx * Iyy)
         )
         self.EPSILON = EPSILON
         self.STEPS = STEPS
@@ -558,7 +570,7 @@ class Aircraft:
     @property
     def omega_b_i_frd_dot(self):
         J_frd = self.inertia_tensor
-        J_frd_inv = ca.inv(J_frd)
+        J_frd_inv = self.inv_inertia_tensor
         
         omega_b_i_frd = self.omega_b_i_frd
         moments = self.moments_frd
@@ -590,36 +602,6 @@ class Aircraft:
             [x_dot]
             )
         return x_dot
-
-
-    def integrate_quaternion(self, state, dt):
-        """
-        Integrate quaternion using angular velocity.
-
-        NOTE: This is computationally expensive and should only be used if you
-        notice that the quaternion is deviating significantly from unit norm.
-
-        """
-        q0 = Quaternion(state[:4])
-        omega = state[10:]
-        omega_norm = ca.norm_2(omega)
-        
-        # Handle the case where omega_norm is small to avoid division by zero
-        small_angle = 1e-6
-        omega_norm_safe = ca.if_else(omega_norm < small_angle, 
-                                     small_angle, omega_norm)
-        
-        theta = 0.5 * dt * omega_norm_safe 
-        axis = omega / omega_norm_safe
-        
-        # Compute the quaternion corresponding to the angular displacement
-        dq = Quaternion(ca.vertcat(ca.sin(theta) * axis, ca.cos(theta)))
-        
-        # Integrate the quaternion
-        q1 = q0 * dq
-        q1 = q1.normalize()
-
-        return q1.coeffs()
     
     # @jit
     def state_step(self, state, control, dt_scaled):
@@ -628,94 +610,27 @@ class Aircraft:
         of the quaternion integration we cannot rely on conventional 
         integerators. 
         """
-        temp_state = state
-        # k1
+
         k1 = self.dynamics(state, control)
         state_k1 = state + dt_scaled / 2 * k1
-        # state_k1[:4] = self.integrate_quaternion(state, dt_scaled / 2)
 
-        # k2
         k2 = self.dynamics(state_k1, control)
         state_k2 = state + dt_scaled / 2 * k2
-        # state_k2[:4] = self.integrate_quaternion(state_k1, dt_scaled / 2)
 
-        # k3
+
         k3 = self.dynamics(state_k2, control)
         state_k3 = state + dt_scaled * k3
-        # state_k3[:4] = self.integrate_quaternion(state_k2, dt_scaled)
 
-        # k4
         k4 = self.dynamics(state_k3, control)
 
-        # Update state with combined increments from Runge-Kutta
         state = state + dt_scaled / 6 * (k1 + 2 * k2 + 2 * k3 + k4)
-        # state[:4] = self.integrate_quaternion(temp_state, dt_scaled)
+
+        # self._state_step = ca.Function('step', [state, control, dt_scaled], [state])
 
         return state
-    
-    def rk45_step(self, state, control, dt):
-        k1 = dt * self.dynamics(state, control)
-        k2 = dt * self.dynamics(state + 1/4 * k1, control)
-        k3 = dt * self.dynamics(state + 3/32 * k1 + 9/32 * k2, control)
-        k4 = dt * self.dynamics(state + 1932/2197 * k1 - 7200/2197 * k2 + 7296/2197 * k3, control)
-        k5 = dt * self.dynamics(state + 439/216 * k1 - 8 * k2 + 3680/513 * k3 - 845/4104 * k4, control)
-        k6 = dt * self.dynamics(state - 8/27 * k1 + 2 * k2 - 3544/2565 * k3 + 1859/4104 * k4 - 11/40 * k5, control)
-        
-        # 4th-order estimate
-        y4 = state + 25/216 * k1 + 1408/2565 * k3 + 2197/4104 * k4 - 1/5 * k5
-        
-        # 5th-order estimate
-        y5 = state + 16/135 * k1 + 6656/12825 * k3 + 28561/56430 * k4 - 9/50 * k5 + 2/55 * k6
-        
-        return y4, y5
-
-    def adaptive_rk45(self, state_0, control, dt, initial_step:float = 1e0, tol=1e-6, normalisation_interval:int = 10):
-        t = 0
-        state = state_0
-        step = initial_step
-        t_values = [t]
-        states = [state]
-        i = 0
-        while t < ca.Function('t_end', [dt], [t + dt])(dt):
-            state_4, state_5 = self.rk45_step(state, control, step)
-
-            error = np.linalg.norm(state_5 - state_4, ord = np.inf)
-
-            if error < tol:
-                t += step
-                state = state_5
-                if i % normalisation_interval == 0:
-                    state[:4] = Quaternion(state[:4]).normalize().coeffs()
-                state[:4] = Quaternion(state[:4]).normalize().coeffs()
-                t_values.append(t)
-                states.append(state)
-
-            safety_factor = 0.9
-            if error == 0:
-                new_step = step * 2
-            else:
-                new_step = step * safety_factor * (tol / error) ** (1/4)
-
-            step = min(new_step, dt - t)
-
-        return np.array(t_values), np.array(states)
-    
-    # @property
-    # def state_update(self):
-    #     dt = ca.MX.sym('dt')
-    #     state = self.state
-    #     control_sym = self.control
-
-    #     t_values, states = self.adaptive_rk45(state, control_sym, dt)
-
-    #     return ca.Function(
-    #         'state_update', 
-    #         [self.state, self.control, dt], 
-    #         [states[-1]])
 
 
     @property
-    # @jit
     def state_update(self, normalisation_interval: int = 10):
         """
         Runge Kutta integration with quaternion update, for loop over self.STEPS
@@ -744,54 +659,6 @@ class Aircraft:
             [self.state, self.control, dt], 
             [state]
             ) #, {'jit':True}
-    
-    # @property
-    # def state_update(self, normalisation_interval: int = 10):
-    #     """
-    #     Runge Kutta integration with quaternion update, for loop over self.STEPS
-    #     """
-    #     dt = ca.MX.sym('dt')
-    #     state = self.state
-    #     control_sym = self.control
-    #     num_steps = self.STEPS
-
-    #     dt_scaled = dt / num_steps
-
-    #     # Create foldable state update function, including normalization at the right interval
-    #     def fold_step(state_control_dt):
-    #         # Split the input back into state, control, and dt
-    #         state = state_control_dt[:self.state.shape[0]]
-    #         control_sym = state_control_dt[self.state.shape[0]:self.state.shape[0] + self.control.shape[0]]
-    #         dt = state_control_dt[-1]
-
-    #         # Update the state with one step of the dynamics
-    #         state = self.state_step(state, control_sym, dt_scaled)
-
-    #         # Apply quaternion normalization every few steps
-    #         step_number = ca.MX.sym('step_number')  # Add the step number as input
-    #         state[:4] = ca.if_else(step_number % normalisation_interval == 0, 
-    #                             Quaternion(state[:4]).normalize().coeffs(), 
-    #                             state[:4])
-
-    #         # Return updated state only, as control and dt don't change
-    #         return state
-
-    #     # Vectorize inputs to fold
-    #     input_to_fold = ca.vertcat(state, control_sym, dt)
-
-    #     # Use a casadi function to implement the fold step
-    #     fold_step_function = ca.Function('fold_step', [input_to_fold], [fold_step(input_to_fold)])
-
-    #     # Apply the fold for num_steps
-    #     F = fold_step_function.fold(num_steps)
-
-    #     # Return the full state update function
-    #     return ca.Function(
-    #         'state_update', 
-    #         [self.state, self.control, dt], 
-    #         [F(input_to_fold)]
-    #     )
-
 
    
 
@@ -819,8 +686,11 @@ if __name__ == '__main__':
         control[0] = 0
         control[6:9] = aircraft_params['aero_centre_offset']
 
-    dyn = aircraft.state_update
 
+    omega_b_i_frd_dot = aircraft._omega_b_i_frd_dot.expand()
+    print(omega_b_i_frd_dot(state, control))
+
+    dyn = aircraft.state_update.expand()
     dt = 1
     tf = 100.0
     state_list = np.zeros((aircraft.num_states, int(tf / dt)))
@@ -835,8 +705,6 @@ if __name__ == '__main__':
         else:
             state_list[:, i] = state.full().flatten()
             state = dyn(state, control, dt)
-            # if perturbation:
-            #     control[6:9] += 2 * (np.random.rand(3) - 0.5)
             t += 1
 
     # state_list = state_list[:, :t-10]

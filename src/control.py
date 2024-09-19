@@ -59,10 +59,11 @@ class ControlProblem:
         self.opti = opti
         self.aircraft = aircraft
 
-        self.dynamics = aircraft.state_update
-        self.alpha = aircraft._alpha
-        self.beta = aircraft._beta
-        self.airspeed = aircraft._airspeed
+        self.dynamics = aircraft.state_update.expand()
+        self.alpha = aircraft._alpha.expand()
+        self.beta = aircraft._beta.expand()
+        self.airspeed = aircraft._airspeed.expand()
+
         self.num_control_nodes = num_control_nodes
         self.waypoints = trajectory_config.waypoints()
         self.trajectory = trajectory_config
@@ -94,62 +95,35 @@ class ControlProblem:
                             ), 
                         scale_time = 1):
         
-        # Time and timestep variables
         self.time = scale_time * self.opti.variable()
         self.dt = self.time / self.num_control_nodes
         
-        # Initialize lists to store the interleaved variables for each time step
         state_list = []
         control_list = []
         tau_list = []
         lam_list = []
         mu_list = []
 
-        for i in range(self.num_control_nodes + 1):  # For states, we need num_control_nodes + 1
-            # State variables for each time step i
+        for i in range(self.num_control_nodes + 1):
             state_t = ca.DM(scale_state) * self.opti.variable(self.aircraft.num_states)
             state_list.append(state_t)
 
             if i < self.num_control_nodes:
-                # Control variables for each time step i
                 control_t = ca.DM(scale_control) * self.opti.variable(self.aircraft.num_controls)
                 tau_t = self.opti.variable(self.num_waypoints)
                 lam_t = self.opti.variable(self.num_waypoints)
                 mu_t = self.opti.variable(self.num_waypoints)
 
-                # Append control and other variables only for the control nodes
                 control_list.append(control_t)
                 tau_list.append(tau_t)
                 lam_list.append(lam_t)
                 mu_list.append(mu_t)
 
-        # Convert lists to matrices (CasADi MX form)
-        self.state = ca.hcat(state_list)     # State matrix: [num_states x (num_control_nodes + 1)]
-        print(state_list)
-        self.control = ca.hcat(control_list) # Control matrix: [num_controls x num_control_nodes]
-        self.tau = ca.hcat(tau_list)         # Tau matrix: [num_waypoints x num_control_nodes]
-        self.lam = ca.hcat(lam_list)         # Lambda matrix: [num_waypoints x num_control_nodes]
-        self.mu = ca.hcat(mu_list)           # Mu matrix: [num_waypoints x num_control_nodes]
-
-
-    # def node(self, input, control, state, control_envelope, state_envelope):
-    #     node = input[0]
-    #     waypoint_node = input[1]
-    #     state_node = input[:]
-    #     next_node = input[:]
-    #     control_node = input[]
-    #     dt = input[-1]
-    #     self.state_constraint(state_node, next_node, control_node, self.trajectory.state, dt)
-    #     self.control_constraint(control_node, self.trajectory.control)
-    #     self.waypoint_constraint(
-    #         self.mu,
-    #         self.tau,
-    #         self.lam,
-    #         self.state[:, node],
-    #         node,
-    #         waypoint_node,
-    #         self.switching_variable
-    #     )
+        self.state = ca.hcat(state_list)
+        self.control = ca.hcat(control_list)
+        self.tau = ca.hcat(tau_list)
+        self.lam = ca.hcat(lam_list)
+        self.mu = ca.hcat(mu_list)
 
     def control_constraint(self, control_node, control_envelope, fix_com = True):
         self.opti.subject_to(
@@ -268,7 +242,6 @@ class ControlProblem:
             #     waypoint_node,
             #     self.switching_variable
             # )
-            # print(node)
 
         
 
@@ -351,8 +324,7 @@ class ControlProblem:
         x_guess, time_guess = self.state_guess(self.trajectory)
         control_guess = np.zeros(control.shape)
         control_guess[6:9, :] = np.repeat([self.trajectory.aircraft.aero_centre_offset], control.shape[1], axis = 0).T
-        print(x_guess)
-        print("State update at initialisation", self.aircraft.state_update(x_guess[:,0], control_guess[:,0], 0.01))
+
 
         self.opti.set_initial(tau, tau_guess)
         self.opti.set_initial(lam, lambda_guess)
