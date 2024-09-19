@@ -121,7 +121,8 @@ class ScaledModel(nn.Module):
             nn.Linear(16, 64),
             # nn.ELU(),
             nn.Linear(64, 64),
-            nn.ELU(),
+            # nn.ELU(),
+            nn.Tanh(),
             nn.Linear(64, output_size),
         )
         

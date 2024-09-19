@@ -117,7 +117,8 @@ class Aircraft:
             params:dict, 
             model:torch.nn, 
             EPSILON:float = 1e-6, 
-            STEPS:int = 100
+            STEPS:int = 100,
+            LINEAR:bool = False
             ):
         
         """ 
@@ -133,15 +134,18 @@ class Aircraft:
             ca.horzcat(0  , Iyy, 0  ),
             ca.horzcat(Ixz, 0  , Izz)
         )
+        self.LINEAR = LINEAR
         # Determinant of the inertia tensor
-        det_I = Ixx * Iyy * Izz - Ixz**2 * Iyy
+        # det_I = Ixx * Iyy * Izz - Ixz**2 * Iyy
 
         # Inverse inertia tensor
-        self.inv_inertia_tensor = (1 / det_I) * ca.vertcat(
-            ca.horzcat(Iyy * Izz, 0, -Ixz * Iyy),
-            ca.horzcat(0, Ixx * Izz - Ixz**2, 0),
-            ca.horzcat(-Ixz * Iyy, 0, Ixx * Iyy)
-        )
+        self.inv_inertia_tensor = ca.inv(self._inertia_tensor)
+        
+        # (1 / det_I) * ca.vertcat(
+        #     ca.horzcat(Iyy * Izz, 0, -Ixz * Iyy),
+        #     ca.horzcat(0, Ixx * Izz - Ixz**2, 0),
+        #     ca.horzcat(-Ixz * Iyy, 0, Ixx * Iyy)
+        # )
         self.EPSILON = EPSILON
         self.STEPS = STEPS
 
@@ -196,6 +200,15 @@ class Aircraft:
             self.model = L4CasADi(model, name = 'AeroModel'
                               , generate_jac_jac=True
                               )
+            inputs = ca.vertcat(
+            self.qbar, 
+            self.alpha, 
+            self.beta, 
+            self.aileron, 
+            self.elevator
+            )
+            self.model.build(inputs)
+            # self.
         self.qbar
         self.beta
         self.alpha
@@ -261,21 +274,21 @@ class Aircraft:
     @property
     def coefficients(self):
         """
-        Forward pass of the linear model to retrieve aerodynamic coefficients.
+        Forward pass of the ml model to retrieve aerodynamic coefficients.
         """
         inputs = ca.vertcat(
             self.qbar, 
             self.alpha, 
             self.beta, 
             self.aileron, 
-            self.elevator,
-            1
+            self.elevator
             )
         
-        
-        outputs = ca.mtimes(self.linear_coeffs, inputs)
-        # outputs = ca.vertcat(outputs)
-        # print(f"Output shape: {outputs.shape}")  # Debugging statement
+        if self.LINEAR:
+            outputs = ca.mtimes(self.linear_coeffs, ca.vertcat(inputs, 1))
+        else:
+            outputs = self.model(ca.reshape(inputs, 1, -1))
+            outputs = ca.vertcat(outputs.T)
 
         stall_angle_alpha = np.deg2rad(10)
         stall_angle_beta = np.deg2rad(10)
@@ -351,98 +364,6 @@ class Aircraft:
         #     )
 
         return outputs
-    
-    # @property
-    # def coefficients(self):
-    #     """
-    #     Forward pass of the ml model to retrieve aerodynamic coefficients.
-    #     """
-    #     inputs = ca.vertcat(
-    #         self.qbar, 
-    #         self.alpha, 
-    #         self.beta, 
-    #         self.aileron, 
-    #         self.elevator
-    #         )
-        
-    #     outputs = self.model(ca.reshape(inputs, 1, -1))
-    #     outputs = ca.vertcat(outputs.T)
-    #     print(f"Output shape: {outputs.shape}")  # Debugging statement
-
-    #     stall_angle_alpha = np.deg2rad(10)
-    #     stall_angle_beta = np.deg2rad(10)
-
-    #     steepness = 2
-
-    #     alpha_scaling = 1 / (1 + ca.exp(steepness * (self.alpha - stall_angle_alpha)))
-    #     beta_scaling = 1 / (1 + ca.exp(steepness * (self.beta - stall_angle_beta)))
-        
-        
-    #     outputs[2] *= alpha_scaling
-    #     outputs[2] *= beta_scaling
-
-    #     outputs[4] *= alpha_scaling
-    #     outputs[4] *= beta_scaling
-
-
-    #     self._coefficients = ca.Function(
-    #         'coefficients', 
-    #         [self.state, self.control], 
-    #         [outputs]
-    #         )
-        
-        
-
-
-    #     # angular rate contributions
-    #     # outputs[0] += 0.05 * self.omega_b_i_frd[0]
-    #     outputs[1] += -0.05 * self.omega_b_i_frd[2]
-    #     outputs[2] += -0.1 * self.omega_b_i_frd[0]
-
-    #     """
-    #     The relative amplitudes of the damping factors are taken from the cessna
-    #     model which has:
-
-    #     Roll:
-    #     Clp ~ -0.5
-    #     Clr ~ 0.1
-
-    #     Pitch:
-    #     Cmq ~ -12
-
-    #     Yaw:
-    #     Cnp ~ -0.03
-    #     Cnr ~ -0.1
-
-    #     We scale this down by a factor of 100
-
-    #     NOTE:
-
-    #     We flip the yaw moment, TODO: investigate
-    #     We scale the roll moment down by a factor of 4 meaning we use the 
-    #     windtunnel scale rather than the sim scale.
-    #     """
-    #     scale = 1
-    #     # roll moment rates
-    #     outputs[3] /= 4
-    #     outputs[3] += -0.005 * self.omega_b_i_frd[0] * scale
-    #     outputs[3] += 0.001 * self.omega_b_i_frd[2] * scale
-
-    #     # pitching moment rates
-    #     outputs[4] += -0.1 * self.omega_b_i_frd[1] * scale
-
-    #     # yaw moment rates
-    #     outputs[5] *= -1
-    #     outputs[5] += -0.0003 * self.omega_b_i_frd[0] * scale
-    #     outputs[5] += -0.001 * self.omega_b_i_frd[2] * scale
-
-    #     # self._coefficients = ca.Function(
-    #     #     'coefficients', 
-    #     #     [self.state, self.control], 
-    #     #     [outputs]
-    #     #     )
-
-    #     return outputs
 
     @property
     def forces_frd(self):
@@ -668,7 +589,7 @@ if __name__ == '__main__':
 
     model = load_model()
     
-    aircraft = Aircraft(aircraft_params, model, STEPS=100)
+    aircraft = Aircraft(aircraft_params, model, STEPS=100, LINEAR=True)
     
     trim_state_and_control = None
     if trim_state_and_control is not None:

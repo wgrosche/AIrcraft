@@ -214,7 +214,7 @@ class ControlProblem:
         return time ** 2
 
 
-    def setup(self):
+    def setup(self, VERBOSE = False):
         _, time_guess = self.state_guess(self.trajectory)
         self.setup_opti_vars(scale_time=1/time_guess)
         self.opti.subject_to(self.time > 0)
@@ -253,8 +253,9 @@ class ControlProblem:
         self.opti.minimize(self.loss(time = self.time))
 
         constraints = self.opti.g
-        # for i, constraint in enumerate(constraints):
-        print(f"Constraint : {constraints}")
+
+        if VERBOSE:
+            print(f"Constraint : {constraints}")
 
 
     def plot_sparsity(self, ax:plt.axes, iteration:int):
