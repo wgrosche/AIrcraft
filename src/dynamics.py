@@ -200,14 +200,14 @@ class Aircraft:
             self.model = L4CasADi(model, name = 'AeroModel'
                               , generate_jac_jac=True
                               )
-            inputs = ca.vertcat(
-            self.qbar, 
-            self.alpha, 
-            self.beta, 
-            self.aileron, 
-            self.elevator
-            )
-            self.model.build(inputs)
+            # inputs = ca.vertcat(
+            # self.qbar, 
+            # self.alpha, 
+            # self.beta, 
+            # self.aileron, 
+            # self.elevator
+            # )
+            # self.model.build(inputs)
             # self.
         self.qbar
         self.beta
@@ -289,6 +289,7 @@ class Aircraft:
         else:
             outputs = self.model(ca.reshape(inputs, 1, -1))
             outputs = ca.vertcat(outputs.T)
+            print("Outputs", outputs.shape)
 
         stall_angle_alpha = np.deg2rad(10)
         stall_angle_beta = np.deg2rad(10)
@@ -575,6 +576,11 @@ class Aircraft:
         #         state[:4] = Quaternion(state[:4]).normalize().coeffs()
         
         state[:4] = Quaternion(state[:4]).normalize().coeffs()
+        if self.LINEAR:
+            return ca.Function(
+            'state_update', 
+            [self.state, self.control, dt], 
+            [state]).expand()
         return ca.Function(
             'state_update', 
             [self.state, self.control, dt], 
@@ -608,10 +614,7 @@ if __name__ == '__main__':
         control[6:9] = aircraft_params['aero_centre_offset']
 
 
-    omega_b_i_frd_dot = aircraft._omega_b_i_frd_dot.expand()
-    print(omega_b_i_frd_dot(state, control))
-
-    dyn = aircraft.state_update.expand()
+    dyn = aircraft.state_update
     dt = 1
     tf = 100.0
     state_list = np.zeros((aircraft.num_states, int(tf / dt)))

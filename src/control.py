@@ -1,6 +1,6 @@
 import casadi as ca
 import numpy as np
-from typing import List, Optional
+from typing import List, Optional, Union
 
 import os
 import sys
@@ -16,6 +16,7 @@ from src.utils import TrajectoryConfiguration
 from matplotlib.pyplot import spy
 import json
 import matplotlib.pyplot as plt
+from liecasadi import Quaternion
 
 
 def cumulative_waypoint_distances(
@@ -59,7 +60,7 @@ class ControlProblem:
         self.opti = opti
         self.aircraft = aircraft
 
-        self.dynamics = aircraft.state_update.expand()
+        self.dynamics = aircraft.state_update
         self.alpha = aircraft._alpha.expand()
         self.beta = aircraft._beta.expand()
         self.airspeed = aircraft._airspeed.expand()
@@ -222,11 +223,9 @@ class ControlProblem:
 
         
     
-        self.opti.subject_to(ca.dot(self.state[4:7, 0], self.state[4:7, 0]) == 0)
-        self.opti.subject_to(ca.dot(self.state[10:, 0], self.state[10:, 0]) < 0.1)
-        self.opti.subject_to(ca.dot(self.state[7:10, 0], self.state[7:10, 0]) == 50**2)
+        self.opti.subject_to(self.state[4:, 0] == self.trajectory.waypoints.initial_state[4:])
+        self.opti.subject_to(ca.dot(self.state[:4, 0], self.state[:4, 0]) == 1)
 
-        
         self.opti.subject_to(self.mu[:, 0] == [1] * self.num_waypoints)
 
         waypoint_node = 0
@@ -295,7 +294,8 @@ class ControlProblem:
                         'print_time': 10,
                         # 'expand' : True
                         },
-            save:bool = True
+            save:bool = True,
+            warm_start:Union[ca.OptiSol, ca.Opti] = (None, None)
             ):
         fig = plt.figure(figsize=(10, 10))
         ax = fig.add_subplot(211)
@@ -304,11 +304,16 @@ class ControlProblem:
         self.opti.solver('ipopt', opts)
         self.opti.callback(lambda i: self.callback([ax, ax2], i))
         
+        if warm_start != (None, None):
+            warm_sol, warm_opti = warm_start
+            self.opti.set_initial(warm_sol.value_variables())
+            # lam_g0 = warm_sol.value(warm_opti.lam_g)
+            # self.opti.set_initial(self.opti.lam_g, lam_g0)
         sol = self.opti.solve()
-
+        
         # TODO: Save functionality
 
-        return sol
+        return (sol, self.opti)
 
 
 
@@ -422,13 +427,22 @@ def main():
     model = load_model()
     traj_dict = json.load(open('data/glider/problem_definition.json'),)
     trajectory_config = TrajectoryConfiguration(traj_dict)
-    num_control_nodes = 10
-    aircraft = Aircraft(traj_dict['aircraft'], model)
+    num_control_nodes = 15
+    aircraft = Aircraft(traj_dict['aircraft'], model, LINEAR=True)
     problem = ControlProblem(opti, aircraft, trajectory_config, num_control_nodes)
 
     problem.setup()
-    sol = problem.solve()
-    return 1#sol
+    (sol, opti) = problem.solve()
+
+    sol_traj = sol.value(problem.state)
+    opti = ca.Opti()
+    aircraft = Aircraft(traj_dict['aircraft'], model, LINEAR=False)
+    problem = ControlProblem(opti, aircraft, trajectory_config, num_control_nodes)
+
+    problem.setup()
+    problem.opti.set_initial(problem.state, sol_traj)
+    (sol, opti) = problem.solve(warm_start=(sol, opti))
+    return sol
 
 if __name__ == "__main__":
     main()

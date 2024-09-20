@@ -39,7 +39,7 @@ SCALING = False
 DATA_DIR = os.path.join(BASEPATH, 'data', 'processed')
 MODEL_DIR = os.path.join(DATA_DIR, 'models')
 
-RETRAIN = True # Flag to retrain the model, otherwise just loads existing
+RETRAIN = False # Flag to retrain the model, otherwise just loads existing
 # model for plotting
 
 # Determine max number of workers for dataloader
