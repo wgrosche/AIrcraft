@@ -17,6 +17,7 @@ from matplotlib.pyplot import spy
 import json
 import matplotlib.pyplot as plt
 from liecasadi import Quaternion
+import h5py
 
 
 def cumulative_waypoint_distances(
@@ -74,6 +75,7 @@ class ControlProblem:
             num_control_nodes * np.array(self.cumulative_distances) 
             / self.cumulative_distances[-1], dtype = int
             )
+        
 
         pass
 
@@ -274,12 +276,31 @@ class ControlProblem:
             plt.draw()
             plt.pause(0.01)
 
+    def save_progress(self, filepath, iteration):
+        if filepath is not None:
+            # save the state, control and time to a file
+            with h5py.File(filepath, "a") as h5file:
+                for i, (X, U, time, waypoints) in enumerate(zip(self.sol_state_list, self.sol_control_list, self.final_times)):
+                    grp = h5file.create_group(f'iteration_{iteration}')
+                    grp.create_dataset('state', data=X)
+                    grp.create_dataset('control', data=U)
+                    grp.create_dataset('time', data=time)
+                    grp.create_dataset('waypoints', data=waypoints)
+
     def plot_convergence(self, ax:plt.axes, iteration:int):
         plt.semilogy
 
-    def callback(self, axs:List[plt.axes], iteration:int):
+    def callback(self, axs:List[plt.axes], iteration:int, filepath:str):
+
         # self.plot_sparsity(axs[0], iteration)
         self.plot_trajectory(axs[1], iteration)
+
+        if filepath is not None:
+            self.sol_state_list.append(self.opti.debug.value(self.state))
+            self.sol_control_list.append(self.opti.debug.value(self.control))
+            self.final_times.append(self.opti.debug.value(self.time))
+            if iteration % 10 == 0:
+                save_progress(self, state_list)
 
     def solve(
             self, 
@@ -295,14 +316,25 @@ class ControlProblem:
                         # 'expand' : True
                         },
             save:bool = True,
-            warm_start:Union[ca.OptiSol, ca.Opti] = (None, None)
+            warm_start:Union[ca.OptiSol, ca.Opti] = (None, None),
+            filepath:str = None
             ):
+        
+        self.sol_state_list = []
+        self.sol_control_list = []
+        self.final_times = []
+
+
+
         fig = plt.figure(figsize=(10, 10))
         ax = fig.add_subplot(211)
         ax2 = fig.add_subplot(212, projection = '3d')
         # TODO: investigate fig.add_subfigure for better plotting
         self.opti.solver('ipopt', opts)
-        self.opti.callback(lambda i: self.callback([ax, ax2], i))
+        self.opti.callback(lambda i: self.callback([ax, ax2], i, filepath))
+
+
+
         
         if warm_start != (None, None):
             warm_sol, warm_opti = warm_start
@@ -434,14 +466,38 @@ def main():
     problem.setup()
     (sol, opti) = problem.solve()
 
+    figsemilog, ax = plt.subplots(1, 1)  # 1 row, 1 column of subplots
+
+    ax.semilogy(sol.stats()['iterations']['inf_du'], label="Dual infeasibility")
+    ax.semilogy(sol.stats()['iterations']['inf_pr'], label="Primal infeasibility")
+
+    ax.set_xlabel('Iterations')
+    ax.set_ylabel('Infeasibility (log scale)')
+    ax.grid(True)
+
+    plt.tight_layout()
+    plt.show(block = True)
+
     sol_traj = sol.value(problem.state)
     opti = ca.Opti()
     aircraft = Aircraft(traj_dict['aircraft'], model, LINEAR=False)
     problem = ControlProblem(opti, aircraft, trajectory_config, num_control_nodes)
 
     problem.setup()
-    problem.opti.set_initial(problem.state, sol_traj)
+    # problem.opti.set_initial(problem.state, sol_traj)
     (sol, opti) = problem.solve(warm_start=(sol, opti))
+
+    figsemilog, ax = plt.subplots(1, 1)  # 1 row, 1 column of subplots
+
+    ax.semilogy(sol.stats()['iterations']['inf_du'], label="Dual infeasibility")
+    ax.semilogy(sol.stats()['iterations']['inf_pr'], label="Primal infeasibility")
+
+    ax.set_xlabel('Iterations')
+    ax.set_ylabel('Infeasibility (log scale)')
+    ax.grid(True)
+
+    plt.tight_layout()
+    plt.show(block = True)
     return sol
 
 if __name__ == "__main__":
