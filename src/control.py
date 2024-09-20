@@ -1,6 +1,6 @@
 import casadi as ca
 import numpy as np
-from typing import List, Optional
+from typing import List, Optional, Union
 
 import os
 import sys
@@ -16,6 +16,7 @@ from src.utils import TrajectoryConfiguration
 from matplotlib.pyplot import spy
 import json
 import matplotlib.pyplot as plt
+from liecasadi import Quaternion
 
 
 def cumulative_waypoint_distances(
@@ -58,6 +59,12 @@ class ControlProblem:
         ):
         self.opti = opti
         self.aircraft = aircraft
+
+        self.dynamics = aircraft.state_update
+        self.alpha = aircraft._alpha.expand()
+        self.beta = aircraft._beta.expand()
+        self.airspeed = aircraft._airspeed.expand()
+
         self.num_control_nodes = num_control_nodes
         self.waypoints = trajectory_config.waypoints()
         self.trajectory = trajectory_config
@@ -89,88 +96,35 @@ class ControlProblem:
                             ), 
                         scale_time = 1):
         
-        # Time and timestep variables
         self.time = scale_time * self.opti.variable()
         self.dt = self.time / self.num_control_nodes
         
-        # Initialize lists to store the interleaved variables for each time step
         state_list = []
         control_list = []
         tau_list = []
         lam_list = []
         mu_list = []
 
-        for i in range(self.num_control_nodes + 1):  # For states, we need num_control_nodes + 1
-            # State variables for each time step i
+        for i in range(self.num_control_nodes + 1):
             state_t = ca.DM(scale_state) * self.opti.variable(self.aircraft.num_states)
             state_list.append(state_t)
 
             if i < self.num_control_nodes:
-                # Control variables for each time step i
                 control_t = ca.DM(scale_control) * self.opti.variable(self.aircraft.num_controls)
                 tau_t = self.opti.variable(self.num_waypoints)
                 lam_t = self.opti.variable(self.num_waypoints)
                 mu_t = self.opti.variable(self.num_waypoints)
 
-                # Append control and other variables only for the control nodes
                 control_list.append(control_t)
                 tau_list.append(tau_t)
                 lam_list.append(lam_t)
                 mu_list.append(mu_t)
 
-        # Convert lists to matrices (CasADi MX form)
-        self.state = ca.hcat(state_list)     # State matrix: [num_states x (num_control_nodes + 1)]
-        print(state_list)
-        self.control = ca.hcat(control_list) # Control matrix: [num_controls x num_control_nodes]
-        self.tau = ca.hcat(tau_list)         # Tau matrix: [num_waypoints x num_control_nodes]
-        self.lam = ca.hcat(lam_list)         # Lambda matrix: [num_waypoints x num_control_nodes]
-        self.mu = ca.hcat(mu_list)           # Mu matrix: [num_waypoints x num_control_nodes]
-
-
-
-
-
-    # def setup_opti_vars(self, 
-    #                     scale_state, 
-    #                     scale_control, 
-    #                     scale_time):
-        
-        
-    #     self.time = scale_time * self.opti.variable()
-    #     self.dt = self.time /  self.num_control_nodes
-    #     self.state = scale_state * self.opti.variable(
-    #         self.aircraft.num_states, 
-    #         self.num_control_nodes + 1
-    #         )
-    #     self.control = scale_control * self.opti.variable(
-    #         self.aircraft.num_controls, 
-    #         self.num_control_nodes)
-        
-    #     self.tau = self.opti.variable(self.num_waypoints, self.num_control_nodes)
-
-    #     self.lam = self.opti.variable(self.num_waypoints, self.num_control_nodes)
-
-    #     self.mu = self.opti.variable(self.num_waypoints, self.num_control_nodes)
-
-
-    # def node(self, input, control, state, control_envelope, state_envelope):
-    #     node = input[0]
-    #     waypoint_node = input[1]
-    #     state_node = input[:]
-    #     next_node = input[:]
-    #     control_node = input[]
-    #     dt = input[-1]
-    #     self.state_constraint(state_node, next_node, control_node, self.trajectory.state, dt)
-    #     self.control_constraint(control_node, self.trajectory.control)
-    #     self.waypoint_constraint(
-    #         self.mu,
-    #         self.tau,
-    #         self.lam,
-    #         self.state[:, node],
-    #         node,
-    #         waypoint_node,
-    #         self.switching_variable
-    #     )
+        self.state = ca.hcat(state_list)
+        self.control = ca.hcat(control_list)
+        self.tau = ca.hcat(tau_list)
+        self.lam = ca.hcat(lam_list)
+        self.mu = ca.hcat(mu_list)
 
     def control_constraint(self, control_node, control_envelope, fix_com = True):
         self.opti.subject_to(
@@ -201,7 +155,7 @@ class ControlProblem:
         self.opti.subject_to(
             self.opti.bounded(
                 state_envelope.alpha.lb,
-                self.aircraft._alpha(state_node, control_node),
+                self.alpha(state_node, control_node),
                 state_envelope.alpha.ub
             )
         )
@@ -209,7 +163,7 @@ class ControlProblem:
         self.opti.subject_to(
             self.opti.bounded(
                 state_envelope.beta.lb,
-                self.aircraft._beta(state_node, control_node),
+                self.beta(state_node, control_node),
                 state_envelope.beta.ub
             )
         )
@@ -217,11 +171,11 @@ class ControlProblem:
         self.opti.subject_to(
             self.opti.bounded(
                 state_envelope.airspeed.lb,
-                self.aircraft._airspeed(state_node, control_node),
+                self.airspeed(state_node, control_node),
                 state_envelope.airspeed.ub
             )
         )
-        self.opti.subject_to(next_state == self.aircraft.state_update(state_node, control_node, dt)) # find way to remove dependency on dt in every timestep to improve sparsity
+        self.opti.subject_to(next_state == self.dynamics(state_node, control_node, dt)) # find way to remove dependency on dt in every timestep to improve sparsity
         pass
 
     def waypoint_constraint(
@@ -261,7 +215,7 @@ class ControlProblem:
         return time ** 2
 
 
-    def setup(self):
+    def setup(self, VERBOSE = False):
         _, time_guess = self.state_guess(self.trajectory)
         self.setup_opti_vars(scale_time=1/time_guess)
         self.opti.subject_to(self.time > 0)
@@ -269,11 +223,9 @@ class ControlProblem:
 
         
     
-        self.opti.subject_to(ca.dot(self.state[4:7, 0], self.state[4:7, 0]) == 0)
-        self.opti.subject_to(ca.dot(self.state[10:, 0], self.state[10:, 0]) < 0.1)
-        self.opti.subject_to(ca.dot(self.state[7:10, 0], self.state[7:10, 0]) == 50**2)
+        self.opti.subject_to(self.state[4:, 0] == self.trajectory.waypoints.initial_state[4:])
+        self.opti.subject_to(ca.dot(self.state[:4, 0], self.state[:4, 0]) == 1)
 
-        
         self.opti.subject_to(self.mu[:, 0] == [1] * self.num_waypoints)
 
         waypoint_node = 0
@@ -289,7 +241,6 @@ class ControlProblem:
             #     waypoint_node,
             #     self.switching_variable
             # )
-            # print(node)
 
         
 
@@ -301,8 +252,9 @@ class ControlProblem:
         self.opti.minimize(self.loss(time = self.time))
 
         constraints = self.opti.g
-        # for i, constraint in enumerate(constraints):
-        print(f"Constraint : {constraints}")
+
+        if VERBOSE:
+            print(f"Constraint : {constraints}")
 
 
     def plot_sparsity(self, ax:plt.axes, iteration:int):
@@ -326,7 +278,7 @@ class ControlProblem:
         plt.semilogy
 
     def callback(self, axs:List[plt.axes], iteration:int):
-        self.plot_sparsity(axs[0], iteration)
+        # self.plot_sparsity(axs[0], iteration)
         self.plot_trajectory(axs[1], iteration)
 
     def solve(
@@ -340,9 +292,10 @@ class ControlProblem:
                             'hessian_approximation': 'limited-memory'
                         },
                         'print_time': 10,
-                        'expand' : True
+                        # 'expand' : True
                         },
-            save:bool = True
+            save:bool = True,
+            warm_start:Union[ca.OptiSol, ca.Opti] = (None, None)
             ):
         fig = plt.figure(figsize=(10, 10))
         ax = fig.add_subplot(211)
@@ -351,11 +304,16 @@ class ControlProblem:
         self.opti.solver('ipopt', opts)
         self.opti.callback(lambda i: self.callback([ax, ax2], i))
         
+        if warm_start != (None, None):
+            warm_sol, warm_opti = warm_start
+            self.opti.set_initial(warm_sol.value_variables())
+            # lam_g0 = warm_sol.value(warm_opti.lam_g)
+            # self.opti.set_initial(self.opti.lam_g, lam_g0)
         sol = self.opti.solve()
-
+        
         # TODO: Save functionality
 
-        return sol
+        return (sol, self.opti)
 
 
 
@@ -372,8 +330,7 @@ class ControlProblem:
         x_guess, time_guess = self.state_guess(self.trajectory)
         control_guess = np.zeros(control.shape)
         control_guess[6:9, :] = np.repeat([self.trajectory.aircraft.aero_centre_offset], control.shape[1], axis = 0).T
-        print(x_guess)
-        print("State update at initialisation", self.aircraft.state_update(x_guess[:,0], control_guess[:,0], 0.01))
+
 
         self.opti.set_initial(tau, tau_guess)
         self.opti.set_initial(lam, lambda_guess)
@@ -470,13 +427,22 @@ def main():
     model = load_model()
     traj_dict = json.load(open('data/glider/problem_definition.json'),)
     trajectory_config = TrajectoryConfiguration(traj_dict)
-    num_control_nodes = 40
-    aircraft = Aircraft(traj_dict['aircraft'], model)
+    num_control_nodes = 15
+    aircraft = Aircraft(traj_dict['aircraft'], model, LINEAR=True)
     problem = ControlProblem(opti, aircraft, trajectory_config, num_control_nodes)
 
     problem.setup()
-    sol = problem.solve()
-    return 1#sol
+    (sol, opti) = problem.solve()
+
+    sol_traj = sol.value(problem.state)
+    opti = ca.Opti()
+    aircraft = Aircraft(traj_dict['aircraft'], model, LINEAR=False)
+    problem = ControlProblem(opti, aircraft, trajectory_config, num_control_nodes)
+
+    problem.setup()
+    problem.opti.set_initial(problem.state, sol_traj)
+    (sol, opti) = problem.solve(warm_start=(sol, opti))
+    return sol
 
 if __name__ == "__main__":
     main()
