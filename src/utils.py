@@ -175,17 +175,22 @@ class TrajectoryConfiguration:
     class Waypoints:
         def __init__(self, waypoint_dict:dict):
             self.waypoints = np.array(waypoint_dict.get("waypoints", 
-                                    np.array([[0,0,0], [0,0,0], [0,0,0]]))).T
+                                    np.array([[0,0,0], [0,0,0], [0,0,0]])))
+            
+            self.waypoint_indices = (waypoint_dict.get("waypoint_indices", 
+                                    [0,1,2]))
             if waypoint_dict.get('initial_state') is not None:
                 self.initial_state = np.array(waypoint_dict.get('initial_state'))
                 self.initial_position = np.array(self.initial_state[4:7])
-                self.waypoints = np.insert(self.waypoints, 0, self.initial_position, axis=1)
+                self.waypoints = np.insert(self.waypoints, 0, self.initial_position, axis=0)
             else:
                 self.initial_position = self.waypoints[0, :]
 
             self.final_position = self.waypoints[-1, :]
             self.default_velocity = waypoint_dict.get("default_velocity", 50)
             self.objective_dimension = self.final_position.shape[0]
+            self.tolerance = waypoint_dict.get("waypoint_tolerance", 
+                                    1e-2)
 
         def __call__(self):
             return self.waypoints
