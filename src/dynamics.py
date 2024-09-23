@@ -248,27 +248,27 @@ class Aircraft:
             'airspeed', 
             [self.state, self.control], 
             [airspeed]
-            )
+            ).expand()
         return airspeed
     
     @property
     def alpha(self):
         v_frd_rel = self.v_frd_rel
         alpha = ca.atan2(v_frd_rel[2], v_frd_rel[0] + self.EPSILON)#v_frd_rel[2] /(v_frd_rel[0] + self.EPSILON)#
-        self._alpha = ca.Function('alpha', [self.state, self.control], [alpha])
+        self._alpha = ca.Function('alpha', [self.state, self.control], [alpha]).expand()
         return alpha
     
     @property
     def beta(self):
         v_frd_rel = self.v_frd_rel
         beta = ca.asin(v_frd_rel[1] / self.airspeed)#v_frd_rel[1] / self.airspeed#ca.asin(v_frd_rel[1] / self.airspeed)
-        self._beta = ca.Function('beta', [self.state, self.control], [beta])
+        self._beta = ca.Function('beta', [self.state, self.control], [beta]).expand()
         return beta
     
     @property
     def qbar(self):
         qbar = 0.5 * 1.225 * ca.dot(self.v_frd_rel, self.v_frd_rel)
-        self._qbar = ca.Function('qbar', [self.state, self.control], [qbar])
+        self._qbar = ca.Function('qbar', [self.state, self.control], [qbar]).expand()
         return qbar
     
     @property
@@ -291,13 +291,14 @@ class Aircraft:
             outputs = ca.vertcat(outputs.T)
             print("Outputs", outputs.shape)
 
-        stall_angle_alpha = np.deg2rad(10)
-        stall_angle_beta = np.deg2rad(10)
+        stall_angle_alpha = np.deg2rad(15)
+        stall_angle_beta = np.deg2rad(15)
 
-        steepness = 2
+        steepness = 100
 
-        alpha_scaling = 1 / (1 + ca.exp(steepness * (self.alpha - stall_angle_alpha)))
-        beta_scaling = 1 / (1 + ca.exp(steepness * (self.beta - stall_angle_beta)))
+        alpha_scaling = 1 / (1 + ca.exp(steepness * (ca.norm_2(self.alpha) - stall_angle_alpha)))
+
+        beta_scaling = 1 / (1 + ca.exp(steepness * (ca.norm_2(self.beta) - stall_angle_beta)))
         
         
         outputs[2] *= alpha_scaling
@@ -610,13 +611,13 @@ if __name__ == '__main__':
 
         state = ca.vertcat(q0, x0, v0, omega0)
         control = np.zeros(aircraft.num_controls)
-        control[0] = 0
+        control[0] = 5
         control[6:9] = aircraft_params['aero_centre_offset']
 
 
     dyn = aircraft.state_update
-    dt = 1
-    tf = 100.0
+    dt = .1
+    tf = 10.0
     state_list = np.zeros((aircraft.num_states, int(tf / dt)))
 
     dt_sym = ca.MX.sym('dt', 1)
@@ -634,7 +635,7 @@ if __name__ == '__main__':
     # state_list = state_list[:, :t-10]
     # print(state_list[0, :])
     first = None
-    t -= 5
+    # t -= 5
 
     # print(f"Final State: {state_list[:, t-10:t]}")
     fig = plt.figure(figsize=(18, 9))

@@ -19,11 +19,17 @@ import matplotlib.pyplot as plt
 from liecasadi import Quaternion
 import h5py
 
+default_solver_options = {'ipopt': {'max_iter': 10000,
+                                    'tol': 1e-2,
+                                    'acceptable_tol': 1e-2,
+                                    'acceptable_obj_change_tol': 1e-2,
+                                    'hessian_approximation': 'limited-memory'
+                                    },
+                        'print_time': 10,
+                        # 'expand' : True
+                        }
 
-def cumulative_waypoint_distances(
-        waypoints:np.ndarray,
-        VERBOSE:bool = False
-        ):
+def cumulative_distances(waypoints:np.ndarray, VERBOSE:bool = False):
     """
     Given a set of waypoints, calculate the distance between each waypoint.
 
@@ -48,7 +54,6 @@ def cumulative_waypoint_distances(
         print("Cumulative waypoint distances: ", distance)
     return distance
 
-
 class ControlProblem:
     def __init__(
         self, 
@@ -63,18 +68,19 @@ class ControlProblem:
         self.aircraft = aircraft
 
         self.dynamics = aircraft.state_update
-        self.alpha = aircraft._alpha.expand()
-        self.beta = aircraft._beta.expand()
-        self.airspeed = aircraft._airspeed.expand()
 
-        self.num_control_nodes = num_control_nodes
+        self.alpha = aircraft._alpha
+        self.beta = aircraft._beta
+        self.airspeed = aircraft._airspeed
+
+        self.nodes = num_control_nodes
         self.waypoints = trajectory_config.waypoints()
         self.trajectory = trajectory_config
         self.num_waypoints = self.waypoints.shape[0] - 1
-        self.cumulative_distances = cumulative_waypoint_distances(self.waypoints)
-        self.switching_variable = np.array(
-            num_control_nodes * np.array(self.cumulative_distances) 
-            / self.cumulative_distances[-1], dtype = int
+        self.distances = cumulative_distances(self.waypoints)
+        self.switch_var = np.array(
+            self.nodes * np.array(self.distances) 
+            / self.distances[-1], dtype = int
             )
         
         self.VERBOSE = VERBOSE
@@ -90,8 +96,6 @@ class ControlProblem:
         state:ca.MX
         control:ca.MX
         state_next:ca.MX
-
-
 
     def setup_opti_vars(self, 
                         scale_state = ca.vertcat(
@@ -113,7 +117,7 @@ class ControlProblem:
                         ):
         
         self.time = scale_time * self.opti.variable()
-        self.dt = self.time / self.num_control_nodes
+        self.dt = self.time / self.nodes
         
         state_list = []
         control_list = []
@@ -121,17 +125,15 @@ class ControlProblem:
         lam_list = []
         mu_list = []
 
-        for i in range(self.num_control_nodes + 1):
+        for i in range(self.nodes + 1):
 
             state_list.append(ca.DM(scale_state) * 
                               self.opti.variable(self.aircraft.num_states))
-
             mu_list.append(self.opti.variable(self.num_waypoints))
 
-            if i < self.num_control_nodes:
+            if i < self.nodes:
                 control_list.append(ca.DM(scale_control) *          
                             self.opti.variable(self.aircraft.num_controls))
-
                 tau_list.append(self.opti.variable(self.num_waypoints))
                 lam_list.append(self.opti.variable(self.num_waypoints))
                 
@@ -141,8 +143,6 @@ class ControlProblem:
         self.tau = ca.hcat(tau_list)
         self.lam = ca.hcat(lam_list)
         self.mu = ca.hcat(mu_list)
-
-        
 
     def control_constraint(self, node:Node, fix_com:bool = True):
         control_envelope = self.trajectory.control
@@ -158,11 +158,9 @@ class ControlProblem:
         if fix_com:
             self.opti.subject_to(node.control[6:9]==com)
 
-
     def state_constraint(self, node:Node, dt:ca.MX):
         
         state_envelope = self.trajectory.state
-
 
         self.opti.subject_to(self.opti.bounded(state_envelope.alpha.lb,
             self.alpha(node.state, node.control), state_envelope.alpha.ub))
@@ -177,44 +175,36 @@ class ControlProblem:
         # TODO: find way to remove dependency on dt in every timestep to improve sparsity
 
     def waypoint_constraint(self, node:Node, waypoint_node:int):
-        
         tolerance = self.trajectory.waypoints.tolerance
         waypoint_indices = np.array(self.trajectory.waypoints.waypoint_indices)
         num_waypoints = self.num_waypoints
-        # print("!!!!", self.waypoints)
         waypoints = self.waypoints[1:, waypoint_indices]
-        # print("!!!!", waypoints)
         
-
-        if node.index > self.switching_variable[waypoint_node]:
+        if node.index > self.switch_var[waypoint_node]:
             waypoint_node += 1
         
         for j in range(num_waypoints):
-            self.opti.subject_to(self.opti.bounded(0, node.mu[j], 1))
-            self.opti.subject_to(self.opti.bounded(0, node.lam[j], 1))
+            # self.opti.subject_to(self.opti.bounded(0, node.mu[j], 1))
+            # self.opti.subject_to(self.opti.bounded(0, node.lam[j], 1))
+            self.opti.subject_to(node.lam[j] >= 0)
             self.opti.subject_to(self.opti.bounded(0, node.tau[j], tolerance**2))
 
             diff = node.state[4 + np.array(waypoint_indices)] - waypoints[j, :]
 
-            self.opti.subject_to(
-                self.opti.bounded(0.0, 
-                            node.lam[j] * (ca.dot(diff, diff) - node.tau[j]), 
-                            0.01))
+            self.opti.subject_to(node.lam[j] * (ca.dot(diff, diff) - node.tau[j]) == 0)
 
-            self.opti.subject_to(node.mu_next[j] - node.lam[j] == node.mu[j])
+            self.opti.subject_to(node.mu_next[j] + node.lam[j] == node.mu[j])
 
             if j < num_waypoints - 1:
-                self.opti.subject_to(
-                    self.opti.bounded(0, node.mu[j + 1] - node.mu[j], 1))
+                self.opti.subject_to(node.mu[j] - node.mu[j + 1] <= 0)
 
         return waypoint_node
 
-    def loss(self, state:Optional[ca.MX] = None, control:Optional[ca.MX] = None, time:Optional[ca.MX] = None):
+    def loss(self, state:Optional[ca.MX] = None, control:Optional[ca.MX] = None, 
+             time:Optional[ca.MX] = None):
         return time ** 2
 
-
     def setup(self):
-
         _, time_guess = self.state_guess(self.trajectory)
 
         self.setup_opti_vars(scale_time=1/time_guess)
@@ -235,7 +225,7 @@ class ControlProblem:
         self.opti.subject_to(self.mu[:, 0] == [1] * self.num_waypoints)
 
         waypoint_node = 0
-        for index in range(self.num_control_nodes):
+        for index in range(self.nodes):
 
             node_data = self.Node(
                 index=index,
@@ -259,7 +249,7 @@ class ControlProblem:
             print("Waypoints: ", waypoints)
             print("Waypoint Indices: ", waypoint_indices)
             print("Final Waypoint: ", final_waypoint)
-            print("Predicted Switching Nodes: ", self.switching_variable)
+            print("Predicted Switching Nodes: ", self.switch_var)
 
         # self.opti.subject_to(
             # self.state[4 + np.array(waypoint_indices), -1] ==  final_waypoint)
@@ -273,25 +263,24 @@ class ControlProblem:
         constraints = self.opti.g
 
         if self.VERBOSE:
-            print(f"Constraint 545: {constraints[545]}")
+            print(f"Constraint 545: {constraints[576]}")
 
+    def plot_sparsity(self, ax:plt.axes):
+        jacobian = self.opti.debug.value(
+            ca.jacobian(self.opti.g, self.opti.x)
+            ).toarray()
+        
+        ax.clear()
+        ax.spy(jacobian)
+        plt.draw()
+        plt.pause(0.01)
 
-    def plot_sparsity(self, ax:plt.axes, iteration:int):
-        if iteration % 100 == 1:
-            jacobian = self.opti.debug.value(
-                ca.jacobian(self.opti.g, self.opti.x)
-                ).toarray()
-            
-            ax.clear()
-            ax.spy(jacobian)
-            plt.draw()
-
-    def plot_trajectory(self, ax:plt.axes, iteration:int):
-        if iteration % 10 == 1:
-            state = self.opti.debug.value(self.state)
-            ax.clear()
-            ax.plot(state[4, :], state[5, :], state[6, :])
-            plt.draw()
+    def plot_trajectory(self, ax:plt.axes):
+        state = self.opti.debug.value(self.state)
+        ax.clear()
+        ax.plot(state[4, :], state[5, :], state[6, :])
+        plt.draw()
+        plt.pause(0.01)
 
     def save_progress(self, filepath, iteration):
         if filepath is not None:
@@ -303,19 +292,21 @@ class ControlProblem:
                     grp.create_dataset('control', data=U)
                     grp.create_dataset('time', data=time)
 
-    def plot_convergence(self, ax:plt.axes, iteration:int):
-        plt.semilogy
+    def plot_convergence(self, ax:plt.axes, sol:ca.OptiSol):
+        ax.semilogy(sol.stats()['iterations']['inf_du'], label="Dual infeasibility")
+        ax.semilogy(sol.stats()['iterations']['inf_pr'], label="Primal infeasibility")
 
-    def callback(
-            self, 
-            axs:List[plt.axes], 
-            iteration:int, 
-            filepath:str
-            ):
-        
-        self.plot_sparsity(axs[0], iteration)
+        ax.set_xlabel('Iterations')
+        ax.set_ylabel('Infeasibility (log scale)')
+        ax.grid(True)
 
-        self.plot_trajectory(axs[1], iteration)
+        plt.tight_layout()
+        plt.show(block = True)
+
+    def callback(self, axs:List[plt.axes], iteration:int, filepath:str):
+        if iteration % 10 == 5:
+            self.plot_sparsity(axs[0])
+            self.plot_trajectory(axs[1])
 
         if filepath is not None:
             self.sol_state_list.append(self.opti.debug.value(self.state))
@@ -324,34 +315,19 @@ class ControlProblem:
             if iteration % 10 == 0:
                 self.save_progress(filepath, iteration)
 
-    def solve(
-            self, 
-            opts:dict = {
-                        'ipopt': {
-                            'max_iter': 10000,
-                            'tol': 1e-2,
-                            'acceptable_tol': 1e-2,
-                            'acceptable_obj_change_tol': 1e-2,
-                            'hessian_approximation': 'limited-memory'
-                        },
-                        'print_time': 10,
-                        # 'expand' : True
-                        },
-            warm_start:Union[ca.OptiSol, ca.Opti] = (None, None),
-            filepath:str = os.path.join(
-                BASEPATH, 
-                'data', 
-                'trajectories', 
-                'traj_control.hdf5'
-                )
-            ):
+    def solve(self, 
+                opts:dict = default_solver_options,
+                warm_start:Union[ca.OptiSol, ca.Opti] = (None, None),
+                filepath:str = None
+                ):
         
         self.sol_state_list = []
         self.sol_control_list = []
         self.final_times = []
 
-        if os.path.exists(filepath):
-            os.remove(filepath)
+        if filepath is not None:
+            if os.path.exists(filepath):
+                os.remove(filepath)
 
         fig = plt.figure(figsize=(10, 10))
         ax = fig.add_subplot(211)
@@ -361,8 +337,6 @@ class ControlProblem:
         self.opti.callback(lambda i: self.callback([ax, ax2], i, filepath))
         plt.show()
 
-
-        
         if warm_start != (None, None):
             warm_sol, warm_opti = warm_start
             self.opti.set_initial(warm_sol.value_variables())
@@ -390,6 +364,7 @@ class ControlProblem:
         if self.VERBOSE:
             print("State Trajectory Guess: ", x_guess)
 
+
         self.opti.set_initial(self.tau, tau_guess)
         self.opti.set_initial(self.lam, lambda_guess)
         self.opti.set_initial(self.mu, mu_guess)
@@ -402,20 +377,20 @@ class ControlProblem:
 
         num_waypoints = self.num_waypoints
 
-        lambda_guess = np.zeros((num_waypoints, self.num_control_nodes))
-        tau_guess = np.zeros((num_waypoints, self.num_control_nodes))
-        mu_guess = np.ones((num_waypoints, self.num_control_nodes + 1))
+        lambda_guess = np.zeros((num_waypoints, self.nodes))
+        tau_guess = np.zeros((num_waypoints, self.nodes))
+        mu_guess = np.ones((num_waypoints, self.nodes + 1))
 
         i_wp = 0
-        for i in range(1, self.num_control_nodes):
-            if i > self.switching_variable[i_wp]:
+        for i in range(1, self.nodes):
+            if i > self.switch_var[i_wp]:
                 i_wp += 1
 
-            if ((i_wp == 0) and (i + 1 >= self.switching_variable[0])) or i + 1 - self.switching_variable[i_wp-1] >= self.switching_variable[i_wp]:
+            if ((i_wp == 0) and (i + 1 >= self.switch_var[0])) or i + 1 - self.switch_var[i_wp-1] >= self.switch_var[i_wp]:
                 lambda_guess[i_wp, i] = 1
 
             for j in range(num_waypoints):
-                if i + 1 < self.switching_variable[j]:
+                if i + 1 < self.switch_var[j]:
                     mu_guess[j, i] = 0
 
         return (tau_guess, lambda_guess, mu_guess)
@@ -429,17 +404,10 @@ class ControlProblem:
         initial_pos = trajectory.waypoints.initial_position
         velocity_guess = trajectory.waypoints.default_velocity
         waypoints = self.waypoints[1:, :]
-
-        if not isinstance(initial_pos, np.ndarray):
-            initial_pos = initial_pos.full().flatten()
-        if isinstance(velocity_guess, ca.MX) or isinstance(velocity_guess, ca.DM):
-            velocity_guess = velocity_guess.full().flatten()
         
-        x_guess = np.zeros((state_dim, self.num_control_nodes + 1))
-        distance = self.cumulative_distances
-        
-
-        i_switch = np.array((self.num_control_nodes + 1) * np.array(distance) / distance[-1], dtype=int)
+        x_guess = np.zeros((state_dim, self.nodes + 1))
+        distance = self.distances
+    
 
         
 
@@ -448,10 +416,11 @@ class ControlProblem:
 
         if self.VERBOSE:
             print("Cumulative Waypoint Distances: ", distance)
-            print("Predicted Switching Nodes: ", i_switch)
+            print("Predicted Switching Nodes: ", self.switch_var)
             print("Direction Guess: ", direction_guess)
             print("Velocity Guess: ", vel_guess)
             print("Initial Position: ", initial_pos)
+            print("Waypoints: ", waypoints)
 
         x_guess[:3, 0] = initial_pos
         x_guess[3:6, 0] = vel_guess
@@ -459,9 +428,9 @@ class ControlProblem:
         z_flip = R.from_euler('x', 180, degrees=True)
 
         i_wp = 0
-        for i in range(self.num_control_nodes + 1):
+        for i in range(self.nodes):
             # switch condition
-            if i > i_switch[i_wp]:
+            if i > self.switch_var[i_wp]:
                 i_wp += 1
             if i_wp == 0:
                 wp_last = initial_pos
@@ -470,9 +439,9 @@ class ControlProblem:
             wp_next = waypoints[i_wp, :]
 
             if i_wp > 0:
-                interpolation = (i - i_switch[i_wp-1]) / (i_switch[i_wp] - i_switch[i_wp-1])
+                interpolation = (i - self.switch_var[i_wp-1]) / (self.switch_var[i_wp] - self.switch_var[i_wp-1])
             else:
-                interpolation = i / i_switch[0]
+                interpolation = i / self.switch_var[0]
 
             # extend position guess
             pos_guess = (1 - interpolation) * wp_last + interpolation * wp_next
@@ -496,7 +465,7 @@ class ControlProblem:
             fig = plt.figure()
             ax = fig.add_subplot(111, projection = '3d')
             ax.plot(x_guess[4, :], x_guess[5, :], x_guess[6, :])
-            plt.show()
+            plt.show(block = True)
         
         
         return x_guess, time_guess
@@ -505,29 +474,20 @@ class ControlProblem:
 def main():
     opti = ca.Opti()
     model = load_model()
-    traj_dict = json.load(open('data/glider/problem_definition.json'),)
+    traj_dict = json.load(open('data/glider/problem_definition.json'))
     trajectory_config = TrajectoryConfiguration(traj_dict)
-    num_control_nodes = 15
+
+    num_control_nodes = 40
     aircraft = Aircraft(traj_dict['aircraft'], model, LINEAR=True)
     problem = ControlProblem(opti, aircraft, trajectory_config, num_control_nodes)
 
     problem.setup()
-
     (sol, opti) = problem.solve(filepath= os.path.join(BASEPATH, 'data', 'trajectories', 'traj_control.hdf5'))
 
-    fig, ax = plt.subplots(1, 1)  # 1 row, 1 column of subplots
-
-    ax.semilogy(sol.stats()['iterations']['inf_du'], label="Dual infeasibility")
-    ax.semilogy(sol.stats()['iterations']['inf_pr'], label="Primal infeasibility")
-
-    ax.set_xlabel('Iterations')
-    ax.set_ylabel('Infeasibility (log scale)')
-    ax.grid(True)
-
-    plt.tight_layout()
-    plt.show(block = True)
-
-    sol_traj = sol.value(problem.state)
+    _, ax = plt.subplots(1, 1)  # 1 row, 1 column of subplots
+    problem.plot_convergence(ax, sol)
+    
+    # sol_traj = sol.value(problem.state)
     opti = ca.Opti()
     aircraft = Aircraft(traj_dict['aircraft'], model, LINEAR=False)
     problem = ControlProblem(opti, aircraft, trajectory_config, num_control_nodes)
@@ -536,17 +496,9 @@ def main():
     # problem.opti.set_initial(problem.state, sol_traj)
     (sol, opti) = problem.solve(filepath= os.path.join(BASEPATH, 'data', 'trajectories', 'traj_control_nn.hdf5'), warm_start=(sol, opti))
 
-    fig, ax = plt.subplots(1, 1)  # 1 row, 1 column of subplots
+    _, ax = plt.subplots(1, 1)  # 1 row, 1 column of subplots
+    problem.plot_convergence(ax, sol)
 
-    ax.semilogy(sol.stats()['iterations']['inf_du'], label="Dual infeasibility")
-    ax.semilogy(sol.stats()['iterations']['inf_pr'], label="Primal infeasibility")
-
-    ax.set_xlabel('Iterations')
-    ax.set_ylabel('Infeasibility (log scale)')
-    ax.grid(True)
-
-    plt.tight_layout()
-    plt.show(block = True)
     return sol
 
 if __name__ == "__main__":
