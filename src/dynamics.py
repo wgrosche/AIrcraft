@@ -29,6 +29,7 @@ sys.path.append(BASEPATH)
 from src.models import ScaledModel
 from src.utils import load_model
 from src.plotting import plot_state
+from dataclasses import dataclass
 
 print(DEVICE)
 
@@ -135,17 +136,9 @@ class Aircraft:
             ca.horzcat(Ixz, 0  , Izz)
         )
         self.LINEAR = LINEAR
-        # Determinant of the inertia tensor
-        # det_I = Ixx * Iyy * Izz - Ixz**2 * Iyy
 
-        # Inverse inertia tensor
         self.inv_inertia_tensor = ca.inv(self._inertia_tensor)
         
-        # (1 / det_I) * ca.vertcat(
-        #     ca.horzcat(Iyy * Izz, 0, -Ixz * Iyy),
-        #     ca.horzcat(0, Ixx * Izz - Ixz**2, 0),
-        #     ca.horzcat(-Ixz * Iyy, 0, Ixx * Iyy)
-        # )
         self.EPSILON = EPSILON
         self.STEPS = STEPS
 
@@ -197,18 +190,9 @@ class Aircraft:
         if Realtime:
             self.model = RealTimeL4CasADi(model, approximation_order=1)
         else:
-            self.model = L4CasADi(model, name = 'AeroModel'
-                              , generate_jac_jac=True
-                              )
-            # inputs = ca.vertcat(
-            # self.qbar, 
-            # self.alpha, 
-            # self.beta, 
-            # self.aileron, 
-            # self.elevator
-            # )
-            # self.model.build(inputs)
-            # self.
+            self.model = L4CasADi(model, name = 'AeroModel', 
+                                  generate_jac_jac=True
+                                  )
         self.qbar
         self.beta
         self.alpha
