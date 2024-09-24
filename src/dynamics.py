@@ -344,7 +344,7 @@ class Aircraft:
         We scale the roll moment down by a factor of 4 meaning we use the 
         windtunnel scale rather than the sim scale.
         """
-        scale = 1
+        scale = .1
         # roll moment rates
         outputs[3] /= 4
         outputs[3] += -0.005 * self.omega_b_i_frd[0] * scale
@@ -595,7 +595,7 @@ if __name__ == '__main__':
 
     model = load_model()
     
-    aircraft = Aircraft(aircraft_params, model, STEPS=100, LINEAR=True)
+    aircraft = Aircraft(aircraft_params, model, STEPS=100, LINEAR=False)
     
     trim_state_and_control = None
     if trim_state_and_control is not None:
