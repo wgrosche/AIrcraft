@@ -18,6 +18,7 @@ import json
 import matplotlib.pyplot as plt
 from liecasadi import Quaternion
 import h5py
+from scipy.interpolate import CubicSpline
 
 default_solver_options = {'ipopt': {'max_iter': 10000,
                                     'tol': 1e-2,
@@ -398,12 +399,40 @@ class ControlProblem:
                     mu_guess[j, i] = 0
 
         return (tau_guess, lambda_guess, mu_guess)
+    
+    def smooth_trajectory(self, x_guess):
+            # Extract the points along the trajectory
+            x_vals = x_guess[4, :]  # x-coordinates
+            y_vals = x_guess[5, :]  # y-coordinates
+            z_vals = x_guess[6, :]  # z-coordinates
+
+            # Create a parameter t for the trajectory points
+            t = np.linspace(0, 1, len(x_vals))
+
+            # Fit cubic splines to the trajectory points
+            spline_x = CubicSpline(t, x_vals)
+            spline_y = CubicSpline(t, y_vals)
+            spline_z = CubicSpline(t, z_vals)
+
+            # Evaluate the splines at finer intervals for a smoother trajectory
+            t_fine = t#np.linspace(0, 1, len(x_vals) * 10)  # Increase resolution by 10x
+            x_smooth = spline_x(t_fine)
+            y_smooth = spline_y(t_fine)
+            z_smooth = spline_z(t_fine)
+
+            # Update x_guess with the smoothed values (optional, for visualization)
+            x_guess[4, :] = np.interp(np.linspace(0, len(x_vals)-1, len(x_vals)), np.linspace(0, len(t_fine)-1, len(t_fine)), x_smooth)
+            x_guess[5, :] = np.interp(np.linspace(0, len(y_vals)-1, len(y_vals)), np.linspace(0, len(t_fine)-1, len(t_fine)), y_smooth)
+            x_guess[6, :] = np.interp(np.linspace(0, len(z_vals)-1, len(z_vals)), np.linspace(0, len(t_fine)-1, len(t_fine)), z_smooth)
+            return x_guess
 
 
     def state_guess(self, trajectory:TrajectoryConfiguration):
         """
         Initial guess for the state variables.
         """
+        
+
         state_dim = self.aircraft.num_states
         initial_pos = trajectory.waypoints.initial_position
         velocity_guess = trajectory.waypoints.default_velocity
@@ -412,7 +441,7 @@ class ControlProblem:
         x_guess = np.zeros((state_dim, self.nodes + 1))
         distance = self.distances
     
-
+        self.r_glide = 10
         
 
         direction_guess = (waypoints[0, :] - initial_pos)
@@ -431,11 +460,15 @@ class ControlProblem:
 
         z_flip = R.from_euler('x', 180, degrees=True)
 
+        for i, waypoint in enumerate(waypoints):
+            if len(self.trajectory.waypoints.waypoint_indices) < 3:
+                    waypoint[2] += self.distances[i] / self.r_glide
         i_wp = 0
         for i in range(self.nodes):
             # switch condition
             if i > self.switch_var[i_wp]:
                 i_wp += 1
+                
             if i_wp == 0:
                 wp_last = initial_pos
             else:
@@ -447,13 +480,23 @@ class ControlProblem:
             else:
                 interpolation = i / self.switch_var[0]
 
+            
+
             # extend position guess
             pos_guess = (1 - interpolation) * wp_last + interpolation * wp_next
-            x_guess[4:4+pos_guess.shape[0], i] = np.reshape(((1 - interpolation) * wp_last + interpolation * wp_next), (len(pos_guess),))
+
+            # # Calculate horizontal distance traveled for this segment
+            # horizontal_distance = np.linalg.norm(pos_guess[:2] - x_guess[4:6, i-1])
+
+            # pos_guess[2] += horizontal_distance / self.r_glide  # Adjusting 'z' upward based on the glide ratio
+            # print(pos_guess)
+
+            x_guess[4:7, i + 1] = np.reshape(pos_guess, (3,))
+            
 
             direction = (wp_next - wp_last) / ca.norm_2(wp_next - wp_last)
             vel_guess = velocity_guess * direction
-            x_guess[7:7 + vel_guess.shape[0], i] = np.reshape(velocity_guess * direction, (vel_guess.shape[0],))
+            x_guess[7:10, i + 1] = np.reshape(velocity_guess * direction, (3,))
 
             rotation = R.align_vectors(np.array(direction).reshape(1, -1), [[1, 0, 0]])[0]
 
@@ -462,7 +505,9 @@ class ControlProblem:
                 flip_y = R.from_euler('y', 180, degrees=True)
                 rotation = rotation * flip_y
 
-            x_guess[:4, i] = (rotation * z_flip).as_quat()
+            x_guess[:4, i + 1] = (rotation * z_flip).as_quat()
+
+        # x_guess = self.smooth_trajectory(x_guess)
 
         time_guess = distance[-1] / velocity_guess
         if self.VERBOSE:
