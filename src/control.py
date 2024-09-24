@@ -175,6 +175,10 @@ class ControlProblem:
         # TODO: find way to remove dependency on dt in every timestep to improve sparsity
 
     def waypoint_constraint(self, node:Node, waypoint_node:int):
+        """
+        Waypoint constraint implementation from:
+        https://rpg.ifi.uzh.ch/docs/ScienceRobotics21_Foehn.pdf
+        """
         tolerance = self.trajectory.waypoints.tolerance
         waypoint_indices = np.array(self.trajectory.waypoints.waypoint_indices)
         num_waypoints = self.num_waypoints
