@@ -196,6 +196,7 @@ class Aircraft:
         self.qbar
         self.beta
         self.alpha
+        self.phi
         
         self.x_dot
         
@@ -238,14 +239,25 @@ class Aircraft:
     @property
     def alpha(self):
         v_frd_rel = self.v_frd_rel
-        alpha = ca.atan2(v_frd_rel[2], v_frd_rel[0] + self.EPSILON)#v_frd_rel[2] /(v_frd_rel[0] + self.EPSILON)#
+        alpha = ca.atan2(v_frd_rel[2], v_frd_rel[0] + self.EPSILON)
         self._alpha = ca.Function('alpha', [self.state, self.control], [alpha])
         return alpha
     
     @property
+    def phi(self):
+        """
+        Roll angle
+        """
+        aircraft_up = (Quaternion(self.q_frd_ecf) * Quaternion(ca.vertcat(1, 0, 0, 0))).coeffs()
+        phi = ca.atan2(2 * (aircraft_up[1] * aircraft_up[2] + aircraft_up[0] * aircraft_up[3]), 1 - 2 * (aircraft_up[0] ** 2 + aircraft_up[1] ** 2))
+
+        self._phi = ca.Function('roll', [self.state, self.control], [phi]).expand()
+        return phi
+    
+    @property
     def beta(self):
         v_frd_rel = self.v_frd_rel
-        beta = ca.asin(v_frd_rel[1] / self.airspeed)#v_frd_rel[1] / self.airspeed#ca.asin(v_frd_rel[1] / self.airspeed)
+        beta = ca.asin(v_frd_rel[1] / self.airspeed)
         self._beta = ca.Function('beta', [self.state, self.control], [beta])
         return beta
     
@@ -291,11 +303,11 @@ class Aircraft:
         outputs[4] *= beta_scaling
 
 
-        self._coefficients = ca.Function(
-            'coefficients', 
-            [self.state, self.control], 
-            [outputs]
-            )
+        # self._coefficients = ca.Function(
+        #     'coefficients', 
+        #     [self.state, self.control], 
+        #     [outputs]
+        #     )
         
         
 
@@ -328,7 +340,7 @@ class Aircraft:
         We scale the roll moment down by a factor of 4 meaning we use the 
         windtunnel scale rather than the sim scale.
         """
-        scale = .1
+        scale = 1
         # roll moment rates
         outputs[3] /= 4
         outputs[3] += -0.005 * self.omega_b_i_frd[0] * scale
@@ -342,11 +354,11 @@ class Aircraft:
         outputs[5] += -0.0003 * self.omega_b_i_frd[0] * scale
         outputs[5] += -0.001 * self.omega_b_i_frd[2] * scale
 
-        # self._coefficients = ca.Function(
-        #     'coefficients', 
-        #     [self.state, self.control], 
-        #     [outputs]
-        #     )
+        self._coefficients = ca.Function(
+            'coefficients', 
+            [self.state, self.control], 
+            [outputs]
+            )
 
         return outputs
 
@@ -559,7 +571,7 @@ class Aircraft:
         #     if i % normalisation_interval == 0:
         #         state[:4] = Quaternion(state[:4]).normalize().coeffs()
         
-        state[:4] = Quaternion(state[:4]).normalize().coeffs()
+        # state[:4] = Quaternion(state[:4]).normalize().coeffs()
         if self.LINEAR:
             return ca.Function(
             'state_update', 
@@ -594,18 +606,21 @@ if __name__ == '__main__':
 
         state = ca.vertcat(q0, x0, v0, omega0)
         control = np.zeros(aircraft.num_controls)
-        control[0] = 0
+        control[0] = 1
         control[6:9] = aircraft_params['aero_centre_offset']
 
 
     dyn = aircraft.state_update
-    dt = 1
-    tf = 100.0
+    dt = .1
+    tf = 10.0
     state_list = np.zeros((aircraft.num_states, int(tf / dt)))
 
-    dt_sym = ca.MX.sym('dt', 1)
+    # dt_sym = ca.MX.sym('dt', 1)
     t = 0
-
+    target_roll = np.deg2rad(60)
+    ele_pos = True
+    ail_pos = True
+    control_list = []
     for i in tqdm(range(int(tf / dt)), desc = 'Simulating Trajectory:'):
         if np.isnan(state[0]):
             print('Aircraft crashed')
@@ -613,15 +628,47 @@ if __name__ == '__main__':
         else:
             state_list[:, i] = state.full().flatten()
             state = dyn(state, control, dt)
+            # print("Roll Angle:", np.rad2deg(aircraft._phi(state, control).full().flatten()))
+            # print("Switch condition: ", np.rad2deg((aircraft._phi(state, control).full().flatten() - np.pi)))
+            if np.rad2deg(aircraft._phi(state, control).full().flatten()) > 60:
+                if ail_pos:
+                    control[0] += 0.5
+                else:
+                    control[0] = 0
+                    ail_pos = True
+            elif np.rad2deg(aircraft._phi(state, control).full().flatten()) < -60:
+                if not ail_pos:
+                    control[0] -= 0.5
+                else:
+                    control[0] = 0
+                    ail_pos = False
+
+            if np.rad2deg(aircraft._alpha(state, control).full().flatten()) > 5:
+                if ele_pos:
+                    control[1] += 0.5
+                else:
+                    control[1] = 0
+                    ele_pos = True
+            elif np.rad2deg(aircraft._alpha(state, control).full().flatten()) < -5:
+                if not ele_pos:
+                    control[1] -= 0.5
+                else:
+                    control[1] = 0
+                    ele_pos = False
+            control_list.append(control[0])
+                    
             t += 1
 
     # state_list = state_list[:, :t-10]
     # print(state_list[0, :])
     first = None
-    t -= 5
+    # t -= 5
 
     # print(f"Final State: {state_list[:, t-10:t]}")
     fig = plt.figure(figsize=(18, 9))
     fig = plot_state(fig, state_list, control, aircraft, t, dt, first=0)
     fig.savefig('test.png')
+    plt.show()
+
+    plt.plot(control_list)
     plt.show(block=True)

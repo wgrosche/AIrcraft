@@ -303,10 +303,13 @@ def plot_state(fig, state_list, control, aircraft, t, dt, first=0):
 
     # Aerodynamic Angles Plot
     ax4 = fig.add_subplot(3, 6, 4)
-    ax4.plot(aircraft._alpha(state_list, control).full().flatten(), label=r'$\alpha$')
-    ax4.plot(aircraft._beta(state_list, control).full().flatten(), label=r'$\beta$')
-    ax4.axhline(np.deg2rad(10), color='r')
-    ax4.axhline(np.deg2rad(-10), color='r')
+    ax4.plot(np.rad2deg(aircraft._alpha(state_list, control).full().flatten()), label=r'$\alpha$')
+    ax4.plot(np.rad2deg(aircraft._beta(state_list, control).full().flatten()), label=r'$\beta$')
+
+    ax4.plot(np.rad2deg(aircraft._phi(state_list, control).full().flatten()), label=r'$\phi$')
+
+    ax4.axhline(10, color='r')
+    ax4.axhline(-10, color='r')
     ax4.legend()
     ax4.grid(True)
     ax4.set_title('Aerodynamic Angles')
@@ -349,18 +352,18 @@ def plot_state(fig, state_list, control, aircraft, t, dt, first=0):
 
     # Moments Aero Plot
     ax9 = fig.add_subplot(3, 6, 9)
-    ax9.plot(moments_aero[0, :], label='l_A')
-    ax9.plot(moments_aero[1, :], label='m_A')
-    ax9.plot(moments_aero[2, :], label='n_A')
+    ax9.plot(moments_aero[0, :], label='$l_A$')
+    ax9.plot(moments_aero[1, :], label='$m_A$')
+    ax9.plot(moments_aero[2, :], label='$n_A$')
     ax9.legend()
     ax9.grid(True)
     ax9.set_title('Moments Aero')
 
     # Moments Forces Plot
     ax10 = fig.add_subplot(3, 6, 10)
-    ax10.plot(moments_from_forces[0, :], label='l_F')
-    ax10.plot(moments_from_forces[1, :], label='m_F')
-    ax10.plot(moments_from_forces[2, :], label='n_F')
+    ax10.plot(moments_from_forces[0, :], label='$l_F$')
+    ax10.plot(moments_from_forces[1, :], label='$m_F$')
+    ax10.plot(moments_from_forces[2, :], label='$n_F$')
     ax10.legend()
     ax10.grid(True)
     ax10.set_title('Moments Forces')
