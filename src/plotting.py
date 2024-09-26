@@ -234,7 +234,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 
-def plot_state(fig, state_list, control, aircraft, t, dt, first=0):
+def plot_state(fig, state_list, control, aircraft, t, dt, first=0, control_list = None):
 
     # t = int(tf / dt)
     step = int(t / 10)
@@ -376,6 +376,15 @@ def plot_state(fig, state_list, control, aircraft, t, dt, first=0):
     ax11.legend()
     ax11.grid(True)
     ax11.set_title('Aircraft Relative Velocity')
+
+    if control_list:
+        # Aircraft Control
+        ax12 = fig.add_subplot(3, 6, 11)
+        ax12.plot(control_list, label='Aileron')
+        # ax12.plot(v_frd_rel[1, :], label='Elevator')
+        ax12.legend()
+        ax12.grid(True)
+        ax12.set_title('Controls')
 
     # Aerodynamic Coefficients Plots
     titles = ['CX', 'CY', 'CZ', 'Cl', 'Cm', 'Cn']

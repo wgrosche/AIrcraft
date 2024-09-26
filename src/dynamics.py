@@ -244,15 +244,45 @@ class Aircraft:
         return alpha
     
     @property
+    def longitude(self):
+        longitude = ca.atan2(self.p_ecf_cm_O[1], self.p_ecf_cm_O[0])
+        return longitude
+    
+    @property
+    def latitude(self):
+        """
+        Geocentric Latitude
+        """
+        latitude = ca.atan2(self.p_ecf_cm_O[2], ca.sqrt(self.p_ecf_cm_O[0] ** 2 + self.p_ecf_cm_O[1] ** 2))
+        return latitude
+    
+    @property
+    def q_ned_ecf(self):
+        q_long = Quaternion(ca.vertcat(0, 0, ca.sin(self.longitude / 2), ca.cos(self.longitude / 2)))
+        q_lat = Quaternion(ca.vertcat(ca.cos(self.latitude / 2 + np.pi / 4), 0, -ca.sin(self.latitude / 2 + np.pi / 4), 0))
+
+        q_ned_ecf = q_long * q_lat
+
+        return q_ned_ecf.coeffs()
+    
+
+    @property
     def phi(self):
         """
         Roll angle
         """
-        aircraft_up = (Quaternion(self.q_frd_ecf) * Quaternion(ca.vertcat(1, 0, 0, 0))).coeffs()
-        phi = ca.atan2(2 * (aircraft_up[1] * aircraft_up[2] + aircraft_up[0] * aircraft_up[3]), 1 - 2 * (aircraft_up[0] ** 2 + aircraft_up[1] ** 2))
+        q_frd_ned = Quaternion(self.q_frd_ecf).inverse() * Quaternion(self.q_ned_ecf)
 
-        self._phi = ca.Function('roll', [self.state, self.control], [phi]).expand()
-        return phi
+        aircraft_up = q_frd_ned.inverse()#Quaternion(self.q_frd_ecf).inverse() * Quaternion(ca.vertcat(1, 0, 0, 0))
+        # roll (x-axis rotation)
+        sinr_cosp = 2 * (aircraft_up.w * aircraft_up.x + aircraft_up.y * aircraft_up.z);
+        cosr_cosp = 1 - 2 * (aircraft_up.x * aircraft_up.x + aircraft_up.y * aircraft_up.y);
+        roll = ca.atan2(sinr_cosp, cosr_cosp);
+
+        # phi = ca.atan2(2 * (aircraft_up[1] * aircraft_up[2] + aircraft_up[0] * aircraft_up[3]), 1 - 2 * (aircraft_up[0] ** 2 + aircraft_up[1] ** 2))
+
+        self._phi = ca.Function('roll', [self.state, self.control], [roll]).expand()
+        return roll
     
     @property
     def beta(self):
@@ -412,7 +442,7 @@ class Aircraft:
             )
         
         return moments
-
+    
     @property
     def forces_ecf(self):
         forces_frd = Quaternion(ca.vertcat(self.forces_frd, 0))
@@ -444,8 +474,12 @@ class Aircraft:
         omega_b_i_frd = Quaternion(ca.vertcat(self.omega_b_i_frd, 0))
         omega_e_i_frd = Quaternion(ca.vertcat(self.omega_e_i_frd, 0))
 
-        q_frd_ecf_dot = 0.5 * q_frd_ecf * (omega_b_i_frd - omega_e_i_frd)
+        omega = self.omega_b_i_frd - self.omega_e_i_frd
+        scalar_term = - ca.dot(omega, q_frd_ecf.coeffs()[:3])
+        vector_term = q_frd_ecf.w * omega - ca.cross(omega, q_frd_ecf.coeffs()[:3])
 
+        # q_frd_ecf_dot = 0.5 * q_frd_ecf * (omega_b_i_frd - omega_e_i_frd)
+        q_frd_ecf_dot = 0.5 * Quaternion(ca.vertcat(vector_term, scalar_term))
         self._q_frd_ecf_dot = ca.Function(
             'q_frd_ecf_dot', 
             [self.state, self.control], 
@@ -471,10 +505,9 @@ class Aircraft:
         mass = self.mass
         omega_e_i_frd = self.omega_e_i_frd
         v_ecf_cm_e = self.v_ecf_cm_e
+        coriolis = - 2 * ca.cross(omega_e_i_frd, v_ecf_cm_e)
 
-        v_ecf_cm_e_dot =  1 / mass * forces \
-            + grav \
-            - 2 * ca.cross(omega_e_i_frd, v_ecf_cm_e) # Coriolis term
+        v_ecf_cm_e_dot =  forces / mass + grav + coriolis
         
         self._v_ecf_cm_e_dot = ca.Function(
             'v_ecf_cm_e_dot', 
@@ -591,7 +624,7 @@ if __name__ == '__main__':
 
     model = load_model()
     
-    aircraft = Aircraft(aircraft_params, model, STEPS=100, LINEAR=False)
+    aircraft = Aircraft(aircraft_params, model, STEPS=100, LINEAR=True)
     
     trim_state_and_control = None
     if trim_state_and_control is not None:
@@ -599,7 +632,7 @@ if __name__ == '__main__':
         control = ca.vertcat(trim_state_and_control[aircraft.num_states:])
     else:
 
-        x0 = np.zeros(3)
+        x0 = np.array([6e6, 6e6, 6e6])#np.zeros(3)
         v0 = np.array([50, 0, 0])
         q0 = np.array([1, 0, 0, 0])
         omega0 = np.array([0, 0, 0])
@@ -611,8 +644,8 @@ if __name__ == '__main__':
 
 
     dyn = aircraft.state_update
-    dt = .1
-    tf = 10.0
+    dt = 0.1
+    tf = 20.0
     state_list = np.zeros((aircraft.num_states, int(tf / dt)))
 
     # dt_sym = ca.MX.sym('dt', 1)
@@ -630,32 +663,32 @@ if __name__ == '__main__':
             state = dyn(state, control, dt)
             # print("Roll Angle:", np.rad2deg(aircraft._phi(state, control).full().flatten()))
             # print("Switch condition: ", np.rad2deg((aircraft._phi(state, control).full().flatten() - np.pi)))
-            if np.rad2deg(aircraft._phi(state, control).full().flatten()) > 60:
-                if ail_pos:
-                    control[0] += 0.5
-                else:
-                    control[0] = 0
-                    ail_pos = True
-            elif np.rad2deg(aircraft._phi(state, control).full().flatten()) < -60:
-                if not ail_pos:
-                    control[0] -= 0.5
-                else:
-                    control[0] = 0
-                    ail_pos = False
+            # if np.rad2deg(aircraft._phi(state, control).full().flatten()) > 60:
+            #     if ail_pos:
+            #         control[0] += 0.5
+            #     else:
+            #         control[0] = 0
+            #         ail_pos = True
+            # elif np.rad2deg(aircraft._phi(state, control).full().flatten()) < -60:
+            #     if not ail_pos:
+            #         control[0] -= 0.5
+            #     else:
+            #         control[0] = 0
+            #         ail_pos = False
 
-            if np.rad2deg(aircraft._alpha(state, control).full().flatten()) > 5:
-                if ele_pos:
-                    control[1] += 0.5
-                else:
-                    control[1] = 0
-                    ele_pos = True
-            elif np.rad2deg(aircraft._alpha(state, control).full().flatten()) < -5:
-                if not ele_pos:
-                    control[1] -= 0.5
-                else:
-                    control[1] = 0
-                    ele_pos = False
-            control_list.append(control[0])
+            # if np.rad2deg(aircraft._alpha(state, control).full().flatten()) > 5:
+            #     if ele_pos:
+            #         control[1] += 0.5
+            #     else:
+            #         control[1] = 0
+            #         ele_pos = True
+            # elif np.rad2deg(aircraft._alpha(state, control).full().flatten()) < -5:
+            #     if not ele_pos:
+            #         control[1] -= 0.5
+            #     else:
+            #         control[1] = 0
+            #         ele_pos = False
+            # control_list.append(control[0])
                     
             t += 1
 
@@ -666,7 +699,7 @@ if __name__ == '__main__':
 
     # print(f"Final State: {state_list[:, t-10:t]}")
     fig = plt.figure(figsize=(18, 9))
-    fig = plot_state(fig, state_list, control, aircraft, t, dt, first=0)
+    fig = plot_state(fig, state_list, control, aircraft, t, dt, first=0, control_list = control_list)
     fig.savefig('test.png')
     plt.show()
 
