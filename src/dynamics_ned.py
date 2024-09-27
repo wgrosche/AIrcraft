@@ -28,7 +28,7 @@ sys.path.append(BASEPATH)
 
 from src.models import ScaledModel
 from src.utils import load_model
-from src.plotting import plot_state
+from src.plotting_ned import plot_state
 from dataclasses import dataclass
 
 print(DEVICE)
@@ -137,33 +137,32 @@ class Aircraft:
         )
         self.LINEAR = LINEAR
 
-        self._inv_inertia_tensor = ca.inv(self._inertia_tensor)
+        
         
         self.EPSILON = EPSILON
         self.STEPS = STEPS
 
-        self.q_frd_ecf = ca.MX.sym('q_frd_ecf', 4)
-        self.p_ecf_cm_O = ca.MX.sym('p_ecf_cm_O', 3)
-        self.v_ecf_cm_e = ca.MX.sym('v_ecf_cm_e', 3)
-        self.omega_b_i_frd = ca.MX.sym('omega_b_i', 3)
+        self.q_frd_ned = ca.MX.sym('q_frd_ned', 4)
+        self.p_ned = ca.MX.sym('p_ned', 3)
+        self.v_ned = ca.MX.sym('v_ned', 3)
+        self.omega_frd_ned = ca.MX.sym('omega_frd_ned', 3)
 
         self.linear_coeffs = ca.DM(np.array(pd.read_csv('data/glider/linearised.csv')))
 
         self.state = ca.vertcat(
-            self.q_frd_ecf, 
-            self.p_ecf_cm_O, 
-            self.v_ecf_cm_e, 
-            self.omega_b_i_frd
+            self.q_frd_ned, 
+            self.p_ned, 
+            self.v_ned, 
+            self.omega_frd_ned
             )
         
         self.num_states = self.state.size()[0]
 
-        self.v_wind_ecf_e = ca.MX.sym('v_wind_ecf_e', 3)
+        self.v_wind_ned = ca.MX.sym('v_wind_ned', 3)
         self.aileron = ca.MX.sym('aileron')
         self.elevator = ca.MX.sym('elevator')
         self.rudder = ca.MX.sym('rudder')
         self.throttle = ca.MX.sym('throttle', 3)
-        self.omega_e_i_ecf = ca.MX.sym('omega_e_i', 3)
         self.com = ca.MX.sym('com', 3)
 
         self.control = ca.vertcat(
@@ -172,8 +171,7 @@ class Aircraft:
             self.rudder, 
             self.throttle, 
             self.com,
-            self.v_wind_ecf_e, 
-            self.omega_e_i_ecf
+            self.v_wind_ned
             )
         
         self.num_controls = self.control.size()[0]
@@ -193,6 +191,7 @@ class Aircraft:
             self.model = L4CasADi(model, name = 'AeroModel', 
                                   generate_jac_jac=True
                                   )
+        self._inv_inertia_tensor = ca.inv(self.inertia_tensor)
         self.qbar
         self.beta
         self.alpha
@@ -204,9 +203,11 @@ class Aircraft:
 
     @property
     def inertia_tensor(self):
+        # com = self.com
+        com = ca.vertcat([0.133, 0, 0.003])
         inertia_tensor = (self._inertia_tensor 
-                          + self.mass * (ca.dot(self.com, self.com) 
-                          * ca.diag([1, 1, 1]) - ca.cross(self.com, self.com)))
+                          + self.mass * (ca.dot(com, com) 
+                          * ca.diag([1, 1, 1]) - ca.cross(com, com)))
         return inertia_tensor
     
     @property
@@ -245,11 +246,11 @@ class Aircraft:
 
     @property
     def v_frd_rel(self):
-        q_frd_ecf = Quaternion(self.q_frd_ecf)
-        v_ecf_cm_e = Quaternion(ca.vertcat(self.v_ecf_cm_e, 0))
-        v_wind_ecf_e = Quaternion(ca.vertcat(self.v_wind_ecf_e, 0))
-        result = (q_frd_ecf.inverse() * (v_ecf_cm_e - v_wind_ecf_e) 
-                  * q_frd_ecf).coeffs()[:3]
+        q_frd_ned = Quaternion(self.q_frd_ned)
+        v_ned = Quaternion(ca.vertcat(self.v_ned, 0))
+        v_wind_ned = Quaternion(ca.vertcat(self.v_wind_ned, 0))
+        result = (q_frd_ned.inverse() * (v_ned - v_wind_ned) 
+                  * q_frd_ned).coeffs()[:3]
         
         result = result + self.EPSILON
 
@@ -279,53 +280,16 @@ class Aircraft:
         return alpha
     
     @property
-    def longitude(self):
-        longitude = ca.atan2(self.p_ecf_cm_O[1], self.p_ecf_cm_O[0])
-        longitude = 0
-        return longitude
-    
-    @property
-    def latitude(self):
-        """
-        Geocentric Latitude
-        """
-        latitude = ca.atan2(self.p_ecf_cm_O[2], ca.sqrt(self.p_ecf_cm_O[0] ** 2 + self.p_ecf_cm_O[1] ** 2))
-        latitude = 0
-        return latitude
-    
-    @property
-    def q_ned_ecf(self):
-        q_long = Quaternion(ca.vertcat(0, 0, ca.sin(self.longitude / 2), ca.cos(self.longitude / 2)))
-        q_lat = Quaternion(ca.vertcat(ca.cos(self.latitude / 2 + np.pi / 4), 0, -ca.sin(self.latitude / 2 + np.pi / 4), 0))
-
-        q_ned_ecf = q_long * q_lat
-
-        return q_ned_ecf.coeffs()
-    
-    @property
-    def p_ned(self):
-        p_ecf = Quaternion(ca.vertcat(self.p_ecf_cm_O, 0))
-        q_ned_ecf = Quaternion(self.q_ned_ecf)
-
-        p_ned = q_ned_ecf.inverse() * p_ecf * q_ned_ecf
-        self._p_ned = ca.Function('position_ned', [self.state, self.control], [p_ned])
-        return p_ned
-    
-
-    @property
     def phi(self):
         """
         Roll angle
         """
-        q_frd_ned = Quaternion(self.q_frd_ecf).inverse() * Quaternion(self.q_ned_ecf)
 
-        aircraft_up = q_frd_ned.inverse()#Quaternion(self.q_frd_ecf).inverse() * Quaternion(ca.vertcat(1, 0, 0, 0))
-        # roll (x-axis rotation)
+        aircraft_up = Quaternion(self.q_frd_ned)
+
         sinr_cosp = 2 * (aircraft_up.w * aircraft_up.x + aircraft_up.y * aircraft_up.z);
         cosr_cosp = 1 - 2 * (aircraft_up.x * aircraft_up.x + aircraft_up.y * aircraft_up.y);
         roll = ca.atan2(sinr_cosp, cosr_cosp);
-
-        # phi = ca.atan2(2 * (aircraft_up[1] * aircraft_up[2] + aircraft_up[0] * aircraft_up[3]), 1 - 2 * (aircraft_up[0] ** 2 + aircraft_up[1] ** 2))
 
         self._phi = ca.Function('roll', [self.state, self.control], [roll]).expand()
         return roll
@@ -390,8 +354,8 @@ class Aircraft:
 
         # angular rate contributions
         # outputs[0] += 0.05 * self.omega_b_i_frd[0]
-        outputs[1] += -0.05 * self.omega_b_i_frd[2]
-        outputs[2] += -0.1 * self.omega_b_i_frd[0]
+        outputs[1] += -0.05 * self.omega_frd_ned[2]
+        outputs[2] += -0.1 * self.omega_frd_ned[0]
 
         """
         The relative amplitudes of the damping factors are taken from the cessna
@@ -419,16 +383,16 @@ class Aircraft:
         scale = 1
         # roll moment rates
         outputs[3] /= 4
-        outputs[3] += -0.005 * self.omega_b_i_frd[0] * scale
-        outputs[3] += 0.001 * self.omega_b_i_frd[2] * scale
+        outputs[3] += -0.005 * self.omega_frd_ned[0] * scale
+        outputs[3] += 0.001 * self.omega_frd_ned[2] * scale
 
         # pitching moment rates
-        outputs[4] += -0.1 * self.omega_b_i_frd[1] * scale
+        outputs[4] += -0.1 * self.omega_frd_ned[1] * scale
 
         # yaw moment rates
         outputs[5] *= -1
-        outputs[5] += -0.0003 * self.omega_b_i_frd[0] * scale
-        outputs[5] += -0.001 * self.omega_b_i_frd[2] * scale
+        outputs[5] += -0.0003 * self.omega_frd_ned[0] * scale
+        outputs[5] += -0.001 * self.omega_frd_ned[2] * scale
 
         self._coefficients = ca.Function(
             'coefficients', 
@@ -448,118 +412,148 @@ class Aircraft:
         return forces
     
     @property
-    def moments_aero(self):
+    def moments_aero_frd(self):
         moments_aero = (self.coefficients[3:] * self.qbar * self.S 
                         * ca.vertcat(self.b, self.c, self.b))
 
-        self._moments_aero = ca.Function('moments_aero', 
+        self._moments_aero_frd = ca.Function('moments_aero_frd', 
             [self.state, self.control], [moments_aero])
         return moments_aero
     
     @property
-    def moments_from_forces(self):
+    def moments_from_forces_frd(self):
         moments_from_forces = ca.cross(self.com, self.forces_frd)
-        self._moments_from_forces = ca.Function('moments_from_forces', 
+        self._moments_from_forces_frd = ca.Function('moments_from_forces_frd', 
             [self.state, self.control], [moments_from_forces])
         
         return moments_from_forces
     
     @property
     def moments_frd(self):
-        moments = self.moments_aero + self.moments_from_forces
+        moments = self.moments_aero_frd + self.moments_from_forces_frd
         self._moments_frd = ca.Function('moments_frd', 
             [self.state, self.control], [moments])
         
         return moments
     
     @property
-    def forces_ecf(self):
+    def forces_ned(self):
         forces_frd = Quaternion(ca.vertcat(self.forces_frd, 0))
-        q_frd_ecf = Quaternion(self.q_frd_ecf)
-        forces_ecf = q_frd_ecf * forces_frd * q_frd_ecf.inverse()
-        self._forces_ecf = ca.Function('forces_ecf', 
-            [self.state, self.control], [forces_ecf.coeffs()[:3]])
+        q_frd_ned = Quaternion(self.q_frd_ned)
+        forces_ned = q_frd_ned * forces_frd * q_frd_ned.inverse()
+        self._forces_ned = ca.Function('forces_ned', 
+            [self.state, self.control], [forces_ned.coeffs()[:3]])
         
-        return forces_ecf.coeffs()[:3]
+        return forces_ned.coeffs()[:3]
 
     @property
-    def omega_e_i_frd(self):
-        q_frd_ecf = Quaternion(self.q_frd_ecf)
-        omega_e_i_ecf = Quaternion(ca.vertcat(self.omega_e_i_ecf, 0))
+    def q_frd_ned_dot(self):
+        q_frd_ecf = Quaternion(self.q_frd_ned)
+        omega_frd_ned = Quaternion(ca.vertcat(self.omega_frd_ned, 0))
 
-        result = q_frd_ecf.inverse() * omega_e_i_ecf * q_frd_ecf
-        self._omega_e_i_frd = ca.Function('omega_e_i_frd', 
-            [self.state, self.control], [result.coeffs()[:3]])
-        
-        return result.coeffs()[:3]
+        q_frd_ned_dot = 0.5 * q_frd_ecf * omega_frd_ned
+        self._q_frd_ned_dot = ca.Function('q_frd_ecf_dot', 
+            [self.state, self.control], [q_frd_ned_dot.coeffs()])
 
-    @property
-    def q_frd_ecf_dot(self):
-        q_frd_ecf = Quaternion(self.q_frd_ecf)
-        omega_b_i_frd = Quaternion(ca.vertcat(self.omega_b_i_frd, 0))
-        omega_e_i_frd = Quaternion(ca.vertcat(self.omega_e_i_frd, 0))
-
-        q_frd_ecf_dot = 0.5 * q_frd_ecf * (omega_b_i_frd)# - omega_e_i_frd)
-        self._q_frd_ecf_dot = ca.Function('q_frd_ecf_dot', 
-            [self.state, self.control], [q_frd_ecf_dot.coeffs()])
-
-        return q_frd_ecf_dot.coeffs()
+        return q_frd_ned_dot.coeffs()
     
     @property
-    def p_ecf_cm_O_dot(self):
-        self._p_ecf_cm_O_dot = ca.Function('p_ecf_cm_O_dot', 
-            [self.state, self.control], [self.v_ecf_cm_e])
+    def p_ned_dot(self):
+        self._p_ned_dot = ca.Function('p_ecf_cm_O_dot', 
+            [self.state, self.control], [self.v_ned])
         
-        return self.v_ecf_cm_e
+        return self.v_ned
     
     @property
-    def v_ecf_cm_e_dot(self):
+    def v_ned_dot(self):
 
-        forces = self.forces_ecf
+        forces = self.forces_ned
         grav = self.grav
         mass = self.mass
-        omega_e_i_frd = self.omega_e_i_frd
-        v_ecf_cm_e = self.v_ecf_cm_e
-        coriolis = - 2 * ca.cross(omega_e_i_frd, v_ecf_cm_e)
 
-        v_ecf_cm_e_dot =  forces / mass + grav + coriolis
+        v_ned_dot =  forces / mass + grav
         
-        self._v_ecf_cm_e_dot = ca.Function(
+        self._v_ned_dot = ca.Function(
             'v_ecf_cm_e_dot', 
             [self.state, self.control], 
-            [v_ecf_cm_e_dot]
+            [v_ned_dot]
             )
 
-        return v_ecf_cm_e_dot
+        return v_ned_dot
     
+    def compute_euler_and_body_rates(self, q_frd_ned, omega_frd_frd):
+        """
+        Computes the Euler angles and angular rates given the orientation quaternion and angular rates in the FRD frame.
+        
+        Parameters:
+        q_frd_ned: A CasADi or NumPy array representing the quaternion (w, x, y, z) that maps from FRD to NED.
+        omega_frd_frd: A CasADi or NumPy array representing the angular rates in the FRD frame [p, q, r].
+        
+        Returns:
+        phi, theta, psi: The Euler angles (roll, pitch, yaw) in radians.
+        p, q, r: The angular rates in the body-fixed (FRD) frame.
+        """
+    
+        # Extract the components of the quaternion
+        w, x, y, z = q_frd_ned[0], q_frd_ned[1], q_frd_ned[2], q_frd_ned[3]
+        
+        # Calculate the Euler angles from the quaternion
+        sinr_cosp = 2 * (w * x + y * z)
+        cosr_cosp = 1 - 2 * (x * x + y * y)
+        phi = ca.atan2(sinr_cosp, cosr_cosp)  # Roll angle
+        
+        sinp = 2 * (w * y - z * x)
+        theta = ca.asin(sinp)  # Pitch angle
+
+        siny_cosp = 2 * (w * z + x * y)
+        cosy_cosp = 1 - 2 * (y * y + z * z)
+        psi = ca.atan2(siny_cosp, cosy_cosp)  # Yaw angle
+        
+        # Euler angles to body rates transformation matrix
+        T = ca.vertcat(
+            ca.horzcat(1, 0, -ca.sin(theta)),
+            ca.horzcat(0, ca.cos(phi), ca.sin(phi) * ca.cos(theta)),
+            ca.horzcat(0, -ca.sin(phi), ca.cos(phi) * ca.cos(theta))
+        )
+        
+        # Find the Euler angle derivatives from the body rates
+        euler_rates = ca.solve(T, omega_frd_frd)
+        
+        # Extract the individual angular rates p, q, r from omega_frd_frd
+        p, q, r = omega_frd_frd[0], omega_frd_frd[1], omega_frd_frd[2]
+        
+        return {'phi': phi, 'theta': theta, 'psi': psi, 'p': p, 'q': q, 'r': r, 
+                'phi_dot': euler_rates[0], 'theta_dot': euler_rates[1], 'psi_dot': euler_rates[2]}
+
+
 
     @property
-    def omega_b_i_frd_dot(self):
+    def omega_frd_ned_dot(self):
         J_frd = self.inertia_tensor
-        J_frd_inv = self.inverted_inertia_tensor
+        J_frd_inv = self._inv_inertia_tensor
         
-        omega_b_i_frd = self.omega_b_i_frd
+        omega_frd_ned = self.omega_frd_ned
         moments = self.moments_frd
 
 
-        omega_b_i_frd_dot = ca.mtimes(J_frd_inv, (moments 
-             - ca.cross(omega_b_i_frd, ca.mtimes(J_frd, omega_b_i_frd))))
+        omega_frd_ned_dot = ca.mtimes(J_frd_inv, (moments 
+             - ca.cross(omega_frd_ned, ca.mtimes(J_frd, omega_frd_ned))))
         
-        self._omega_b_i_frd_dot = ca.Function(
-            'omega_b_i_frd_dot', 
+        self._omega_frd_ned_dot = ca.Function(
+            'omega_frd_ned_dot', 
             [self.state, self.control], 
-            [omega_b_i_frd_dot]
+            [omega_frd_ned_dot]
             )
 
-        return omega_b_i_frd_dot
+        return omega_frd_ned_dot
     
     @property
     def x_dot(self):
         x_dot = ca.vertcat(
-            self.q_frd_ecf_dot, 
-            self.p_ecf_cm_O_dot, 
-            self.v_ecf_cm_e_dot, 
-            self.omega_b_i_frd_dot
+            self.q_frd_ned_dot, 
+            self.p_ned_dot, 
+            self.v_ned_dot, 
+            self.omega_frd_ned_dot
             )
         self.dynamics = ca.Function(
             'dynamics', 
@@ -567,62 +561,6 @@ class Aircraft:
             [x_dot]
             )
         return x_dot
-    
-    def ecef_to_ned(self, vectors):
-        """
-        Transforms one or more vectors from the ECEF system to NED.
-        """
-        q_ned_ecef = Quaternion(self.q_ned_ecf)  # The transformation quaternion
-        
-        # Check if the input is a single vector (3x1 or 4x1) or a matrix of vectors
-        if vectors.shape[1] == 1:  # Single vector case
-            vectors = [vectors]
-        else:
-            vectors = ca.horzsplit(vectors, 1)  # Split into list of column vectors
-
-        transformed_vectors = []
-        
-        for vector in vectors:
-            # Convert to Quaternion if not already
-            if not isinstance(vector, Quaternion):
-                if vector.shape[0] == 3:
-                    vector = ca.vertcat(vector, 0)  # Make it 4D
-                vector = Quaternion(vector)
-            
-            # Apply the transformation
-            vector_ned = q_ned_ecef.inverse() * vector * q_ned_ecef
-            transformed_vectors.append(vector_ned)
-        
-        return ca.horzcat(*transformed_vectors) if len(transformed_vectors) > 1 else transformed_vectors[0]
-
-    def ned_to_ecef(self, vectors):
-        """
-        Transforms one or more vectors from the NED system to ECEF.
-        """
-        q_ned_ecef = Quaternion(self.q_ned_ecf)  # The transformation quaternion
-        
-        # Check if the input is a single vector (3x1 or 4x1) or a matrix of vectors
-        if vectors.shape[1] == 1:  # Single vector case
-            vectors = [vectors]
-        else:
-            vectors = ca.horzsplit(vectors, 1)  # Split into list of column vectors
-
-        transformed_vectors = []
-        
-        for vector in vectors:
-            # Convert to Quaternion if not already
-            if not isinstance(vector, Quaternion):
-                if vector.shape[0] == 3:
-                    vector = ca.vertcat(vector, 0)  # Make it 4D
-                vector = Quaternion(vector)
-            
-            # Apply the transformation
-            vector_ecef = q_ned_ecef * vector * q_ned_ecef.inverse()
-            transformed_vectors.append(vector_ecef)
-        
-        return ca.horzcat(*transformed_vectors) if len(transformed_vectors) > 1 else transformed_vectors[0]
-
-
     
     # @jit
     def state_step(self, state, control, dt_scaled):
@@ -703,24 +641,20 @@ if __name__ == '__main__':
         control = ca.vertcat(trim_state_and_control[aircraft.num_states:])
     else:
 
-        x0 = np.array([0, 0, 0])#np.zeros(3)
-        v0 = aircraft.ned_to_ecef(ca.vertcat([50, 0, 0]))
-        v0 = [8.95462, 5.26358, 40.6223]#v0.coeffs()[:3]
-        q0 = Quaternion(ca.vertcat(1, 0, 0, 0)).inverse() *Quaternion(aircraft.q_ned_ecf).inverse()
-        q0 = ca.vertcat([0.215566, -0.568766, 0.255647, 0.751452])#q0.inverse()
-        # q0 = Quaternion(aircraft.q_ned_ecf).inverse()#np.array([0, 0, 0, 1])
+        x0 = np.zeros(3)
+        v0 = ca.vertcat([50, 0, 0])
+        q0 = Quaternion(ca.vertcat(0, 0, 0, 1))
+        # q0 = ca.vertcat([0.215566, -0.568766, 0.255647, 0.751452])#q0.inverse()
         omega0 = np.array([0, 0, 0])
 
         state = ca.vertcat(q0, x0, v0, omega0)
         control = np.zeros(aircraft.num_controls)
         control[0] = 1
         control[6:9] = aircraft_params['aero_centre_offset']
-    print(state)
-    # state = ca.vertcat([0.215566, -0.568766, 0.255647, 0.751452, 69.8842, 43.7597, 491.942, 8.95462, 5.26358, 40.6223, 0.0490224, 0.000839477, 0.0112974])
-    print(aircraft.ecef_to_ned(ca.vertcat(0.215566, -0.568766, 0.255647, 0.751452)))
+
     dyn = aircraft.state_update
-    dt = 1
-    tf = 20.0
+    dt = .1
+    tf = 30.0
     state_list = np.zeros((aircraft.num_states, int(tf / dt)))
 
     # dt_sym = ca.MX.sym('dt', 1)
