@@ -14,7 +14,7 @@ DATA_DIR = os.path.join(BASEPATH, 'data')
 data_real = pd.read_csv(os.path.join(DATA_DIR, 'processed', 'data_sim.csv'))
 data_sim = pd.read_csv(os.path.join(DATA_DIR, 'processed', 'data_sim.csv'))
 
-params = json.load(open(os.path.join(DATA_DIR, 'glider', 'glider_sim_freestream.json')))
+params = json.load(open(os.path.join(DATA_DIR, 'glider', 'problem_definition.json')))['aircraft']
 com = np.array(params['aero_centre_offset'])
 data_full = pd.concat([data_real, data_sim], axis=0)
 com_offset = [0.0067578, 0, -0.000556231]#[0.133, 0, 0.003]
