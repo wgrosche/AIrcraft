@@ -18,7 +18,7 @@ import os
 import sys
 import pandas as pd
 from tqdm import tqdm
-from numba import jit
+# from numba import jit
 
 BASEPATH = os.path.dirname(os.path.abspath(__file__)).split('src')[0]
 NETWORKPATH = os.path.join(BASEPATH, 'data', 'networks')
