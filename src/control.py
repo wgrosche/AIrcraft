@@ -110,9 +110,8 @@ class ControlProblem:
                             5,
                             5,
                             [1e2, 1e2, 1e2],
-                            [1e2, 1e2, 1e2],
                             [1, 1, 1],
-                            [.1, .1, .1]
+                            [1e2, 1e2, 1e2]
                             ), 
                         scale_time = 1,
                         ):
@@ -482,12 +481,6 @@ class ControlProblem:
 
             # extend position guess
             pos_guess = (1 - interpolation) * wp_last + interpolation * wp_next
-
-            # # Calculate horizontal distance traveled for this segment
-            # horizontal_distance = np.linalg.norm(pos_guess[:2] - x_guess[4:6, i-1])
-
-            # pos_guess[2] += horizontal_distance / self.r_glide  # Adjusting 'z' upward based on the glide ratio
-            # print(pos_guess)
 
             x_guess[4:7, i + 1] = np.reshape(pos_guess, (3,))
             
