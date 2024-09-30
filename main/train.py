@@ -185,6 +185,15 @@ def main():
     # plt.savefig(os.path.join(VISUPATH, 'predictions.png'))
     # plt.show(block=True)
 
+    def linearised_model(filepath, inputs, feature):
+        coeff_table = json.load(filepath)
+        (q, alpha, beta, aileron, elevator) = inputs
+
+        if feature =='CX':
+            CZ = np.dot(np.array(coeff_table['CZ']['coefs']), inputs.T) + coeff_table['CZ']['intercept']
+
+            return coeff_table['CX']['k'] * CZ ** 2 + coeff_table['CX']['CD0']
+        return np.dot(np.array(coeff_table[feature]['coefs']), inputs.T) + coeff_table[feature]['intercept']
 
 
     # Assuming 'create_grid', 'model', 'DEVICE', and other variables are already defined
@@ -210,6 +219,8 @@ def main():
         
         # Predict outputs
         y_plotting = model(x_plotting_inp).detach().cpu().numpy()
+
+        
         
         # Clear the axes and replot for each feature
         for i, ax in enumerate(axes):
@@ -217,6 +228,8 @@ def main():
             ax.scatter(inputs[:, 1], inputs[:, 2], targets[:, i], label='True', color='b')
             ax.scatter(inputs[:, 1], inputs[:, 2], outputs[:, i], label='Predicted', color='r')
             ax.scatter(x_plotting.iloc[:, 1], x_plotting.iloc[:, 2], y_plotting[:, i], label='New Prediction', color='g')
+            ax.scatter(x_plotting.iloc[:, 1], x_plotting.iloc[:, 2], linearised_model(open('data/glider/linearised.json'), x_plotting, output_features[i]), label='Linear', color='k')
+            
             ax.set_xlabel(input_features[1])
             ax.set_ylabel(input_features[2])
             ax.set_zlabel(output_features[i])
@@ -225,8 +238,8 @@ def main():
         fig.suptitle(f"Aileron: {aileron_value}, Elevator: {elevator_value}")
 
     # Set up frames for the animation
-    aileron_values = np.linspace(-5, 5, num=20)
-    elevator_values = np.linspace(0, 0, num=1)
+    aileron_values = np.linspace(-5, 5, num=10)
+    elevator_values = np.linspace(-5, 5, num=10)
     frames = [(aileron, elevator) for aileron in aileron_values for elevator in elevator_values]
 
     # Create animation

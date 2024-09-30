@@ -311,8 +311,6 @@ class ControlProblem:
             # self.opti.set_initial(self.opti.lam_g, lam_g0)
         sol = self.opti.solve()
         
-        # TODO: Save functionality
-
         return (sol, self.opti)
 
 
