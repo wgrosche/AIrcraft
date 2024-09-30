@@ -247,48 +247,45 @@ def plot_state(fig, state_list, control, aircraft, t, dt, first=0, control_list 
     # Precompute state updates, forces, moments, and coefficients
     state_updates = aircraft.state_update(state_list[:, :], control, 0.05).full()
     forces_frd = aircraft._forces_frd(state_list[:, :], control).full()
-    forces_ecf = aircraft._forces_ecf(state_list[:, :], control).full()
+    forces_ecf = aircraft._forces_ned(state_list[:, :], control).full()
     moments_frd = aircraft._moments_frd(state_list[:, :], control).full()
-    moments_aero = aircraft._moments_aero(state_list[:, :], control).full()
-    moments_from_forces = aircraft._moments_from_forces(state_list[:, :], control).full()
+    moments_aero = aircraft._moments_aero_frd(state_list[:, :], control).full()
+    moments_from_forces = aircraft._moments_from_forces_frd(state_list[:, :], control).full()
     v_frd_rel = aircraft._v_frd_rel(state_list[:, :], control).full()
     coefficients = aircraft._coefficients(state_list[:, :], control).full()
-    positions_ned = aircraft._p_ned(state_list, control).full()
-    velocities_ned = aircraft.ecef_to_ned(state_list[7:10]).full()
+    angle_rates = [aircraft.compute_euler_and_body_rates(state_list[:4, i], state_list[10:, i]) for i in range(state_list.shape[0])]
 
-    print(np.array(forces_ecf).shape, state_list.shape)
-    
     
     # 3D Trajectory Plot
     ax1 = fig.add_subplot(3, 6, 1, projection='3d')
-    ax1.plot(positions_ned[0, :], positions_ned[1, :], positions_ned[2, :])
-    # ax1.quiver(state_list[4, first:t:step], state_list[5, first:t:step], state_list[6, first:t:step], 
-    #            forces_ecf[0, first:t:step], forces_ecf[1, first:t:step], forces_ecf[2, first:t:step], color='b', length=0.1)
+    ax1.plot(state_list[4, :], state_list[5, :], state_list[6, :])
+    ax1.quiver(state_list[4, first:t:step], state_list[5, first:t:step], state_list[6, first:t:step], 
+               forces_ecf[0, first:t:step], forces_ecf[1, first:t:step], forces_ecf[2, first:t:step], color='b', length=0.1)
     
-    # ax1.quiver(state_list[4, first:t:step], state_list[5, first:t:step], state_list[6, first:t:step], 
-    #            state_updates[7, first:t:step], state_updates[8, first:t:step], state_updates[9, first:t:step], color='k', length=0.1)
+    ax1.quiver(state_list[4, first:t:step], state_list[5, first:t:step], state_list[6, first:t:step], 
+               state_updates[7, first:t:step], state_updates[8, first:t:step], state_updates[9, first:t:step], color='k', length=0.1)
     
-    # ax1.quiver(state_list[4, first:t:step], state_list[5, first:t:step], state_list[6, first:t:step], 
-    #            state_list[7, first:t:step], state_list[8, first:t:step], state_list[9, first:t:step], color='g', length=0.1)
+    ax1.quiver(state_list[4, first:t:step], state_list[5, first:t:step], state_list[6, first:t:step], 
+               state_list[7, first:t:step], state_list[8, first:t:step], state_list[9, first:t:step], color='g', length=0.1)
     
-    # ax1.quiver(state_list[4, first:t:step], state_list[5, first:t:step], state_list[6, first:t:step], 
-    #            directions[first:t:step, 0], directions[first:t:step, 1], directions[first:t:step, 2], color='r', length=0.1)
+    ax1.quiver(state_list[4, first:t:step], state_list[5, first:t:step], state_list[6, first:t:step], 
+               directions[first:t:step, 0], directions[first:t:step, 1], directions[first:t:step, 2], color='r', length=0.1)
     
-    # ax1.quiver(state_list[4, 0], state_list[5, 0], state_list[6, 0], directions[0, 0], directions[0, 1], directions[0, 2], color='k', length=0.1)
+    ax1.quiver(state_list[4, 0], state_list[5, 0], state_list[6, 0], directions[0, 0], directions[0, 1], directions[0, 2], color='k', length=0.1)
 
     ax1.set_xlabel('X')
     ax1.set_ylabel('Y')
     ax1.set_zlabel('Z')
-    # ax1.set_xlim(state_list[4, :t].min(), state_list[4, :t].max())
-    # ax1.set_zlim(state_list[6, :].max(), state_list[6, :].min())
+    ax1.set_xlim(state_list[4, :t].min(), state_list[4, :t].max())
+    ax1.set_zlim(state_list[6, :].max(), state_list[6, :].min())
     ax1.grid(True)
     ax1.set_title('Trajectory (NED)')
 
     # Velocity Plot
     ax2 = fig.add_subplot(3, 6, 2)
-    ax2.plot(velocities_ned[0,:], label='u')
-    ax2.plot(velocities_ned[1,:], label='v')
-    ax2.plot(velocities_ned[2,:], label='w')
+    ax2.plot(state_list[7,:], label='u')
+    ax2.plot(state_list[8,:], label='v')
+    ax2.plot(state_list[9,:], label='w')
     ax2.grid(True)
     ax2.legend()
     ax2.set_title('Velocity (ECEF)')
@@ -318,10 +315,23 @@ def plot_state(fig, state_list, control, aircraft, t, dt, first=0, control_list 
     ax4.set_title('Aerodynamic Angles')
 
     # Angular Rates Plot
+    # ax5 = fig.add_subplot(3, 6, 5)
+    # ax5.plot(state_list[10, first:t], label='p')
+    # ax5.plot(state_list[11, first:t], label='q')
+    # ax5.plot(state_list[12, first:t], label='r')
+    # ax5.legend()
+    # ax5.grid(True)
+    # ax5.set_title('Angular Rates')
+
+    # Angular Rates Plot
     ax5 = fig.add_subplot(3, 6, 5)
-    ax5.plot(state_list[10, first:t], label='p')
-    ax5.plot(state_list[11, first:t], label='q')
-    ax5.plot(state_list[12, first:t], label='r')
+    phis = [item['phi_dot'].full().flatten() for item in angle_rates]
+    thetas = [item['theta_dot'].full().flatten() for item in angle_rates]
+    psis = [item['psi_dot'].full().flatten() for item in angle_rates]
+    print(phis)
+    ax5.plot(phis, label='p')
+    ax5.plot(thetas, label='q')
+    ax5.plot(psis, label='r')
     ax5.legend()
     ax5.grid(True)
     ax5.set_title('Angular Rates')
