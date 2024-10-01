@@ -4,12 +4,13 @@ from mpl_toolkits.mplot3d import Axes3D
 import os
 from scipy.spatial.transform import Rotation as R
 import matplotlib.animation as animation
-from typing import Optional
+from typing import Optional, List, Dict
 import pandas as pd
 import numpy as np
 import h5py
 import json
 import casadi as ca
+from dataclasses import dataclass
 __all__ = ['create_grid', 'plot', 'plot_position', 'plot_orientation', 'plot_controls', 'savefig', 'animated_figure']
 
 def create_grid(data:pd.DataFrame, num_points:Optional[int] = 10) -> pd.DataFrame:
@@ -409,6 +410,127 @@ def plot_state(fig, state_list, control, aircraft, t, dt, first=0, control_list 
 
     fig.tight_layout()
     return fig
+
+
+class TrajectoryPlotter:
+
+    @dataclass
+    class PlotAxes:
+        state_axes:Dict[plt.axes]
+        control_axes:Dict[plt.axes]
+    def __init__(self, target, result, opts = {
+        "state" : {"position" : True},
+        "control" : True,
+        "waypoints" : True
+    }):
+        self.opts = opts
+        self.target = target
+        self.result = result
+        
+        plot_dim = (None, None)
+
+        self.figure = plt.figure()
+        self.axes = self.PlotAxes()
+
+    def setup_axes(self):
+
+        if self.opts['state']['position']:
+            self.state_axes['position'] = self.figure.add_subplot(6, 6, 1, projection = '3d')
+
+    def derive_angles(self, aircraft, state:np.ndarray, control:np.ndarray):
+        """
+        
+        """
+        alpha = aircraft._alpha(state, control).full()
+        
+        return (alpha, beta, phi, theta, psi)
+
+    
+    def orientation(self, quaternion:np.ndarray):
+        """
+        Transforms axes into the frame defined by quaternion:4xN
+        """
+        rotation = R.from_quat(quaternion)
+        x_axis = rotation.apply(np.array([1, 0,  0]))
+        y_axis = rotation.apply(np.array([0, 1,  0]))
+        z_axis = rotation.apply(np.array([0, 0, -1]))
+        return (x_axis, y_axis, z_axis)
+    
+    def plot_position(self, position:Optional[np.ndarray] = None, 
+                      quaternion:Optional[np.ndarray] = None, 
+                      waypoints:Optional[np.ndarray] = None, 
+                      ax:Optional[Axes3D] = None):
+        plot_waypoints = True
+        if not isinstance(position, np.ndarray):
+            position = self.state[4:7,:]
+        if not isinstance(quaternion, np.ndarray):
+            quaternion = self.state[:4, :]
+        if not isinstance(waypoints, np.ndarray):
+            plot_waypoints = False
+        if not isinstance(ax, Axes3D):
+            ax = self.state_axes['position']
+        
+        step = self.state.shape[1] // 10
+
+        
+        (x_axis, y_axis, z_axis) = self.orientation(quaternion)
+
+        if isinstance(waypoints):
+            ax.plot(waypoints[0, :], waypoints[1, :], waypoints[2, :], )
+
+        # plot trajectory
+        ax.plot(position[0, :], position[1, :], position[2, :])
+
+        ax.quiver(position[0, ::step], position[1, ::step], position[2, ::step], 
+                x_axis[::step, 0], x_axis[::step, 1], x_axis[::step, 2], 
+                color='r', length=0.1, label = 'forward')
+        ax.quiver(position[0, ::step], position[1, ::step], position[2, ::step], 
+                y_axis[::step, 0], y_axis[::step, 1], y_axis[::step, 2], 
+                color='g', length=0.1, label = 'right')
+        ax.quiver(position[0, ::step], position[1, ::step], position[2, ::step], 
+                z_axis[::step, 0], z_axis[::step, 1], z_axis[::step, 2], 
+                color='b', length=0.1, label = 'down')
+        
+        ax.set_xlabel('North')
+        ax.set_ylabel('East')
+        ax.set_zlabel('Down')
+        ax.set_xlim(position[0, :].min(), position[0, :].max())
+        ax.set_zlim(position[2, :].max(), position[2, :].min())
+        ax.grid(True)
+        ax.set_title('Trajectory (NED)')
+
+    def plot_angles(self, euler, alpha, beta):
+
+
+    def plot_state(self, state:np.ndarray):
+
+        # 3D Trajectory Plot
+        ax1 = fig.add_subplot(3, 6, 1, projection='3d')
+        ax1.plot(state_list[4, :], state_list[5, :], state_list[6, :])
+        ax1.quiver(state_list[4, first:t:step], state_list[5, first:t:step], state_list[6, first:t:step], 
+                forces_ecf[0, first:t:step], forces_ecf[1, first:t:step], forces_ecf[2, first:t:step], color='b', length=0.1)
+        
+        ax1.quiver(state_list[4, first:t:step], state_list[5, first:t:step], state_list[6, first:t:step], 
+                state_updates[7, first:t:step], state_updates[8, first:t:step], state_updates[9, first:t:step], color='k', length=0.1)
+        
+        ax1.quiver(state_list[4, first:t:step], state_list[5, first:t:step], state_list[6, first:t:step], 
+                state_list[7, first:t:step], state_list[8, first:t:step], state_list[9, first:t:step], color='g', length=0.1)
+        
+        ax1.quiver(state_list[4, first:t:step], state_list[5, first:t:step], state_list[6, first:t:step], 
+                directions[first:t:step, 0], directions[first:t:step, 1], directions[first:t:step, 2], color='r', length=0.1)
+        
+        ax1.quiver(state_list[4, 0], state_list[5, 0], state_list[6, 0], directions[0, 0], directions[0, 1], directions[0, 2], color='k', length=0.1)
+
+        
+
+        self.state_axes.position.plot()
+        pass
+
+    def plot_control(self):
+        pass
+
+    def plot_waypoint_variables(self):
+        pass
 
 if __name__ == '__main__':
     # Example usage
