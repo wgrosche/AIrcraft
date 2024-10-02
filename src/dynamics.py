@@ -19,6 +19,7 @@ import sys
 import pandas as pd
 from tqdm import tqdm
 # from numba import jit
+import h5py
 
 BASEPATH = os.path.dirname(os.path.abspath(__file__)).split('src')[0]
 NETWORKPATH = os.path.join(BASEPATH, 'data', 'networks')
@@ -28,7 +29,7 @@ sys.path.append(BASEPATH)
 
 from src.models import ScaledModel
 from src.utils import load_model
-from src.plotting import plot_state
+from src.plotting import TrajectoryPlotter
 from dataclasses import dataclass
 
 print(DEVICE)
@@ -704,13 +705,14 @@ if __name__ == '__main__':
     # state_list = state_list[:, :t-10]
     # print(state_list[0, :])
     first = None
-    # t -= 5
 
-    # print(f"Final State: {state_list[:, t-10:t]}")
-    fig = plt.figure(figsize=(18, 9))
-    fig = plot_state(fig, state_list, control, aircraft, t, dt, first=0, control_list = control_list)
-    fig.savefig('test.png')
-    plt.show()
+    def save(filepath):
+        with h5py.File(filepath, "a") as h5file:
+            grp = h5file.create_group(f'simulation')
+            grp.create_dataset('state', data=state_list)
+            grp.create_dataset('control', data=control)
+    filepath = os.path.join("data", "trajectories", "simulation.h5")
+    save(filepath)
 
-    plt.plot(control_list)
-    plt.show(block=True)
+    plotter = TrajectoryPlotter(filepath, aircraft)
+    plotter.show
