@@ -305,11 +305,14 @@ class ControlProblem:
         if filepath is not None:
             # save the state, control and time to a file
             with h5py.File(filepath, "a") as h5file:
-                for i, (X, U, time) in enumerate(zip(self.sol_state_list[-10:], self.sol_control_list[-10:], self.final_times[-10:])):
+                for i, (X, U, time, lam, mu, nu) in enumerate(zip(self.sol_state_list[-10:], self.sol_control_list[-10:], self.final_times[-10:], self.lam_list[-10:], self.mu_list[-10:], self.nu_list[-10:])):
                     grp = h5file.create_group(f'iteration_{iteration - 10 + i}')
                     grp.create_dataset('state', data=X)
                     grp.create_dataset('control', data=U)
                     grp.create_dataset('time', data=time)
+                    grp.create_dataset('lam', data=lam)
+                    grp.create_dataset('mu', data=mu)
+                    grp.create_dataset('nu', data=nu)
 
     def plot_convergence(self, ax:plt.axes, sol:ca.OptiSol):
         ax.semilogy(sol.stats()['iterations']['inf_du'], label="Dual infeasibility")
@@ -331,6 +334,9 @@ class ControlProblem:
             self.sol_state_list.append(self.opti.debug.value(self.state))
             self.sol_control_list.append(self.opti.debug.value(self.control))
             self.final_times.append(self.opti.debug.value(self.time))
+            self.lam_list.append(self.opti.debug.value(self.lam))
+            self.mu_list.append(self.opti.debug.value(self.mu))
+            self.nu_list.append(self.opti.debug.value(self.nu))
             if iteration % 10 == 0:
                 self.save_progress(filepath, iteration)
 
@@ -343,6 +349,9 @@ class ControlProblem:
         self.sol_state_list = []
         self.sol_control_list = []
         self.final_times = []
+        self.lam_list = []
+        self.mu_list = []
+        self.nu_list = []
 
         if filepath is not None:
             if os.path.exists(filepath):

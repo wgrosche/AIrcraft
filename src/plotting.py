@@ -4,7 +4,7 @@ from mpl_toolkits.mplot3d import Axes3D
 import os
 from scipy.spatial.transform import Rotation as R
 import matplotlib.animation as animation
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Union
 import pandas as pd
 import numpy as np
 import h5py
@@ -416,34 +416,97 @@ class TrajectoryPlotter:
 
     @dataclass
     class PlotAxes:
-        state_axes:Dict[plt.axes]
-        control_axes:Dict[plt.axes]
-    def __init__(self, target, result, opts = {
-        "state" : {"position" : True},
-        "control" : True,
-        "waypoints" : True
-    }):
-        self.opts = opts
+        position:plt.axes
+        angles:plt.axes
+        velocity:plt.axes
+        rates:plt.axes
+        controls:plt.axes
+        thrust:plt.axes
+        convergence:plt.axes
+        forces:plt.axes
+        progress:plt.axes
+
+    def __init__(self, target, result
+    ):
         self.target = target
         self.result = result
         
         plot_dim = (None, None)
 
         self.figure = plt.figure()
-        self.axes = self.PlotAxes()
+        position = self.figure.add_subplot(3, 3, 1, projection='3d')
+        axs=[]
+        for i in range(8):
+            axs[i] = self.figure.add_subplot(3, 3, i+2)
 
-    def setup_axes(self):
+        self.axes = self.PlotAxes(position=position, angles=axs[0], 
+                                  velocity=axs[1], rates=axs[2], forces=axs[3], 
+                                  controls=axs[4], thrust=axs[5], 
+                                  convergence=axs[6], progress = axs[9])
 
-        if self.opts['state']['position']:
-            self.state_axes['position'] = self.figure.add_subplot(6, 6, 1, projection = '3d')
+    def read_trajectory(self, filepath, iteration):
+        with h5py.File(filepath, "r") as h5file:
+            # Access the group for the current iteration
+            grp = h5file[f'iteration_{iteration}']
+            state = grp['state'][:]
+            control = grp['control'][:]
+            time = grp['time'][:]
+            lam = grp['lam'][:]
+            mu = grp['mu'][:]
+            nu = grp['nu'][:]
+        return state, control, time, lam, mu, nu
+
+    def load_last_iteration(filepath):
+        """
+        Load the state, control, and time from the last iteration in the HDF5 file.
+
+        Parameters:
+        - filepath: Path to the HDF5 file.
+
+        Returns:
+        - A dictionary containing the state, control, and time from the last iteration.
+        """
+        with h5py.File(filepath, "r") as h5file:
+            # Get all iteration keys (group names) and sort them
+            iteration_keys = list(h5file.keys())
+            iteration_keys.sort(key=lambda x: int(x.split('_')[-1]))  # Ensure correct numeric ordering
+
+            # Access the last iteration group
+            last_iteration_key = iteration_keys[-1]  # The last group key
+            last_grp = h5file[last_iteration_key]     # Access the group
+
+            # Extract datasets from the last group
+            last_state = last_grp['state'][:]
+            last_control = last_grp['control'][:]
+            last_time = last_grp['time'][:]
+            lam = last_grp['lam'][:]
+            mu = last_grp['mu'][:]
+            nu = last_grp['nu'][:]
+
+        return {
+            'iteration': last_iteration_key,
+            'state': last_state,
+            'control': last_control,
+            'time': last_time,
+            'lam':lam,
+            'mu': mu,
+            'nu': nu
+        }
+
 
     def derive_angles(self, aircraft, state:np.ndarray, control:np.ndarray):
         """
         
         """
-        alpha = aircraft._alpha(state, control).full()
-        
-        return (alpha, beta, phi, theta, psi)
+        alpha = aircraft._alpha(state, control).full().flatten()
+        beta = aircraft._beta(state, control).full().flatten()
+
+        q_frd_ned = state[:4, :]
+        omega_frd_frd = state[-3:, :]
+
+        euler = aircraft.compute_euler_and_body_rates(self, q_frd_ned, omega_frd_frd)
+
+        return (euler, alpha, beta)
 
     
     def orientation(self, quaternion:np.ndarray):
@@ -458,24 +521,21 @@ class TrajectoryPlotter:
     
     def plot_position(self, position:Optional[np.ndarray] = None, 
                       quaternion:Optional[np.ndarray] = None, 
-                      waypoints:Optional[np.ndarray] = None, 
+                      waypoints:Optional[Union[np.ndarray, np.ndarray]] = None, 
                       ax:Optional[Axes3D] = None):
-        plot_waypoints = True
         if not isinstance(position, np.ndarray):
             position = self.state[4:7,:]
         if not isinstance(quaternion, np.ndarray):
             quaternion = self.state[:4, :]
-        if not isinstance(waypoints, np.ndarray):
-            plot_waypoints = False
         if not isinstance(ax, Axes3D):
-            ax = self.state_axes['position']
+            ax = self.axes.position
         
         step = self.state.shape[1] // 10
 
         
         (x_axis, y_axis, z_axis) = self.orientation(quaternion)
 
-        if isinstance(waypoints):
+        if isinstance(waypoints, np.ndarray):
             ax.plot(waypoints[0, :], waypoints[1, :], waypoints[2, :], )
 
         # plot trajectory
@@ -499,39 +559,142 @@ class TrajectoryPlotter:
         ax.grid(True)
         ax.set_title('Trajectory (NED)')
 
-    def plot_angles(self, euler, alpha, beta):
+    def plot_angles(self, euler, alpha, beta, ax:Optional[plt.axes]=None):
+        if not isinstance(ax, plt.axes):
+            ax = self.axes.angles
 
+        phis = [item['phi'].full().flatten() for item in euler]
+        thetas = [item['theta'].full().flatten() for item in euler]
+        psis = [item['psi'].full().flatten() for item in euler]
 
-    def plot_state(self, state:np.ndarray):
+        ax.plot(np.rad2deg(alpha), label=r'$\alpha$ (attack)')
+        ax.plot(np.rad2deg(beta), label=r'$\beta$ (sideslip)')
 
-        # 3D Trajectory Plot
-        ax1 = fig.add_subplot(3, 6, 1, projection='3d')
-        ax1.plot(state_list[4, :], state_list[5, :], state_list[6, :])
-        ax1.quiver(state_list[4, first:t:step], state_list[5, first:t:step], state_list[6, first:t:step], 
-                forces_ecf[0, first:t:step], forces_ecf[1, first:t:step], forces_ecf[2, first:t:step], color='b', length=0.1)
-        
-        ax1.quiver(state_list[4, first:t:step], state_list[5, first:t:step], state_list[6, first:t:step], 
-                state_updates[7, first:t:step], state_updates[8, first:t:step], state_updates[9, first:t:step], color='k', length=0.1)
-        
-        ax1.quiver(state_list[4, first:t:step], state_list[5, first:t:step], state_list[6, first:t:step], 
-                state_list[7, first:t:step], state_list[8, first:t:step], state_list[9, first:t:step], color='g', length=0.1)
-        
-        ax1.quiver(state_list[4, first:t:step], state_list[5, first:t:step], state_list[6, first:t:step], 
-                directions[first:t:step, 0], directions[first:t:step, 1], directions[first:t:step, 2], color='r', length=0.1)
-        
-        ax1.quiver(state_list[4, 0], state_list[5, 0], state_list[6, 0], directions[0, 0], directions[0, 1], directions[0, 2], color='k', length=0.1)
-
+        ax.plot(np.rad2deg(phis), label=r'$\phi$ (roll)')
+        ax.plot(np.rad2deg(thetas), label=r'$\theta$ (pitch)')
+        ax.plot(np.rad2deg(psis), label=r'$\psi$ (yaw)')
         
 
-        self.state_axes.position.plot()
-        pass
+        # ax.axhline(10, color='r')
+        # ax.axhline(-10, color='r')
+        ax.legend()
+        ax.grid(True)
+        ax.set_title('Aerodynamic and Euler Angles')
 
-    def plot_control(self):
-        pass
+    def plot_velocity(self, state, control, ax:Optional[plt.axes] = None):
+        if not isinstance(ax, plt.axes):
+            ax = self.axes.velocity
 
-    def plot_waypoint_variables(self):
-        pass
+        v_frd_rel = self.aircraft._v_frd_rel(state, control).full()
 
+        ax.plot(v_frd_rel[0, :], label='u')
+        ax.plot(v_frd_rel[1, :], label='v')
+        ax.plot(v_frd_rel[2, :], label='w')
+
+        ax.legend()
+        ax.grid(True)
+        ax.set_title('Velocity (Body Frame)')
+
+    def plot_rates(self, euler, ax:Optional[plt.axes] = None):
+        if not isinstance(ax, plt.axes):
+            ax = self.axes.rates
+        phis = [item['phi_dot'].full().flatten() for item in euler]
+        thetas = [item['theta_dot'].full().flatten() for item in euler]
+        psis = [item['psi_dot'].full().flatten() for item in euler]
+
+        ax.plot(phis, label=r'$\dot{\phi}$')
+        ax.plot(thetas, label=r'$\dot{\theta}$')
+        ax.plot(psis, label=r'$\dot{\psi}$')
+        ax.legend()
+        ax.grid(True)
+        ax.set_title('Angular Rates')
+
+    def plot_forces(self, state, control, ax:Optional[plt.axes] = None):
+        if not isinstance(ax, plt.axes):
+            ax = self.axes.forces
+        forces_frd = self.aircraft._forces_frd(state, control).full()
+
+        ax.plot(forces_frd[0, :], label='Fx')
+        ax.plot(forces_frd[1, :], label='Fy')
+        ax.plot(forces_frd[2, :], label='Fz')
+        ax.legend()
+        ax.grid(True)
+        ax.set_title('Aero Forces (FRD)')
+
+    def plot_state(self, iteration:int):
+        if iteration == -1:
+            state, control, _, _, _, _ = self.load_last_iteration(self.filepath)
+        else:
+            state, control, time = self.read_trajectory(self.filepath, iteration)
+
+        position = state[4:7, :] 
+        quaternion = state[:4, :] 
+        # waypoints = self.waypoints
+        
+        self.plot_position(position=position, quaternion=quaternion)
+
+        euler, alpha, beta = self.derive_angles(self.aircraft, state, control)
+
+        self.plot_angles(euler, alpha, beta)
+        self.plot_velocity(state, control)
+
+        self.plot_rates(euler)
+        self.plot_forces(state, control)
+        
+    def plot_deflections(self, control, ax:Optional[plt.axes] = None):
+        if not isinstance(ax, plt.axes):
+            ax = self.axes.controls
+        ax.plot(control[0, :], label = 'aileron')
+        ax.plot(control[1, :], label = 'elevator')
+        ax.plot(control[2, :], label = 'rudder')
+        ax.legend()
+        ax.grid(True)
+        ax.set_title('Control Surface Deflctions')
+
+    def plot_thrust(self, control, ax:Optional[plt.axes] = None):
+        if not isinstance(ax, plt.axes):
+            ax = self.axes.thrust
+        ax.plot(control[3, :], label = r'$T_x$')
+        ax.plot(control[4, :], label = r'$T_y$')
+        ax.plot(control[5, :], label = r'$T_z$')
+        ax.legend()
+        ax.grid(True)
+        ax.set_title('Thrust (N)')
+
+    def plot_progress_variables(self, iteration, ax:Optional[plt.axes] = None):
+        if not isinstance(ax, plt.axes):
+            ax = self.axes.progress
+        if iteration == -1:
+            _, _, _, lam, mu, nu =  self.load_last_iteration(self.filepath)
+        else:
+            result = self.read_trajectory(self.filepath, iteration)
+            lam, mu, nu = result['lam'], result['mu'], result['nu']
+       
+
+        ax.plot(lam, label = r"$\lambda")
+        ax.plot(mu, label = r"$\mu")
+        ax.plot(nu, label = r"$\nu")
+
+        ax.legend()
+        ax.grid(True)
+        ax.set_title('Progress Variables')
+
+    def plot_control(self, iteration):
+        if iteration == -1:
+            res_dict = self.load_last_iteration(self.filepath)
+            control = res_dict['control']
+        else:
+            _, control, _, _, _, _ = self.read_trajectory(self.filepath, iteration)
+
+        self.plot_deflections(control)
+        self.plot_thrust(control)
+        
+    def plot(self, iteration):
+        self.plot_state(iteration)
+        self.plot_control(iteration)
+        self.plot_progress_variables(iteration)
+
+        self.figure.show(block = True)
 if __name__ == '__main__':
     # Example usage
     positions = [(0, 0, 0), (1, 1, 0), (2, 1, 1), (3, 2, 1), (4, 3, 1)]
