@@ -9,10 +9,10 @@ BASEPATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 print(BASEPATH)
 sys.path.append(BASEPATH)
 
-from src.dynamics import Aircraft, load_model
+from src.dynamics import Aircraft
 from collections import namedtuple
 from scipy.spatial.transform import Rotation as R
-from src.utils import TrajectoryConfiguration
+from src.utils import TrajectoryConfiguration, load_model
 from matplotlib.pyplot import spy
 import json
 import matplotlib.pyplot as plt

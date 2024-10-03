@@ -28,27 +28,11 @@ DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else
 sys.path.append(BASEPATH)
 
 from src.models import ScaledModel
-from src.utils import load_model
+from src.utils import load_model, TrajectoryConfiguration
 from src.plotting import TrajectoryPlotter
 from dataclasses import dataclass
 
 print(DEVICE)
-
-def load_model(
-        filepath:str = os.path.join(NETWORKPATH,'model-dynamics.pth'), 
-        device = DEVICE
-        ) -> ScaledModel:
-    checkpoint = torch.load(filepath, map_location=device)
-
-    scaler = (checkpoint['input_mean'], 
-              checkpoint['input_std'], 
-              checkpoint['output_mean'], 
-              checkpoint['output_std'])
-    
-    model = ScaledModel(5, 6, scaler=scaler)
-    model.load_state_dict(checkpoint['model_state_dict'])
-    model.eval()
-    return model
 
 class Aircraft:
     """ 
@@ -487,46 +471,58 @@ class Aircraft:
         Computes the Euler angles and angular rates given the orientation quaternion and angular rates in the FRD frame.
         
         Parameters:
-        q_frd_ned: A CasADi or NumPy array representing the quaternion (w, x, y, z) that maps from FRD to NED.
-        omega_frd_frd: A CasADi or NumPy array representing the angular rates in the FRD frame [p, q, r].
+        q_frd_ned: A CasADi array representing the quaternions (w, x, y, z) that map from FRD to NED. Shape: (4, n)
+        omega_frd_frd: A CasADi array representing the angular rates in the FRD frame [p, q, r]. Shape: (3, n)
         
         Returns:
-        phi, theta, psi: The Euler angles (roll, pitch, yaw) in radians.
-        p, q, r: The angular rates in the body-fixed (FRD) frame.
+        A dictionary containing vectorized Euler angles, angular rates, and their derivatives.
         """
-    
-        # Extract the components of the quaternion
-        w, x, y, z = q_frd_ned[0], q_frd_ned[1], q_frd_ned[2], q_frd_ned[3]
-        
-        # Calculate the Euler angles from the quaternion
-        sinr_cosp = 2 * (w * x + y * z)
-        cosr_cosp = 1 - 2 * (x * x + y * y)
-        phi = ca.atan2(sinr_cosp, cosr_cosp)  # Roll angle
-        
-        sinp = 2 * (w * y - z * x)
-        theta = ca.asin(sinp)  # Pitch angle
 
-        siny_cosp = 2 * (w * z + x * y)
-        cosy_cosp = 1 - 2 * (y * y + z * z)
-        psi = ca.atan2(siny_cosp, cosy_cosp)  # Yaw angle
+        # Extract the components of the quaternions
+        x, y, z, w = q_frd_ned[0, :], q_frd_ned[1, :], q_frd_ned[2, :], q_frd_ned[3, :]
+        n = q_frd_ned.shape[1]  # number of sets
+        phi = np.zeros(n)
+        theta = np.zeros(n)
+        psi = np.zeros(n)
+        T_list = []
+        for i in range(n):
+            x, y, z, w = q_frd_ned[0, i], q_frd_ned[1, i], q_frd_ned[2, i], q_frd_ned[3, i]
+            C = ca.vertcat(
+                    ca.horzcat((w**2 + x**2 - y**2 - z**2), 2*(x*y + w*z), (2*(x*z - w*y))),
+                    ca.horzcat((2*(x*y - w*z)), (w**2 - x**2 + y**2 - z**2), (2*(y*z + w*x))),
+                    ca.horzcat((2*(x*z + w*y)), (2*(y*z - w*x)), (w**2 - x**2 - y**2 + z**2))
+                )
+            # Calculate the Euler angles from the DCM
+            phi[i] = ca.atan2(C[1,2], C[2,2])  # Roll angle
+            theta[i] = -ca.asin(C[0,2])  # Pitch angle
+            psi[i] = ca.atan2(C[0,1], C[0,0])  # Yaw angle
+
+            T_i = ca.vertcat(
+                ca.horzcat(1, 0, -ca.sin(theta[i])),
+                ca.horzcat(0, ca.cos(phi[i]), ca.sin(phi[i]) * ca.cos(theta[i])),
+                ca.horzcat(0, -ca.sin(phi[i]), ca.cos(phi[i]) * ca.cos(theta[i]))
+            )
+            T_list.append(T_i)
         
-        # Euler angles to body rates transformation matrix
-        T = ca.vertcat(
-            ca.horzcat(1, 0, -ca.sin(theta)),
-            ca.horzcat(0, ca.cos(phi), ca.sin(phi) * ca.cos(theta)),
-            ca.horzcat(0, -ca.sin(phi), ca.cos(phi) * ca.cos(theta))
-        )
+        
+        
         
         # Find the Euler angle derivatives from the body rates
-        euler_rates = ca.solve(T, omega_frd_frd)
+        euler_rates = np.zeros((3, n))
+        for i in range(n):
+            euler_rates[:, i] = ca.solve(T_list[i], omega_frd_frd[:, i]).full().flatten()
         
         # Extract the individual angular rates p, q, r from omega_frd_frd
-        p, q, r = omega_frd_frd[0], omega_frd_frd[1], omega_frd_frd[2]
+        p, q, r = omega_frd_frd[0, :], omega_frd_frd[1, :], omega_frd_frd[2, :]
         
-        return {'phi': phi, 'theta': theta, 'psi': psi, 'p': p, 'q': q, 'r': r, 
-                'phi_dot': euler_rates[0], 'theta_dot': euler_rates[1], 'psi_dot': euler_rates[2]}
-
-
+        return {
+            'phi': phi, 'theta': theta, 'psi': psi,
+            'p': p, 'q': q, 'r': r,
+            'phi_dot': euler_rates[0, :],
+            'theta_dot': euler_rates[1, :],
+            'psi_dot': euler_rates[2, :],
+            'T_list': T_list  # Include the list of transformation matrices in the output if needed
+        }
 
     @property
     def omega_frd_ned_dot(self):
@@ -629,12 +625,14 @@ class Aircraft:
    
 
 if __name__ == '__main__':
-    aircraft_params = json.load(open(os.path.join(BASEPATH, 'data', 'glider', 'glider_fs.json')))
-    perturbation = False
-
     model = load_model()
-    
-    aircraft = Aircraft(aircraft_params, model, STEPS=100, LINEAR=True)
+    traj_dict = json.load(open('data/glider/problem_definition.json'))
+    trajectory_config = TrajectoryConfiguration(traj_dict)
+
+
+    aircraft = Aircraft(traj_dict['aircraft'], model, LINEAR=True)
+
+    perturbation = False
     
     trim_state_and_control = None
     if trim_state_and_control is not None:
@@ -651,7 +649,7 @@ if __name__ == '__main__':
         state = ca.vertcat(q0, x0, v0, omega0)
         control = np.zeros(aircraft.num_controls)
         control[0] = 1
-        control[6:9] = aircraft_params['aero_centre_offset']
+        control[6:9] = traj_dict['aircraft']['aero_centre_offset']
 
     dyn = aircraft.state_update
     dt = .1
@@ -708,11 +706,16 @@ if __name__ == '__main__':
 
     def save(filepath):
         with h5py.File(filepath, "a") as h5file:
-            grp = h5file.create_group(f'simulation')
+            grp = h5file.create_group(f'iteration_0')
             grp.create_dataset('state', data=state_list)
-            grp.create_dataset('control', data=control)
+            grp.create_dataset('control', data=control.reshape(-1, 1))
+    
+    
     filepath = os.path.join("data", "trajectories", "simulation.h5")
+    if os.path.exists(filepath):
+        os.remove(filepath)
     save(filepath)
 
     plotter = TrajectoryPlotter(filepath, aircraft)
-    plotter.show
+    plotter.plot(0)
+    plt.show(block = True)
