@@ -22,3 +22,7 @@ Information on the models used to model the system dynamics can be found [here](
 ## Examples
 
 [here](/docs/examples.md)
+
+# This might be useful
+
+[Post on how to remove jupyter notebook output from git commits.](https://gist.github.com/33eyes/431e3d432f73371509d176d0dfb95b6e)

@@ -513,7 +513,7 @@ class ControlProblem:
             vel_guess = velocity_guess * direction
             x_guess[7:10, i + 1] = np.reshape(velocity_guess * direction, (3,))
 
-            rotation = R.align_vectors(np.array(direction).reshape(1, -1), [[1, 0, 0]])[0]
+            rotation, _ = R.align_vectors(np.array(direction).reshape(1, -1), [[1, 0, 0]])[0]
 
             # Check if the aircraft is moving in the opposite direction
             if np.dot(direction.T, [1, 0, 0]) < 0:
