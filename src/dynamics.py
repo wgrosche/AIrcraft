@@ -278,6 +278,82 @@ class Aircraft:
 
         self._phi = ca.Function('roll', [self.state, self.control], [roll]).expand()
         return roll
+
+    @property
+    def phi(self):
+        q_frd_ned = self.q_frd_ned  # Quaternions [x, y, z, w]
+        x, y, z, w = q_frd_ned[0], q_frd_ned[1], q_frd_ned[2], q_frd_ned[3]
+        phi = ca.atan2(2 * (w * x + y * z), 1 - 2 * (x**2 + y**2))
+        self._phi = ca.Function('phi', [self.state], [phi])
+        return phi
+
+    @property
+    def theta(self):
+        q_frd_ned = self.q_frd_ned
+        x, y, z, w = q_frd_ned[0], q_frd_ned[1], q_frd_ned[2], q_frd_ned[3]
+        theta = ca.asin(2 * (w * y - z * x))
+        self._theta = ca.Function('theta', [self.state], [theta])
+        return theta
+
+    @property
+    def psi(self):
+        q_frd_ned = self.q_frd_ned
+        x, y, z, w = q_frd_ned[0], q_frd_ned[1], q_frd_ned[2], q_frd_ned[3]
+        psi = ca.atan2(2 * (w * z + x * y), 1 - 2 * (y**2 + z**2))
+        self._psi = ca.Function('psi', [self.state], [psi])
+        return psi
+
+    @property
+    def p(self):
+        omega_frd_frd = self.omega_frd_ned  # Angular rates [p, q, r]
+        p = omega_frd_frd[0]
+        self._p = ca.Function('p', [self.state], [p])
+        return p
+
+    @property
+    def q(self):
+        omega_frd_frd = self.omega_frd_ned
+        q = omega_frd_frd[1]
+        self._q = ca.Function('q', [self.state], [q])
+        return q
+
+    @property
+    def r(self):
+        omega_frd_frd = self.omega_frd_ned
+        r = omega_frd_frd[2]
+        self._r = ca.Function('r', [self.state], [r])
+        return r
+
+    @property
+    def phi_dot(self):
+        phi = self.phi
+        theta = self.theta
+        p = self.p
+        q = self.q
+        r = self.r
+        phi_dot = p + ca.sin(phi) * ca.tan(theta) * q + ca.cos(phi) * ca.tan(theta) * r
+        self._phi_dot = ca.Function('phi_dot', [self.state], [phi_dot])
+        return phi_dot
+
+    @property
+    def theta_dot(self):
+        phi = self.phi
+        q = self.q
+        r = self.r
+        theta_dot = ca.cos(phi) * q - ca.sin(phi) * r
+        self._theta_dot = ca.Function('theta_dot', [self.state], [theta_dot])
+        return theta_dot
+
+    @property
+    def psi_dot(self):
+        phi = self.phi
+        theta = self.theta
+        q = self.q
+        r = self.r
+        psi_dot = (ca.sin(phi) / ca.cos(theta)) * q + (ca.cos(phi) / ca.cos(theta)) * r
+        self._psi_dot = ca.Function('psi_dot', [self.state], [psi_dot])
+        return psi_dot
+
     
     @property
     def beta(self):
@@ -339,8 +415,10 @@ class Aircraft:
 
         # angular rate contributions
         # outputs[0] += 0.05 * self.omega_b_i_frd[0]
+        # outputs[1] += -0.05 * self.omega_frd_ned[2]
+        # outputs[2] += -0.1 * self.omega_frd_ned[0]
         outputs[1] += -0.05 * self.omega_frd_ned[2]
-        outputs[2] += -0.1 * self.omega_frd_ned[0]
+        outputs[2] += -0.01 * self.omega_frd_ned[0]
 
         """
         The relative amplitudes of the damping factors are taken from the cessna
@@ -372,7 +450,7 @@ class Aircraft:
         outputs[3] += 0.001 * self.omega_frd_ned[2] * scale
 
         # pitching moment rates
-        outputs[4] += -0.1 * self.omega_frd_ned[1] * scale
+        outputs[4] += -0.04 * self.omega_frd_ned[1] * scale
 
         # yaw moment rates
         outputs[5] *= -1
@@ -407,7 +485,8 @@ class Aircraft:
     
     @property
     def moments_from_forces_frd(self):
-        moments_from_forces = ca.cross(self.com, self.forces_frd)
+        com = self.com
+        moments_from_forces = ca.cross(com, self.forces_frd) # doesnt make any sense TODO: look at why this seems to improve - self.grav * self.mass)
         self._moments_from_forces_frd = ca.Function('moments_from_forces_frd', 
             [self.state, self.control], [moments_from_forces])
         
@@ -630,7 +709,7 @@ if __name__ == '__main__':
     trajectory_config = TrajectoryConfiguration(traj_dict)
 
 
-    aircraft = Aircraft(traj_dict['aircraft'], model, LINEAR=True)
+    aircraft = Aircraft(traj_dict['aircraft'], model, LINEAR=False)
 
     perturbation = False
     
@@ -641,19 +720,19 @@ if __name__ == '__main__':
     else:
 
         x0 = np.zeros(3)
-        v0 = ca.vertcat([50, 0, 0])
-        q0 = Quaternion(ca.vertcat(0, 0, 0, 1))
+        v0 = ca.vertcat([80, 0, 0])
+        q0 = Quaternion(ca.vertcat(1, 0, 0, 0))
         # q0 = ca.vertcat([0.215566, -0.568766, 0.255647, 0.751452])#q0.inverse()
         omega0 = np.array([0, 0, 0])
 
         state = ca.vertcat(q0, x0, v0, omega0)
         control = np.zeros(aircraft.num_controls)
-        control[0] = 1
+        control[1] = 1
         control[6:9] = traj_dict['aircraft']['aero_centre_offset']
 
     dyn = aircraft.state_update
-    dt = .1
-    tf = 30.0
+    dt = 1
+    tf = 100.0
     state_list = np.zeros((aircraft.num_states, int(tf / dt)))
 
     # dt_sym = ca.MX.sym('dt', 1)
@@ -703,11 +782,11 @@ if __name__ == '__main__':
     # state_list = state_list[:, :t-10]
     # print(state_list[0, :])
     first = None
-
+    t -=5
     def save(filepath):
         with h5py.File(filepath, "a") as h5file:
             grp = h5file.create_group(f'iteration_0')
-            grp.create_dataset('state', data=state_list)
+            grp.create_dataset('state', data=state_list[:, :t])
             grp.create_dataset('control', data=control.reshape(-1, 1))
     
     

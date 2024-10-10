@@ -182,7 +182,7 @@ class ControlProblem:
         opti.subject_to(node.state_next == dynamics(node.state, node.control, dt))
 
 
-    def waypoint_constraint(self, node:Node, waypoint_node:int):
+    def waypoint_constraint(self, node:Node):#, waypoint_node:int):
         """
         Waypoint constraint implementation from:
         https://rpg.ifi.uzh.ch/docs/ScienceRobotics21_Foehn.pdf
@@ -193,20 +193,20 @@ class ControlProblem:
         waypoints = self.waypoints[1:, waypoint_indices]
         opti = self.opti
         
-        if node.index > self.switch_var[waypoint_node]:
-            waypoint_node += 1
+        # if node.index > self.switch_var[waypoint_node]:
+        #     waypoint_node += 1
         
         for j in range(num_waypoints):
             opti.subject_to(node.lam_next[j] - node.lam[j] + node.mu[j] == 0)
             opti.subject_to(node.mu[j] >= 0)
             if j < num_waypoints - 1:
-                opti.subject_to(node.mu[j] - node.mu[j + 1] <= 0)
+                opti.subject_to(node.lam[j] - node.lam[j + 1] <= 0)
 
             diff = node.state[4 + waypoint_indices] - waypoints[j, waypoint_indices]
             opti.subject_to(opti.bounded(0, node.nu[j], tolerance**2))
             opti.subject_to(node.mu[j] * (ca.dot(diff, diff) - node.nu[j]) == 0)
 
-        return waypoint_node
+        return None #waypoint_node
 
     def loss(self, state:Optional[ca.MX] = None, control:Optional[ca.MX] = None, 
              time:Optional[ca.MX] = None):
@@ -244,7 +244,7 @@ class ControlProblem:
 
         opti.subject_to(lam[:, 0] == [1] * num_waypoints)
 
-        waypoint_node = 0
+        # waypoint_node = 0
         for index in range(nodes):
 
             node_data = self.Node(
@@ -261,8 +261,8 @@ class ControlProblem:
             self.state_constraint(node_data, dt)
             
             self.control_constraint(node_data)
-            
-            waypoint_node = self.waypoint_constraint(node_data, waypoint_node)
+            self.waypoint_constraint(node_data)#, waypoint_node)
+            # waypoint_node = self.waypoint_constraint(node_data, waypoint_node)
         
         if self.VERBOSE:
             print("Initial State: ", initial_state)
@@ -321,6 +321,7 @@ class ControlProblem:
         ax.set_xlabel('Iterations')
         ax.set_ylabel('Infeasibility (log scale)')
         ax.grid(True)
+        ax.legend()
 
         plt.tight_layout()
         plt.show(block = True)
@@ -513,7 +514,7 @@ class ControlProblem:
             vel_guess = velocity_guess * direction
             x_guess[7:10, i + 1] = np.reshape(velocity_guess * direction, (3,))
 
-            rotation, _ = R.align_vectors(np.array(direction).reshape(1, -1), [[1, 0, 0]])[0]
+            rotation, _ = R.align_vectors(np.array(direction).reshape(1, -1), [[1, 0, 0]])
 
             # Check if the aircraft is moving in the opposite direction
             if np.dot(direction.T, [1, 0, 0]) < 0:

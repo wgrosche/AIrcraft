@@ -132,7 +132,7 @@ BASEPATH = os.path.dirname(os.path.abspath(__file__)).split('main')[0]
 sys.path.append(BASEPATH)
 
 from src.dynamics import Aircraft
-from src.utils import load_model, aero_to_state
+from src.utils import load_model, aero_to_state, TrajectoryConfiguration
 
 
 # Wrap functions for aerodynamic derivatives
@@ -219,19 +219,22 @@ def jacobian_wrapper(
 
 def main():
     # Load aircraft parameters and model
-    aircraft_params = json.load(open(os.path.join(BASEPATH, 'data', 'glider', 'glider_fs.json')))
     model = load_model()
-    aircraft = Aircraft(aircraft_params, model)
+    traj_dict = json.load(open('data/glider/problem_definition.json'))
+    trajectory_config = TrajectoryConfiguration(traj_dict)
+
+
+    aircraft = Aircraft(traj_dict['aircraft'], model, LINEAR=True)
     forces_func = aircraft._forces_frd
 
     # Initialize state and control variables
     x0 = np.zeros(3)
-    v0 = np.array([50, 0, 0])
-    q0 = np.array([0, 0, 0, 1])
+    v0 = np.array([100, 0, 0])
+    q0 = np.array([1, 0, 0, 0])
     omega0 = np.array([0, 0, 0])
     state = ca.vertcat(q0, x0, v0, omega0)
     control = np.zeros(aircraft.num_controls)
-    control[-3:] = [0,0,0]#aircraft_params['aero_centre_offset']
+    control[-3:] = traj_dict['aircraft']['aero_centre_offset']
 
     # define jacobians, we use the notation F_x to mean jacobian of F wrt. x
     moments_aero = jacobian_wrapper(aircraft._moments_frd, aircraft.state, aircraft.control, aero = True)
@@ -253,17 +256,12 @@ def main():
         
 
         ca.dot(aircraft.state[:4], aircraft.state[:4]) - 1,# - [0, 0, 0, 1], # Orientation
-        aircraft.state[4:7], # Position
         ca.dot(aircraft._v_frd_rel(aircraft.state, aircraft.control), 
                aircraft._v_frd_rel(aircraft.state, aircraft.control)), # Velocity
         aircraft.state[10:], # Angular rates
-
-        aircraft.aileron,
-        aircraft.elevator,
         aircraft.throttle,
-        # aircraft.com,
-        aircraft.v_wind_ecf_e,
-        aircraft.omega_e_i_ecf
+        aircraft.com,
+        aircraft.v_wind_ned
         
     )
 
@@ -298,21 +296,15 @@ def main():
         # Orientation
         0,#[0,0,0,0],
 
-        # # Position
-        ca.vertcat(0, 0, 0),
-
         # # Airspeed
         30**2,
 
         # # Angular rates
         ca.vertcat(-1e-2, -1e-2, -1e-2),
 
-        # # Controls
-        0,
-        0,
+
         ca.vertcat(0,0,0),
-        # ca.vertcat(-0.5, -0.01, -0.05),
-        ca.vertcat(0,0,0),
+        ca.vertcat(-0.5, -0.01, -0.05),
         ca.vertcat(0,0,0)
 
         
@@ -348,9 +340,6 @@ def main():
         # Orientation
         0, #[0,0,0,0],
 
-        # # Position
-        ca.vertcat(0, 0, 0),
-
         # # Airspeed
         100**2,
 
@@ -358,11 +347,8 @@ def main():
         ca.vertcat(1e-2, 1e-2, 1e-2),
 
         # # Controls
-        0,
-        0,
         ca.vertcat(0,0,0),
-        # ca.vertcat(0.5, 0.01, 0.05),
-        ca.vertcat(0,0,0),
+        ca.vertcat(0.5, 0.01, 0.05),
         ca.vertcat(0,0,0)
 
     )
