@@ -74,7 +74,7 @@ class TrajectoryPlotter:
     def __init__(self, filepath:str, aircraft):
         self.filepath = filepath
         self.aircraft = aircraft
-        self.figure = plt.figure()
+        self.figure = plt.figure(figsize=(20,20))
         position = self.figure.add_subplot(3, 4, 1, projection='3d')
         axs=[]
         for i in range(11):
@@ -84,6 +84,7 @@ class TrajectoryPlotter:
                                   velocity=axs[1], rates=axs[2], forces=axs[3], 
                                   controls=axs[4], thrust=axs[5], 
                                   convergence=axs[6], progress = axs[7], moments = axs[8])
+        self.figure.tight_layout()
 
     def read_trajectory(self, filepath, iteration):
         """
@@ -226,7 +227,7 @@ class TrajectoryPlotter:
         
         ax.set_xlabel('North')
         ax.set_ylabel('East')
-        ax.set_zlabel('Down')
+        ax.set_zlabel('Up')
         # ax.set_xlim(position[0, :].min(), position[0, :].max())
         # ax.set_zlim(position[2, :].max(), position[2, :].min())
         ax.set_aspect('equal')
