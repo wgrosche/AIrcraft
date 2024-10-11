@@ -157,22 +157,6 @@ class TrajectoryPlotter:
         }
 
 
-
-    def derive_angles(self, aircraft, state:np.ndarray, control:np.ndarray):
-        """
-        
-        """
-        alpha = aircraft._alpha(state, control).full().flatten()
-        beta = aircraft._beta(state, control).full().flatten()
-
-        q_frd_ned = state[:4, :]
-        omega_frd_frd = state[-3:, :]
-        print("q: ", q_frd_ned.shape)
-        print("omega: ", omega_frd_frd.shape)
-        euler = aircraft.compute_euler_and_body_rates(q_frd_ned, omega_frd_frd)
-
-        return (euler, alpha, beta)
-
     
     def orientation(self, quaternion:np.ndarray):
         """
@@ -234,19 +218,22 @@ class TrajectoryPlotter:
         ax.grid(True)
         ax.set_title('Trajectory (NED)')
 
-    def plot_angles(self, euler, alpha, beta, ax:Optional[Axes]=None):
+    def plot_angles(self, state, control, ax:Optional[Axes]=None):
         if not isinstance(ax, Axes):
             ax = self.axes.angles
-        phis = euler['phi']
-        print("phi: ", type(phis))
-        thetas = euler['theta']
-        psis = euler['psi']
+
+        alpha = self.aircraft.alpha(state, control).full().flatten()
+        beta = self.aircraft.beta(state, control).full().flatten()
+
+        phi = self.aircraft.phi(state).full().flatten()
+        theta = self.aircraft.theta(state).full().flatten()
+        psi = self.aircraft.psi(state).full().flatten()
 
         ax.plot(np.rad2deg(alpha), label=r'$\alpha$ (attack)')
         ax.plot(np.rad2deg(beta), label=r'$\beta$ (sideslip)')
 
-        ax.plot(np.rad2deg(phis), label=r'$\phi$ (roll)')
-        ax.plot(np.rad2deg(thetas), label=r'$\theta$ (pitch)')
+        ax.plot(np.rad2deg(phi), label=r'$\phi$ (roll)')
+        ax.plot(np.rad2deg(theta), label=r'$\theta$ (pitch)')
         # ax.plot(np.rad2deg(psis), label=r'$\psi$ (yaw)')
         
 
@@ -260,7 +247,7 @@ class TrajectoryPlotter:
         if not isinstance(ax, Axes):
             ax = self.axes.velocity
 
-        v_frd_rel = self.aircraft._v_frd_rel(state, control).full()
+        v_frd_rel = self.aircraft.v_frd_rel(state, control).full()
 
         ax.plot(v_frd_rel[0, :], label='u')
         ax.plot(v_frd_rel[1, :], label='v')
@@ -270,17 +257,17 @@ class TrajectoryPlotter:
         ax.grid(True)
         ax.set_title('Velocity (Body Frame)')
 
-    def plot_rates(self, euler, ax:Optional[Axes] = None):
+    def plot_rates(self, state, ax:Optional[Axes] = None):
         if not isinstance(ax, Axes):
             ax = self.axes.rates
 
         # ca.MX.eval_mx()
-        phis = euler['phi_dot']
-        thetas = euler['theta_dot']
-        psis = euler['psi_dot']
+        phi_dot = self.aircraft.phi_dot(state).full().flatten()
+        theta_dot = self.aircraft.theta_dot(state).full().flatten()
+        psi_dot = self.aircraft.psi_dot(state).full().flatten()
 
-        ax.plot(phis, label=r'$\dot{\phi}$')
-        ax.plot(thetas, label=r'$\dot{\theta}$')
+        ax.plot(phi_dot, label=r'$\dot{\phi}$')
+        ax.plot(theta_dot, label=r'$\dot{\theta}$')
         # ax.plot(psis, label=r'$\dot{\psi}$')
         ax.legend()
         ax.grid(True)
@@ -289,7 +276,7 @@ class TrajectoryPlotter:
     def plot_forces(self, state, control, ax:Optional[Axes] = None):
         if not isinstance(ax, Axes):
             ax = self.axes.forces
-        forces_frd = self.aircraft._forces_frd(state, control).full()
+        forces_frd = self.aircraft.forces_frd(state, control).full()
 
         ax.plot(forces_frd[0, :], label='Fx')
         ax.plot(forces_frd[1, :], label='Fy')
@@ -301,7 +288,7 @@ class TrajectoryPlotter:
     def plot_moments(self, state, control, ax:Optional[Axes] = None):
         if not isinstance(ax, Axes):
             ax = self.axes.moments
-        moments_frd = self.aircraft._moments_frd(state, control).full()
+        moments_frd = self.aircraft.moments_frd(state, control).full()
 
         ax.plot(moments_frd[0, :], label='Mx')
         ax.plot(moments_frd[1, :], label='My')
@@ -324,13 +311,11 @@ class TrajectoryPlotter:
             
             self.plot_position(position=position, quaternion=quaternion)
 
-            euler, alpha, beta = self.derive_angles(self.aircraft, state, control)
-
-            self.plot_angles(euler, alpha, beta)
+            self.plot_angles(state, control)
             self.plot_velocity(state, control)
             self.plot_moments(state, control)
 
-            self.plot_rates(euler)
+            self.plot_rates(state)
             self.plot_forces(state, control)
         
     def plot_deflections(self, control, ax:Optional[Axes] = None):
