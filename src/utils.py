@@ -170,6 +170,7 @@ class TrajectoryConfiguration:
             self.Iyy = aircraft_dict.get('Iyy', 0.114)
             self.Izz = aircraft_dict.get('Izz', 0.262)
             self.Ixz = aircraft_dict.get('Ixz', 0.01) 
+            
 
 
     class WaypointsConfiguration:
