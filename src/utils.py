@@ -117,7 +117,7 @@ Bound = namedtuple('Bound', ['lb', 'ub'])
 class TrajectoryConfiguration:
     """ 
     """
-    class StateEnvelope:
+    class StateEnvelopeConfiguration:
         def __init__(self, state_dict:dict):
             self.alpha = Bound(np.array(state_dict.get("alpha", 
                                 np.array([-15, 15])))[0],
@@ -133,7 +133,7 @@ class TrajectoryConfiguration:
                                 np.array(state_dict.get("airspeed", 
                                             np.array([30, 100])))[1])
         
-    class ControlEnvelope:
+    class ControlEnvelopeConfiguration:
         def __init__(self, control_dict:dict):
             self.aileron = np.array(control_dict.get("aileron_limit", 
                                 np.array([-5, 5])))
@@ -159,7 +159,7 @@ class TrajectoryConfiguration:
                 *self.throttle[1],
                 *self.centre_of_mass[1]])
 
-    class Aircraft:
+    class AircraftConfiguration:
         def __init__(self, aircraft_dict:dict):
             self.mass = aircraft_dict.get('mass', 1.0)
             self.span = aircraft_dict.get('span', 1.0)
@@ -170,9 +170,10 @@ class TrajectoryConfiguration:
             self.Iyy = aircraft_dict.get('Iyy', 0.114)
             self.Izz = aircraft_dict.get('Izz', 0.262)
             self.Ixz = aircraft_dict.get('Ixz', 0.01) 
+            
 
 
-    class Waypoints:
+    class WaypointsConfiguration:
         def __init__(self, waypoint_dict:dict):
             self.waypoints = np.array(waypoint_dict.get("waypoints", 
                                     np.array([[0,0,0], [0,0,0], [0,0,0]])))
@@ -234,10 +235,10 @@ class TrajectoryConfiguration:
         state_dict = trajectory_dict['state']
         control_dict = trajectory_dict['control']
 
-        self._state = self.StateEnvelope(state_dict)
-        self._control = self.ControlEnvelope(control_dict)
-        self._waypoints = self.Waypoints(waypoint_dict)
-        self._aircraft = self.Aircraft(aircraft_dict)
+        self._state = self.StateEnvelopeConfiguration(state_dict)
+        self._control = self.ControlEnvelopeConfiguration(control_dict)
+        self._waypoints = self.WaypointsConfiguration(waypoint_dict)
+        self._aircraft = self.AircraftConfiguration(aircraft_dict)
         self.trajectory_dict = trajectory_dict
         
     @property

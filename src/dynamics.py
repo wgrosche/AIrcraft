@@ -2,7 +2,7 @@
 
 import casadi as ca
 from abc import ABC, abstractmethod
-from typing import Union, Tuple
+from typing import Union, Tuple, Optional
 import numpy as np
 import matplotlib.pyplot as plt
 plt.switch_backend('TkAgg')
@@ -15,6 +15,7 @@ from scipy.spatial.transform import Rotation as R
 import torch
 import json
 import os
+from pathlib import Path
 import sys
 import pandas as pd
 from tqdm import tqdm
@@ -23,6 +24,7 @@ import h5py
 
 BASEPATH = os.path.dirname(os.path.abspath(__file__)).split('src')[0]
 NETWORKPATH = os.path.join(BASEPATH, 'data', 'networks')
+DATAPATH = os.path.join(BASEPATH, 'data')
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else 
                       ("mps" if torch.backends.mps.is_available() else "cpu"))
 sys.path.append(BASEPATH)
@@ -33,6 +35,15 @@ from src.plotting import TrajectoryPlotter
 from dataclasses import dataclass
 
 print(DEVICE)
+
+@dataclass
+class AircraftOpts:
+    epsilon:float = 1e-6
+    physical_integration_substeps:int = 100
+    linear_path:Path = None
+    nn_model_path:Path = None
+    aircraft_config:TrajectoryConfiguration.AircraftConfiguration = None
+    realtime:bool = False # Work in progress implementation of faster nn eval
 
 class Aircraft:
     """ 
@@ -98,287 +109,265 @@ class Aircraft:
     Where S is the reference area for the aircraft, b is span and c is chord
 
     """
+
+
     def __init__(
-            self, 
-            params:dict, 
-            model:torch.nn, 
-            EPSILON:float = 1e-6, 
-            STEPS:int = 100,
-            LINEAR:bool = False
+            self,
+            opts:AircraftOpts
             ):
         
         """ 
         EPSILON: smoothing parameter for non-smoothly-differentiable functions
         STEPS: number of integration steps in each state update
         """
-        Ixx = params['Ixx']
-        Iyy = params['Iyy']
-        Ixz = params['Ixz']
-        Izz = params['Izz']
-        self._inertia_tensor = ca.vertcat(
+        
+
+        if opts.linear_path:
+            self.LINEAR = True
+            self.linear_coeffs = ca.DM(np.array(pd.read_csv(opts.linear_path)))
+
+        elif opts.nn_model_path:
+            self.LINEAR = False
+            model = load_model(filepath=opts.nn_model_path)
+            if opts.realtime:
+                self.model = RealTimeL4CasADi(model, approximation_order=1)
+            else:
+                self.model = L4CasADi(model, name = 'AeroModel', 
+                                    generate_jac_jac=True
+                                    )
+        
+        self.EPSILON = opts.epsilon
+        self.STEPS = opts.physical_integration_substeps
+
+        self.grav = ca.vertcat(0, 0, 9.81)
+        self.S = opts.aircraft_config.reference_area
+        self.b = opts.aircraft_config.span
+        self.c = opts.aircraft_config.chord
+        self.mass = opts.aircraft_config.mass
+
+        self.state
+        self.control
+
+    
+
+
+    @property
+    def state(self):
+        if not hasattr(self, '_state_initialized') or not self._state_initialized:
+            # Define _symbolic state variables once
+            self._q_frd_ned = ca.MX.sym('q_frd_ned', 4)
+            self._p_ned = ca.MX.sym('p_ned', 3)
+            self._v_ned = ca.MX.sym('v_ned', 3)
+            self._omega_frd_ned = ca.MX.sym('omega_frd_ned', 3)
+
+            self._state = ca.vertcat(
+            self._q_frd_ned, 
+            self._p_ned, 
+            self._v_ned, 
+            self._omega_frd_ned
+            )
+
+            self.num_states = self._state.size()[0]
+            
+            # Set the flag to indicate initialization
+            self._state_initialized = True
+
+        # Bundle state variables together
+        return self._state
+    
+    @property
+    def control(self):
+        if not hasattr(self, '_control_initialized') or not self._control_initialized:
+            self._v_wind_ned = ca.MX.sym('v_wind_ned', 3)
+            self._aileron = ca.MX.sym('aileron')
+            self._elevator = ca.MX.sym('elevator')
+            self._rudder = ca.MX.sym('rudder')
+            self._throttle = ca.MX.sym('throttle', 3)
+            self._centre_of_mass = ca.MX.sym('centre_of_mass', 3)
+
+            self._control = ca.vertcat(
+            self._aileron, 
+            self._elevator, 
+            self._rudder, 
+            self._throttle, 
+            self._centre_of_mass,
+            self._v_wind_ned
+            )
+            self.num_controls = self._control.size()[0]
+
+            self._control_initialized = True
+
+        return self._control
+
+    @property
+    def inertia_tensor(self):
+        """
+        Inertia Tensor around the Centre of Mass
+        """
+
+        Ixx = opts.aircraft_config.Ixx
+        Iyy = opts.aircraft_config.Iyy
+        Ixz = opts.aircraft_config.Ixz
+        Izz = opts.aircraft_config.Izz
+
+        aero_inertia_tensor = ca.vertcat(
             ca.horzcat(Ixx, 0  , Ixz),
             ca.horzcat(0  , Iyy, 0  ),
             ca.horzcat(Ixz, 0  , Izz)
         )
-        self.LINEAR = LINEAR
 
+        mass = self.mass
+
+        com = self._centre_of_mass
         
-        
-        self.EPSILON = EPSILON
-        self.STEPS = STEPS
+        x, y, z = com[0], com[1], com[2]
 
-        self.q_frd_ned = ca.MX.sym('q_frd_ned', 4)
-        self.p_ned = ca.MX.sym('p_ned', 3)
-        self.v_ned = ca.MX.sym('v_ned', 3)
-        self.omega_frd_ned = ca.MX.sym('omega_frd_ned', 3)
+        com_term = ca.vertcat(
+            ca.horzcat(y**2 + z**2, -x*y, -x*z),
+            ca.horzcat(-y*x, x**2 + z**2, -y*z),
+            ca.horzcat(-z*x, -z*y, x**2 + y**2)
+        )
 
-        self.linear_coeffs = ca.DM(np.array(pd.read_csv('data/glider/linearised.csv')))
+        inertia_tensor = aero_inertia_tensor + mass * com_term
 
-        self.state = ca.vertcat(
-            self.q_frd_ned, 
-            self.p_ned, 
-            self.v_ned, 
-            self.omega_frd_ned
-            )
-        
-        self.num_states = self.state.size()[0]
-
-        self.v_wind_ned = ca.MX.sym('v_wind_ned', 3)
-        self.aileron = ca.MX.sym('aileron')
-        self.elevator = ca.MX.sym('elevator')
-        self.rudder = ca.MX.sym('rudder')
-        self.throttle = ca.MX.sym('throttle', 3)
-        self.com = ca.MX.sym('com', 3)
-
-        self.control = ca.vertcat(
-            self.aileron, 
-            self.elevator, 
-            self.rudder, 
-            self.throttle, 
-            self.com,
-            self.v_wind_ned
-            )
-        
-        self.num_controls = self.control.size()[0]
-
-        # self.STEP = STEP # timestep to be used for integration
-
-        self.grav = ca.vertcat(0, 0, 9.81)
-        self.S = params['reference_area']
-        self.b = params['span']
-        self.c = params['chord']
-
-        self.mass = params['mass']
-        Realtime = False
-        if Realtime:
-            self.model = RealTimeL4CasADi(model, approximation_order=1)
-        else:
-            self.model = L4CasADi(model, name = 'AeroModel', 
-                                  generate_jac_jac=True
-                                  )
-        self._inv_inertia_tensor = ca.inv(self.inertia_tensor)
-        self.qbar
-        self.beta
-        self.alpha
-        self.phi
-        
-        self.x_dot
-        self.p_ned
-        
-
-    @property
-    def inertia_tensor(self):
-        # com = self.com
-        com = ca.vertcat([0.133, 0, 0.003])
-        inertia_tensor = (self._inertia_tensor 
-                          + self.mass * (ca.dot(com, com) 
-                          * ca.diag([1, 1, 1]) - ca.cross(com, com)))
         return inertia_tensor
     
     @property
-    def inverted_inertia_tensor(self):
-        # Extract the original inertia tensor and its inverse
-        I0 = self._inertia_tensor
-        I0_inv = self._inv_inertia_tensor
-        
-        # Compute the necessary terms
-        c = self.com
-        m = self.mass
-        
-        # The dot product (scalar) c.c
-        c_dot_c = ca.dot(c, c)
-        
-        # Identity matrix
-        I3 = ca.diag([1, 1, 1])
-        
-        # Cross product matrix
-        c_cross_c = ca.cross(c, c)
-        
-        # Compute the additional term
-        add_term = m * (c_dot_c * I3 - c_cross_c)
-        
-        # Applying Woodbury matrix identity
-        U = c
-        V = c.T
-        
-        # Calculating (C^{-1} + VA^{-1}U)^{-1}
-        inner_term = ca.inv(m * c_dot_c + V @ I0_inv @ U)
-        
-        # Final inverse using Woodbury identity
-        inverse_inertia_tensor = I0_inv - I0_inv @ U @ inner_term @ V @ I0_inv
-        
-        return inverse_inertia_tensor
+    def inverse_inertia_tensor(self):
+        """
+        Inverted Inertia Tensor around Centre of Mass
+        """
+        return ca.inv(self.inertia_tensor)
 
     @property
     def v_frd_rel(self):
-        q_frd_ned = Quaternion(self.q_frd_ned)
-        v_ned = Quaternion(ca.vertcat(self.v_ned, 0))
-        v_wind_ned = Quaternion(ca.vertcat(self.v_wind_ned, 0))
-        result = (q_frd_ned.inverse() * (v_ned - v_wind_ned) 
-                  * q_frd_ned).coeffs()[:3]
-        
-        result = result + self.EPSILON
+        q_frd_ned = Quaternion(self._q_frd_ned)
+        v_ned = Quaternion(ca.vertcat(self._v_ned, 0))
+        v_wind_ned = Quaternion(ca.vertcat(self._v_wind_ned, 0))
 
-        self._v_frd_rel = ca.Function(
-            'v_frd_rel', 
-            [self.state, self.control], 
-            [result]
-            )
+        self._v_frd_rel = (q_frd_ned.inverse() * (v_ned - v_wind_ned) 
+                            * q_frd_ned).coeffs()[:3] + self.EPSILON
         
-        return result
+        return ca.Function('v_frd_rel', [self.state, self.control], 
+            [self._v_frd_rel]).expand()
     
     @property
     def airspeed(self):
-        airspeed = ca.sqrt(ca.sumsqr(self.v_frd_rel) + self.EPSILON)
-        self._airspeed = ca.Function(
-            'airspeed', 
-            [self.state, self.control], 
-            [airspeed]
-            )
-        return airspeed
+        if not hasattr(self, '_v_frd_rel'):
+            self.v_frd_rel
+        self._airspeed = ca.sqrt(ca.sumsqr(self._v_frd_rel) + self.EPSILON)
+
+        return ca.Function('airspeed', [self.state, self.control], 
+            [self._airspeed]).expand()
     
     @property
     def alpha(self):
-        v_frd_rel = self.v_frd_rel
-        alpha = ca.atan2(v_frd_rel[2], v_frd_rel[0] + self.EPSILON)
-        self._alpha = ca.Function('alpha', [self.state, self.control], [alpha])
-        return alpha
-    
-    @property
-    def phi(self):
-        """
-        Roll angle
-        """
-
-        aircraft_up = Quaternion(self.q_frd_ned)
-
-        sinr_cosp = 2 * (aircraft_up.w * aircraft_up.x + aircraft_up.y * aircraft_up.z);
-        cosr_cosp = 1 - 2 * (aircraft_up.x * aircraft_up.x + aircraft_up.y * aircraft_up.y);
-        roll = ca.atan2(sinr_cosp, cosr_cosp);
-
-        self._phi = ca.Function('roll', [self.state, self.control], [roll]).expand()
-        return roll
+        if not hasattr(self, '_v_frd_rel'):
+            self.v_frd_rel
+        v_frd_rel = self._v_frd_rel
+        self._alpha = ca.atan2(v_frd_rel[2], v_frd_rel[0] + self.EPSILON)
+        return ca.Function('alpha', [self.state, self.control], [self._alpha]).expand()
 
     @property
     def phi(self):
-        q_frd_ned = self.q_frd_ned  # Quaternions [x, y, z, w]
-        x, y, z, w = q_frd_ned[0], q_frd_ned[1], q_frd_ned[2], q_frd_ned[3]
-        phi = ca.atan2(2 * (w * x + y * z), 1 - 2 * (x**2 + y**2))
-        self._phi = ca.Function('phi', [self.state], [phi])
-        return phi
+        x, y, z, w = self._q_frd_ned[0], self._q_frd_ned[1], self._q_frd_ned[2], self._q_frd_ned[3]
+        self._phi = ca.atan2(2 * (w * x + y * z), 1 - 2 * (x**2 + y**2))
+        return ca.Function('phi', [self.state], [self._phi]).expand()
 
     @property
     def theta(self):
-        q_frd_ned = self.q_frd_ned
-        x, y, z, w = q_frd_ned[0], q_frd_ned[1], q_frd_ned[2], q_frd_ned[3]
-        theta = ca.asin(2 * (w * y - z * x))
-        self._theta = ca.Function('theta', [self.state], [theta])
-        return theta
+        x, y, z, w = self._q_frd_ned[0], self._q_frd_ned[1], self._q_frd_ned[2], self._q_frd_ned[3]
+        self._theta = ca.asin(2 * (w * y - z * x))
+        return ca.Function('theta', [self.state], [self._theta]).expand()
 
     @property
     def psi(self):
-        q_frd_ned = self.q_frd_ned
-        x, y, z, w = q_frd_ned[0], q_frd_ned[1], q_frd_ned[2], q_frd_ned[3]
-        psi = ca.atan2(2 * (w * z + x * y), 1 - 2 * (y**2 + z**2))
-        self._psi = ca.Function('psi', [self.state], [psi])
-        return psi
-
-    @property
-    def p(self):
-        omega_frd_frd = self.omega_frd_ned  # Angular rates [p, q, r]
-        p = omega_frd_frd[0]
-        self._p = ca.Function('p', [self.state], [p])
-        return p
-
-    @property
-    def q(self):
-        omega_frd_frd = self.omega_frd_ned
-        q = omega_frd_frd[1]
-        self._q = ca.Function('q', [self.state], [q])
-        return q
-
-    @property
-    def r(self):
-        omega_frd_frd = self.omega_frd_ned
-        r = omega_frd_frd[2]
-        self._r = ca.Function('r', [self.state], [r])
-        return r
+        x, y, z, w = self._q_frd_ned[0], self._q_frd_ned[1], self._q_frd_ned[2], self._q_frd_ned[3]
+        self._psi = ca.atan2(2 * (w * z + x * y), 1 - 2 * (y**2 + z**2))
+        return ca.Function('psi', [self.state], [self._psi]).expand()
 
     @property
     def phi_dot(self):
-        phi = self.phi
-        theta = self.theta
-        p = self.p
-        q = self.q
-        r = self.r
-        phi_dot = p + ca.sin(phi) * ca.tan(theta) * q + ca.cos(phi) * ca.tan(theta) * r
-        self._phi_dot = ca.Function('phi_dot', [self.state], [phi_dot])
-        return phi_dot
+        if not hasattr(self, '_phi'):
+            self.phi
+
+        if not hasattr(self, '_theta'):
+            self.theta
+
+        phi = self._phi
+        theta = self._theta
+        p, q, r = self._omega_frd_ned[0], self._omega_frd_ned[1], self._omega_frd_ned[2]
+
+        self._phi_dot = p + ca.sin(phi) * ca.tan(theta) * q + ca.cos(phi) * ca.tan(theta) * r
+
+        return ca.Function('phi_dot', [self.state], [self._phi_dot]).expand()
 
     @property
     def theta_dot(self):
-        phi = self.phi
-        q = self.q
-        r = self.r
-        theta_dot = ca.cos(phi) * q - ca.sin(phi) * r
-        self._theta_dot = ca.Function('theta_dot', [self.state], [theta_dot])
-        return theta_dot
+        if not hasattr(self, '_phi'):
+            self.phi
+        phi = self._phi
+        q, r = self._omega_frd_ned[1], self._omega_frd_ned[2]
+
+        self._theta_dot = ca.cos(phi) * q - ca.sin(phi) * r
+        return ca.Function('theta_dot', [self.state], [self._theta_dot]).expand()
 
     @property
     def psi_dot(self):
-        phi = self.phi
-        theta = self.theta
-        q = self.q
-        r = self.r
-        psi_dot = (ca.sin(phi) / ca.cos(theta)) * q + (ca.cos(phi) / ca.cos(theta)) * r
-        self._psi_dot = ca.Function('psi_dot', [self.state], [psi_dot])
-        return psi_dot
+        if not hasattr(self, '_phi'):
+            self.phi
+        if not hasattr(self, '_theta'):
+            self.theta
+        phi = self._phi
+        theta = self._theta
+        
+        q, r = self._omega_frd_ned[1], self._omega_frd_ned[2]
 
-    
+        self._psi_dot = (ca.sin(phi) / ca.cos(theta)) * q + (ca.cos(phi) / ca.cos(theta)) * r
+        return ca.Function('psi_dot', [self.state], [self._psi_dot]).expand()
+
     @property
     def beta(self):
-        v_frd_rel = self.v_frd_rel
-        beta = ca.asin(v_frd_rel[1] / self.airspeed)
-        self._beta = ca.Function('beta', [self.state, self.control], [beta])
-        return beta
-    
+        if not hasattr(self, '_v_frd_rel'):
+            self.v_frd_rel
+        if not hasattr(self, '_airspeed'):
+            self.airspeed
+
+        v_frd_rel = self._v_frd_rel
+        self._beta = ca.asin(v_frd_rel[1] / self._airspeed)
+        return ca.Function('beta', [self.state, self.control], [self._beta]).expand()
+         
     @property
     def qbar(self):
-        qbar = 0.5 * 1.225 * ca.dot(self.v_frd_rel, self.v_frd_rel)
-        self._qbar = ca.Function('qbar', [self.state, self.control], [qbar])
-        return qbar
-    
+        if not hasattr(self, '_v_frd_rel'):
+            self.v_frd_rel
+        self._qbar = 0.5 * 1.225 * ca.dot(self._v_frd_rel, self._v_frd_rel)
+        return ca.Function('qbar', [self.state, self.control], [self._qbar]).expand()
+        
     @property
     def coefficients(self):
         """
         Forward pass of the ml model to retrieve aerodynamic coefficients.
         """
+        if not hasattr(self, '_qbar'):
+            self.qbar
+        if not hasattr(self, '_alpha'):
+            self.alpha
+        if not hasattr(self, '_beta'):
+            self.beta
+        
+        qbar = self._qbar
+        alpha = self._alpha
+        beta = self._beta
+        aileron = self._aileron
+        elevator = self._elevator
+
         inputs = ca.vertcat(
-            self.qbar, 
-            self.alpha, 
-            self.beta, 
-            self.aileron, 
-            self.elevator
+            qbar, 
+            alpha, 
+            beta, 
+            aileron, 
+            elevator
             )
         
         if self.LINEAR:
@@ -386,15 +375,14 @@ class Aircraft:
         else:
             outputs = self.model(ca.reshape(inputs, 1, -1))
             outputs = ca.vertcat(outputs.T)
-            print("Outputs", outputs.shape)
 
         stall_angle_alpha = np.deg2rad(10)
         stall_angle_beta = np.deg2rad(10)
 
         steepness = 2
 
-        alpha_scaling = 1 / (1 + ca.exp(steepness * (self.alpha - stall_angle_alpha)))
-        beta_scaling = 1 / (1 + ca.exp(steepness * (self.beta - stall_angle_beta)))
+        alpha_scaling = 1 / (1 + ca.exp(steepness * (alpha - stall_angle_alpha)))
+        beta_scaling = 1 / (1 + ca.exp(steepness * (beta - stall_angle_beta)))
         
         
         outputs[2] *= alpha_scaling
@@ -403,22 +391,14 @@ class Aircraft:
         outputs[4] *= alpha_scaling
         outputs[4] *= beta_scaling
 
-
-        # self._coefficients = ca.Function(
-        #     'coefficients', 
-        #     [self.state, self.control], 
-        #     [outputs]
-        #     )
-        
-        
-
+        p, q, r = self._omega_frd_ned[0], self._omega_frd_ned[1], self._omega_frd_ned[2]
 
         # angular rate contributions
         # outputs[0] += 0.05 * self.omega_b_i_frd[0]
         # outputs[1] += -0.05 * self.omega_frd_ned[2]
         # outputs[2] += -0.1 * self.omega_frd_ned[0]
-        outputs[1] += -0.05 * self.omega_frd_ned[2]
-        outputs[2] += -0.01 * self.omega_frd_ned[0]
+        outputs[1] += -0.05 * r
+        outputs[2] += -0.1 * p
 
         """
         The relative amplitudes of the damping factors are taken from the cessna
@@ -446,197 +426,159 @@ class Aircraft:
         scale = 1
         # roll moment rates
         outputs[3] /= 4
-        outputs[3] += -0.005 * self.omega_frd_ned[0] * scale
-        outputs[3] += 0.001 * self.omega_frd_ned[2] * scale
+        outputs[3] += -0.005 * p * scale
+        outputs[3] += 0.001 * r * scale
 
         # pitching moment rates
-        outputs[4] += -0.04 * self.omega_frd_ned[1] * scale
+        outputs[4] += -0.03 * q * scale
 
         # yaw moment rates
         outputs[5] *= -1
-        outputs[5] += -0.0003 * self.omega_frd_ned[0] * scale
-        outputs[5] += -0.001 * self.omega_frd_ned[2] * scale
+        outputs[5] += -0.0003 * p * scale
+        outputs[5] += -0.001 * r * scale
 
-        self._coefficients = ca.Function(
+        self._coefficients = outputs
+
+        return ca.Function(
             'coefficients', 
             [self.state, self.control], 
-            [outputs]
+            [self._coefficients]
             )
-
-        return outputs
 
     @property
     def forces_frd(self):
-        forces = self.coefficients[:3] * self.qbar * self.S
-        forces += self.throttle
+        if not hasattr(self, '_coefficients'):
+            self.coefficients
+        if not hasattr(self, '_qbar'):
+            self.qbar
 
-        self._forces_frd = ca.Function('forces_frd', 
+        forces = self._coefficients[:3] * self._qbar * self.S
+        forces += self._throttle
+
+        self._forces_frd = forces
+        return ca.Function('forces_frd', 
             [self.state, self.control], [forces])
-        return forces
     
     @property
     def moments_aero_frd(self):
-        moments_aero = (self.coefficients[3:] * self.qbar * self.S 
+        if not hasattr(self, '_coefficients'):
+            self.coefficients
+        if not hasattr(self, '_qbar'):
+            self.qbar
+        moments_aero = (self._coefficients[3:] * self._qbar * self.S 
                         * ca.vertcat(self.b, self.c, self.b))
 
-        self._moments_aero_frd = ca.Function('moments_aero_frd', 
+        self._moments_aero_frd = moments_aero
+        return ca.Function('moments_aero_frd', 
             [self.state, self.control], [moments_aero])
-        return moments_aero
     
     @property
     def moments_from_forces_frd(self):
-        com = self.com
-        moments_from_forces = ca.cross(com, self.forces_frd) # doesnt make any sense TODO: look at why this seems to improve - self.grav * self.mass)
-        self._moments_from_forces_frd = ca.Function('moments_from_forces_frd', 
-            [self.state, self.control], [moments_from_forces])
+        if not hasattr(self, '_forces_frd'):
+            self.forces_frd
+
+        com = self._centre_of_mass
+        self._moments_from_forces_frd = ca.cross(com, self._forces_frd)
         
-        return moments_from_forces
+        return ca.Function('moments_from_forces_frd', 
+            [self.state, self.control], [self._moments_from_forces_frd])
     
     @property
     def moments_frd(self):
-        moments = self.moments_aero_frd + self.moments_from_forces_frd
-        self._moments_frd = ca.Function('moments_frd', 
-            [self.state, self.control], [moments])
+        if not hasattr(self, '_moments_aero_frd'):
+            self.moments_aero_frd
+        if not hasattr(self, '_moments_from_forces_frd'):
+            self.moments_from_forces_frd
+        self._moments_frd = self._moments_aero_frd + \
+            self._moments_from_forces_frd
         
-        return moments
+        return ca.Function('moments_frd', 
+            [self.state, self.control], [self._moments_frd])
     
     @property
     def forces_ned(self):
-        forces_frd = Quaternion(ca.vertcat(self.forces_frd, 0))
-        q_frd_ned = Quaternion(self.q_frd_ned)
-        forces_ned = q_frd_ned * forces_frd * q_frd_ned.inverse()
-        self._forces_ned = ca.Function('forces_ned', 
-            [self.state, self.control], [forces_ned.coeffs()[:3]])
+        if not hasattr(self, '_forces_frd'):
+            self.forces_frd
+        forces_frd = Quaternion(ca.vertcat(self._forces_frd, 0))
+        q_frd_ned = Quaternion(self._q_frd_ned)
+        self._forces_ned = (q_frd_ned * forces_frd * q_frd_ned.inverse()).coeffs()[:3]
+        return ca.Function('forces_ned', 
+            [self.state, self.control], [self._forces_ned])
         
-        return forces_ned.coeffs()[:3]
-
     @property
     def q_frd_ned_dot(self):
-        q_frd_ecf = Quaternion(self.q_frd_ned)
-        omega_frd_ned = Quaternion(ca.vertcat(self.omega_frd_ned, 0))
+        q_frd_ecf = Quaternion(self._q_frd_ned)
+        omega_frd_ned = Quaternion(ca.vertcat(self._omega_frd_ned, 0))
 
-        q_frd_ned_dot = 0.5 * q_frd_ecf * omega_frd_ned
-        self._q_frd_ned_dot = ca.Function('q_frd_ecf_dot', 
-            [self.state, self.control], [q_frd_ned_dot.coeffs()])
+        self._q_frd_ned_dot = (0.5 * q_frd_ecf * omega_frd_ned).coeffs()
+        return ca.Function('q_frd_ecf_dot', 
+            [self.state, self.control], [self._q_frd_ned_dot]).expand()
 
-        return q_frd_ned_dot.coeffs()
-    
     @property
     def p_ned_dot(self):
-        self._p_ned_dot = ca.Function('p_ecf_cm_O_dot', 
-            [self.state, self.control], [self.v_ned])
+        self._p_ned_dot = self._v_ned
         
-        return self.v_ned
+        return ca.Function('p_ecf_cm_O_dot', 
+            [self.state, self.control], [self._v_ned]).expand()
     
     @property
     def v_ned_dot(self):
-
-        forces = self.forces_ned
+        if not hasattr(self, '_forces_ned'):
+            self.forces_ned
+        forces = self._forces_ned
         grav = self.grav
         mass = self.mass
 
-        v_ned_dot =  forces / mass + grav
+        self._v_ned_dot =  forces / mass + grav
         
-        self._v_ned_dot = ca.Function(
+        return ca.Function(
             'v_ecf_cm_e_dot', 
             [self.state, self.control], 
-            [v_ned_dot]
+            [self._v_ned_dot]
             )
-
-        return v_ned_dot
-    
-    def compute_euler_and_body_rates(self, q_frd_ned, omega_frd_frd):
-        """
-        Computes the Euler angles and angular rates given the orientation quaternion and angular rates in the FRD frame.
-        
-        Parameters:
-        q_frd_ned: A CasADi array representing the quaternions (w, x, y, z) that map from FRD to NED. Shape: (4, n)
-        omega_frd_frd: A CasADi array representing the angular rates in the FRD frame [p, q, r]. Shape: (3, n)
-        
-        Returns:
-        A dictionary containing vectorized Euler angles, angular rates, and their derivatives.
-        """
-
-        # Extract the components of the quaternions
-        x, y, z, w = q_frd_ned[0, :], q_frd_ned[1, :], q_frd_ned[2, :], q_frd_ned[3, :]
-        n = q_frd_ned.shape[1]  # number of sets
-        phi = np.zeros(n)
-        theta = np.zeros(n)
-        psi = np.zeros(n)
-        T_list = []
-        for i in range(n):
-            x, y, z, w = q_frd_ned[0, i], q_frd_ned[1, i], q_frd_ned[2, i], q_frd_ned[3, i]
-            C = ca.vertcat(
-                    ca.horzcat((w**2 + x**2 - y**2 - z**2), 2*(x*y + w*z), (2*(x*z - w*y))),
-                    ca.horzcat((2*(x*y - w*z)), (w**2 - x**2 + y**2 - z**2), (2*(y*z + w*x))),
-                    ca.horzcat((2*(x*z + w*y)), (2*(y*z - w*x)), (w**2 - x**2 - y**2 + z**2))
-                )
-            # Calculate the Euler angles from the DCM
-            phi[i] = ca.atan2(C[1,2], C[2,2])  # Roll angle
-            theta[i] = -ca.asin(C[0,2])  # Pitch angle
-            psi[i] = ca.atan2(C[0,1], C[0,0])  # Yaw angle
-
-            T_i = ca.vertcat(
-                ca.horzcat(1, 0, -ca.sin(theta[i])),
-                ca.horzcat(0, ca.cos(phi[i]), ca.sin(phi[i]) * ca.cos(theta[i])),
-                ca.horzcat(0, -ca.sin(phi[i]), ca.cos(phi[i]) * ca.cos(theta[i]))
-            )
-            T_list.append(T_i)
-        
-        
-        
-        
-        # Find the Euler angle derivatives from the body rates
-        euler_rates = np.zeros((3, n))
-        for i in range(n):
-            euler_rates[:, i] = ca.solve(T_list[i], omega_frd_frd[:, i]).full().flatten()
-        
-        # Extract the individual angular rates p, q, r from omega_frd_frd
-        p, q, r = omega_frd_frd[0, :], omega_frd_frd[1, :], omega_frd_frd[2, :]
-        
-        return {
-            'phi': phi, 'theta': theta, 'psi': psi,
-            'p': p, 'q': q, 'r': r,
-            'phi_dot': euler_rates[0, :],
-            'theta_dot': euler_rates[1, :],
-            'psi_dot': euler_rates[2, :],
-            'T_list': T_list  # Include the list of transformation matrices in the output if needed
-        }
 
     @property
     def omega_frd_ned_dot(self):
+        if not hasattr(self, '_moments_frd'):
+            self.moments_frd
         J_frd = self.inertia_tensor
-        J_frd_inv = self._inv_inertia_tensor
+        J_frd_inv = self.inverse_inertia_tensor
         
-        omega_frd_ned = self.omega_frd_ned
-        moments = self.moments_frd
+        omega_frd_ned = self._omega_frd_ned
+        moments = self._moments_frd
 
 
-        omega_frd_ned_dot = ca.mtimes(J_frd_inv, (moments 
+        self._omega_frd_ned_dot = ca.mtimes(J_frd_inv, (moments 
              - ca.cross(omega_frd_ned, ca.mtimes(J_frd, omega_frd_ned))))
         
-        self._omega_frd_ned_dot = ca.Function(
+        return ca.Function(
             'omega_frd_ned_dot', 
             [self.state, self.control], 
-            [omega_frd_ned_dot]
+            [self._omega_frd_ned_dot]
             )
-
-        return omega_frd_ned_dot
     
     @property
-    def x_dot(self):
-        x_dot = ca.vertcat(
-            self.q_frd_ned_dot, 
-            self.p_ned_dot, 
-            self.v_ned_dot, 
+    def state_derivative(self):
+        if not hasattr(self, '_q_frd_ned_dot'):
+            self.q_frd_ned_dot
+        if not hasattr(self, '_p_ned_dot'):
+            self.p_ned_dot
+        if not hasattr(self, '_v_ned_dot'):
+            self.v_ned_dot
+        if not hasattr(self, '_omega_frd_ned_dot'):
             self.omega_frd_ned_dot
+        self._state_derivative = ca.vertcat(
+            self._q_frd_ned_dot, 
+            self._p_ned_dot, 
+            self._v_ned_dot, 
+            self._omega_frd_ned_dot
             )
-        self.dynamics = ca.Function(
+        
+        return ca.Function(
             'dynamics', 
             [self.state, self.control], 
-            [x_dot]
+            [self._state_derivative]
             )
-        return x_dot
     
     # @jit
     def state_step(self, state, control, dt_scaled):
@@ -645,20 +587,23 @@ class Aircraft:
         of the quaternion integration we cannot rely on conventional 
         integerators. 
         """
-
-        k1 = self.dynamics(state, control)
+        state_derivative = self.state_derivative
+        k1 = state_derivative(state, control)
         state_k1 = state + dt_scaled / 2 * k1
 
-        k2 = self.dynamics(state_k1, control)
+        k2 = state_derivative(state_k1, control)
         state_k2 = state + dt_scaled / 2 * k2
 
 
-        k3 = self.dynamics(state_k2, control)
+        k3 = state_derivative(state_k2, control)
         state_k3 = state + dt_scaled * k3
 
-        k4 = self.dynamics(state_k3, control)
+        k4 = state_derivative(state_k3, control)
 
         state = state + dt_scaled / 6 * (k1 + 2 * k2 + 2 * k3 + k4)
+        # Normalize the quaternion
+        quaternion = Quaternion(state[:4])
+        state[:4] = quaternion.normalize().coeffs()
 
         # self._state_step = ca.Function('step', [state, control, dt_scaled], [state])
 
@@ -689,11 +634,11 @@ class Aircraft:
         #         state[:4] = Quaternion(state[:4]).normalize().coeffs()
         
         # state[:4] = Quaternion(state[:4]).normalize().coeffs()
-        if self.LINEAR:
-            return ca.Function(
-            'state_update', 
-            [self.state, self.control, dt], 
-            [state]).expand()
+        # if self.LINEAR:
+        #     return ca.Function(
+        #     'state_update', 
+        #     [self.state, self.control, dt], 
+        #     [state]).expand()
         return ca.Function(
             'state_update', 
             [self.state, self.control, dt], 
@@ -706,32 +651,40 @@ class Aircraft:
 if __name__ == '__main__':
     model = load_model()
     traj_dict = json.load(open('data/glider/problem_definition.json'))
+
     trajectory_config = TrajectoryConfiguration(traj_dict)
 
+    aircraft_config = trajectory_config.aircraft
 
-    aircraft = Aircraft(traj_dict['aircraft'], model, LINEAR=False)
+    linear_path = Path(DATAPATH) / 'glider' / 'linearised.csv'
+    model_path = Path(NETWORKPATH) / 'model-dynamics.pth'
+
+    opts = AircraftOpts(linear_path=linear_path, aircraft_config=aircraft_config)
+
+    aircraft = Aircraft(opts = opts)
 
     perturbation = False
     
     trim_state_and_control = None
     if trim_state_and_control is not None:
         state = ca.vertcat(trim_state_and_control[:aircraft.num_states])
-        control = ca.vertcat(trim_state_and_control[aircraft.num_states:])
+        control = np.array(trim_state_and_control[aircraft.num_states:])
     else:
 
         x0 = np.zeros(3)
         v0 = ca.vertcat([80, 0, 0])
-        q0 = Quaternion(ca.vertcat(1, 0, 0, 0))
+        q0 = Quaternion(ca.vertcat(0, 0, 0, 1))
         # q0 = ca.vertcat([0.215566, -0.568766, 0.255647, 0.751452])#q0.inverse()
         omega0 = np.array([0, 0, 0])
 
         state = ca.vertcat(q0, x0, v0, omega0)
         control = np.zeros(aircraft.num_controls)
-        control[1] = 1
+        control[0] = 0.05
+        control[1] = 4
         control[6:9] = traj_dict['aircraft']['aero_centre_offset']
 
     dyn = aircraft.state_update
-    dt = 1
+    dt = .1
     tf = 100.0
     state_list = np.zeros((aircraft.num_states, int(tf / dt)))
 
@@ -740,13 +693,14 @@ if __name__ == '__main__':
     target_roll = np.deg2rad(60)
     ele_pos = True
     ail_pos = True
-    control_list = []
+    control_list = np.zeros((aircraft.num_controls, int(tf / dt)))
     for i in tqdm(range(int(tf / dt)), desc = 'Simulating Trajectory:'):
         if np.isnan(state[0]):
             print('Aircraft crashed')
             break
         else:
             state_list[:, i] = state.full().flatten()
+            control_list[:, i] = control
             state = dyn(state, control, dt)
             # print("Roll Angle:", np.rad2deg(aircraft._phi(state, control).full().flatten()))
             # print("Switch condition: ", np.rad2deg((aircraft._phi(state, control).full().flatten() - np.pi)))
@@ -782,12 +736,12 @@ if __name__ == '__main__':
     # state_list = state_list[:, :t-10]
     # print(state_list[0, :])
     first = None
-    t -=5
+    # t -=5
     def save(filepath):
         with h5py.File(filepath, "a") as h5file:
             grp = h5file.create_group(f'iteration_0')
             grp.create_dataset('state', data=state_list[:, :t])
-            grp.create_dataset('control', data=control.reshape(-1, 1))
+            grp.create_dataset('control', data=control_list[:, :t])
     
     
     filepath = os.path.join("data", "trajectories", "simulation.h5")

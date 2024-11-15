@@ -224,13 +224,13 @@ def main():
     trajectory_config = TrajectoryConfiguration(traj_dict)
 
 
-    aircraft = Aircraft(traj_dict['aircraft'], model, LINEAR=True)
+    aircraft = Aircraft(traj_dict['aircraft'], model, LINEAR=False)
     forces_func = aircraft._forces_frd
 
     # Initialize state and control variables
     x0 = np.zeros(3)
-    v0 = np.array([100, 0, 0])
-    q0 = np.array([1, 0, 0, 0])
+    v0 = np.array([60, 0, 0])
+    q0 = np.array([0, 0, 0, 1])
     omega0 = np.array([0, 0, 0])
     state = ca.vertcat(q0, x0, v0, omega0)
     control = np.zeros(aircraft.num_controls)
@@ -244,10 +244,10 @@ def main():
     # forces_state = jacobian_wrapper(aircraft._forces_frd, aircraft.state, aircraft.control, aero = False)
 
     constraints = ca.vertcat(
-        ca.vec(moments_aero(aircraft._qbar(aircraft.state, aircraft.control), 
-                            aircraft._alpha(aircraft.state, aircraft.control), 
-                            aircraft._beta(aircraft.state, aircraft.control), 
-                            aircraft.control)),
+        # ca.vec(moments_aero(aircraft._qbar(aircraft.state, aircraft.control), 
+        #                     aircraft._alpha(aircraft.state, aircraft.control), 
+        #                     aircraft._beta(aircraft.state, aircraft.control), 
+        #                     aircraft.control)),
 
         # ca.vec(forces_aero(aircraft._qbar(aircraft.state, aircraft.control), 
         #                     aircraft._alpha(aircraft.state, aircraft.control), 
@@ -267,11 +267,11 @@ def main():
 
     lower_bounds = ca.vertcat(
         # Moment derivatives aerodynamic angles
-        ca.vertcat(
-            -ca.inf, -ca.inf,
-            0, -ca.inf,
-            -ca.inf, -ca.inf
-        ),
+        # ca.vertcat(
+        #     -ca.inf, -ca.inf,
+        #     0, -ca.inf,
+        #     -ca.inf, -ca.inf
+        # ),
 
         # forces
         # ca.vertcat(
@@ -312,11 +312,11 @@ def main():
 
     upper_bounds = ca.vertcat(
         # Moment derivatives aerodynamic angles
-        ca.vertcat(
-            ca.inf, ca.inf,
-            ca.inf,      ca.inf,
-            ca.inf, 0
-        ),
+        # ca.vertcat(
+        #     ca.inf, ca.inf,
+        #     ca.inf,      ca.inf,
+        #     ca.inf, 0
+        # ),
         # forces
         # ca.vertcat(
         #     ca.inf, ca.inf,
@@ -370,10 +370,10 @@ def main():
 
     nlp = {
         'x': decision_vars,
-        'f': ca.dot(aircraft._forces_frd(aircraft.state, aircraft.control), 
-                    aircraft._forces_frd(aircraft.state, aircraft.control)) 
-            + ca.dot(aircraft._moments_frd(aircraft.state, aircraft.control), 
-                    aircraft._moments_frd(aircraft.state, aircraft.control)),
+        'f': ca.dot(aircraft._v_ned_dot(aircraft.state, aircraft.control), 
+                    aircraft._v_ned_dot(aircraft.state, aircraft.control)) 
+            + ca.dot(aircraft._omega_frd_ned_dot(aircraft.state, aircraft.control), 
+                    aircraft._omega_frd_ned_dot(aircraft.state, aircraft.control)),
         'g': constraints
     }
     solver = ca.nlpsol('solver', 'ipopt', nlp, opts)

@@ -31,6 +31,10 @@ Information on the models used to model the system dynamics can be found [here](
 
 AerodynamicShapeOp
 
+## Priority
+
+[Neuromancer](https://github.com/pnnl/neuromancer)
+
 [uzh-rpg/sb_min_time_quadrotor_planning: Code for the project Minimum-Time Quadrotor Waypoint Flight in Cluttered Environments](https://github.com/uzh-rpg/sb_min_time_quadrotor_planning)
 
 [rpg_time_optimal/src/quad.py at main · uzh-rpg/rpg_time_optimal](https://github.com/uzh-rpg/rpg_time_optimal/blob/main/src/quad.py)
@@ -91,3 +95,4 @@ AerodynamicShapeOp
 [l4casadi/examples/nerf_trajectory_optimization/NeRF_Trajectory_Optimization.ipynb at main · Tim-Salzmann/l4casadi](https://github.com/Tim-Salzmann/l4casadi/blob/main/examples/nerf_trajectory_optimization/NeRF_Trajectory_Optimization.ipynb)
 
 [Flight Model Physics](https://docs.flightsimulator.com/html/Samples_And_Tutorials/Primers/Flight_Model_Physics.htm)
+
