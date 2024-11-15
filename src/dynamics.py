@@ -19,6 +19,7 @@ import sys
 import pandas as pd
 from tqdm import tqdm
 # from numba import jit
+import h5py
 
 BASEPATH = os.path.dirname(os.path.abspath(__file__)).split('src')[0]
 NETWORKPATH = os.path.join(BASEPATH, 'data', 'networks')
@@ -27,27 +28,11 @@ DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else
 sys.path.append(BASEPATH)
 
 from src.models import ScaledModel
-from src.utils import load_model
-from src.plotting import plot_state
+from src.utils import load_model, TrajectoryConfiguration
+from src.plotting import TrajectoryPlotter
 from dataclasses import dataclass
 
 print(DEVICE)
-
-def load_model(
-        filepath:str = os.path.join(NETWORKPATH,'model-dynamics.pth'), 
-        device = DEVICE
-        ) -> ScaledModel:
-    checkpoint = torch.load(filepath, map_location=device)
-
-    scaler = (checkpoint['input_mean'], 
-              checkpoint['input_std'], 
-              checkpoint['output_mean'], 
-              checkpoint['output_std'])
-    
-    model = ScaledModel(5, 6, scaler=scaler)
-    model.load_state_dict(checkpoint['model_state_dict'])
-    model.eval()
-    return model
 
 class Aircraft:
     """ 
@@ -293,6 +278,82 @@ class Aircraft:
 
         self._phi = ca.Function('roll', [self.state, self.control], [roll]).expand()
         return roll
+
+    @property
+    def phi(self):
+        q_frd_ned = self.q_frd_ned  # Quaternions [x, y, z, w]
+        x, y, z, w = q_frd_ned[0], q_frd_ned[1], q_frd_ned[2], q_frd_ned[3]
+        phi = ca.atan2(2 * (w * x + y * z), 1 - 2 * (x**2 + y**2))
+        self._phi = ca.Function('phi', [self.state], [phi])
+        return phi
+
+    @property
+    def theta(self):
+        q_frd_ned = self.q_frd_ned
+        x, y, z, w = q_frd_ned[0], q_frd_ned[1], q_frd_ned[2], q_frd_ned[3]
+        theta = ca.asin(2 * (w * y - z * x))
+        self._theta = ca.Function('theta', [self.state], [theta])
+        return theta
+
+    @property
+    def psi(self):
+        q_frd_ned = self.q_frd_ned
+        x, y, z, w = q_frd_ned[0], q_frd_ned[1], q_frd_ned[2], q_frd_ned[3]
+        psi = ca.atan2(2 * (w * z + x * y), 1 - 2 * (y**2 + z**2))
+        self._psi = ca.Function('psi', [self.state], [psi])
+        return psi
+
+    @property
+    def p(self):
+        omega_frd_frd = self.omega_frd_ned  # Angular rates [p, q, r]
+        p = omega_frd_frd[0]
+        self._p = ca.Function('p', [self.state], [p])
+        return p
+
+    @property
+    def q(self):
+        omega_frd_frd = self.omega_frd_ned
+        q = omega_frd_frd[1]
+        self._q = ca.Function('q', [self.state], [q])
+        return q
+
+    @property
+    def r(self):
+        omega_frd_frd = self.omega_frd_ned
+        r = omega_frd_frd[2]
+        self._r = ca.Function('r', [self.state], [r])
+        return r
+
+    @property
+    def phi_dot(self):
+        phi = self.phi
+        theta = self.theta
+        p = self.p
+        q = self.q
+        r = self.r
+        phi_dot = p + ca.sin(phi) * ca.tan(theta) * q + ca.cos(phi) * ca.tan(theta) * r
+        self._phi_dot = ca.Function('phi_dot', [self.state], [phi_dot])
+        return phi_dot
+
+    @property
+    def theta_dot(self):
+        phi = self.phi
+        q = self.q
+        r = self.r
+        theta_dot = ca.cos(phi) * q - ca.sin(phi) * r
+        self._theta_dot = ca.Function('theta_dot', [self.state], [theta_dot])
+        return theta_dot
+
+    @property
+    def psi_dot(self):
+        phi = self.phi
+        theta = self.theta
+        q = self.q
+        r = self.r
+        psi_dot = (ca.sin(phi) / ca.cos(theta)) * q + (ca.cos(phi) / ca.cos(theta)) * r
+        self._psi_dot = ca.Function('psi_dot', [self.state], [psi_dot])
+        return psi_dot
+
     
     @property
     def beta(self):
@@ -354,8 +415,10 @@ class Aircraft:
 
         # angular rate contributions
         # outputs[0] += 0.05 * self.omega_b_i_frd[0]
+        # outputs[1] += -0.05 * self.omega_frd_ned[2]
+        # outputs[2] += -0.1 * self.omega_frd_ned[0]
         outputs[1] += -0.05 * self.omega_frd_ned[2]
-        outputs[2] += -0.1 * self.omega_frd_ned[0]
+        outputs[2] += -0.01 * self.omega_frd_ned[0]
 
         """
         The relative amplitudes of the damping factors are taken from the cessna
@@ -387,7 +450,7 @@ class Aircraft:
         outputs[3] += 0.001 * self.omega_frd_ned[2] * scale
 
         # pitching moment rates
-        outputs[4] += -0.1 * self.omega_frd_ned[1] * scale
+        outputs[4] += -0.04 * self.omega_frd_ned[1] * scale
 
         # yaw moment rates
         outputs[5] *= -1
@@ -422,7 +485,8 @@ class Aircraft:
     
     @property
     def moments_from_forces_frd(self):
-        moments_from_forces = ca.cross(self.com, self.forces_frd)
+        com = self.com
+        moments_from_forces = ca.cross(com, self.forces_frd) # doesnt make any sense TODO: look at why this seems to improve - self.grav * self.mass)
         self._moments_from_forces_frd = ca.Function('moments_from_forces_frd', 
             [self.state, self.control], [moments_from_forces])
         
@@ -486,46 +550,58 @@ class Aircraft:
         Computes the Euler angles and angular rates given the orientation quaternion and angular rates in the FRD frame.
         
         Parameters:
-        q_frd_ned: A CasADi or NumPy array representing the quaternion (w, x, y, z) that maps from FRD to NED.
-        omega_frd_frd: A CasADi or NumPy array representing the angular rates in the FRD frame [p, q, r].
+        q_frd_ned: A CasADi array representing the quaternions (w, x, y, z) that map from FRD to NED. Shape: (4, n)
+        omega_frd_frd: A CasADi array representing the angular rates in the FRD frame [p, q, r]. Shape: (3, n)
         
         Returns:
-        phi, theta, psi: The Euler angles (roll, pitch, yaw) in radians.
-        p, q, r: The angular rates in the body-fixed (FRD) frame.
+        A dictionary containing vectorized Euler angles, angular rates, and their derivatives.
         """
-    
-        # Extract the components of the quaternion
-        w, x, y, z = q_frd_ned[0], q_frd_ned[1], q_frd_ned[2], q_frd_ned[3]
-        
-        # Calculate the Euler angles from the quaternion
-        sinr_cosp = 2 * (w * x + y * z)
-        cosr_cosp = 1 - 2 * (x * x + y * y)
-        phi = ca.atan2(sinr_cosp, cosr_cosp)  # Roll angle
-        
-        sinp = 2 * (w * y - z * x)
-        theta = ca.asin(sinp)  # Pitch angle
 
-        siny_cosp = 2 * (w * z + x * y)
-        cosy_cosp = 1 - 2 * (y * y + z * z)
-        psi = ca.atan2(siny_cosp, cosy_cosp)  # Yaw angle
+        # Extract the components of the quaternions
+        x, y, z, w = q_frd_ned[0, :], q_frd_ned[1, :], q_frd_ned[2, :], q_frd_ned[3, :]
+        n = q_frd_ned.shape[1]  # number of sets
+        phi = np.zeros(n)
+        theta = np.zeros(n)
+        psi = np.zeros(n)
+        T_list = []
+        for i in range(n):
+            x, y, z, w = q_frd_ned[0, i], q_frd_ned[1, i], q_frd_ned[2, i], q_frd_ned[3, i]
+            C = ca.vertcat(
+                    ca.horzcat((w**2 + x**2 - y**2 - z**2), 2*(x*y + w*z), (2*(x*z - w*y))),
+                    ca.horzcat((2*(x*y - w*z)), (w**2 - x**2 + y**2 - z**2), (2*(y*z + w*x))),
+                    ca.horzcat((2*(x*z + w*y)), (2*(y*z - w*x)), (w**2 - x**2 - y**2 + z**2))
+                )
+            # Calculate the Euler angles from the DCM
+            phi[i] = ca.atan2(C[1,2], C[2,2])  # Roll angle
+            theta[i] = -ca.asin(C[0,2])  # Pitch angle
+            psi[i] = ca.atan2(C[0,1], C[0,0])  # Yaw angle
+
+            T_i = ca.vertcat(
+                ca.horzcat(1, 0, -ca.sin(theta[i])),
+                ca.horzcat(0, ca.cos(phi[i]), ca.sin(phi[i]) * ca.cos(theta[i])),
+                ca.horzcat(0, -ca.sin(phi[i]), ca.cos(phi[i]) * ca.cos(theta[i]))
+            )
+            T_list.append(T_i)
         
-        # Euler angles to body rates transformation matrix
-        T = ca.vertcat(
-            ca.horzcat(1, 0, -ca.sin(theta)),
-            ca.horzcat(0, ca.cos(phi), ca.sin(phi) * ca.cos(theta)),
-            ca.horzcat(0, -ca.sin(phi), ca.cos(phi) * ca.cos(theta))
-        )
+        
+        
         
         # Find the Euler angle derivatives from the body rates
-        euler_rates = ca.solve(T, omega_frd_frd)
+        euler_rates = np.zeros((3, n))
+        for i in range(n):
+            euler_rates[:, i] = ca.solve(T_list[i], omega_frd_frd[:, i]).full().flatten()
         
         # Extract the individual angular rates p, q, r from omega_frd_frd
-        p, q, r = omega_frd_frd[0], omega_frd_frd[1], omega_frd_frd[2]
+        p, q, r = omega_frd_frd[0, :], omega_frd_frd[1, :], omega_frd_frd[2, :]
         
-        return {'phi': phi, 'theta': theta, 'psi': psi, 'p': p, 'q': q, 'r': r, 
-                'phi_dot': euler_rates[0], 'theta_dot': euler_rates[1], 'psi_dot': euler_rates[2]}
-
-
+        return {
+            'phi': phi, 'theta': theta, 'psi': psi,
+            'p': p, 'q': q, 'r': r,
+            'phi_dot': euler_rates[0, :],
+            'theta_dot': euler_rates[1, :],
+            'psi_dot': euler_rates[2, :],
+            'T_list': T_list  # Include the list of transformation matrices in the output if needed
+        }
 
     @property
     def omega_frd_ned_dot(self):
@@ -628,12 +704,14 @@ class Aircraft:
    
 
 if __name__ == '__main__':
-    aircraft_params = json.load(open(os.path.join(BASEPATH, 'data', 'glider', 'glider_fs.json')))
-    perturbation = False
-
     model = load_model()
-    
-    aircraft = Aircraft(aircraft_params, model, STEPS=100, LINEAR=True)
+    traj_dict = json.load(open('data/glider/problem_definition.json'))
+    trajectory_config = TrajectoryConfiguration(traj_dict)
+
+
+    aircraft = Aircraft(traj_dict['aircraft'], model, LINEAR=False)
+
+    perturbation = False
     
     trim_state_and_control = None
     if trim_state_and_control is not None:
@@ -642,19 +720,19 @@ if __name__ == '__main__':
     else:
 
         x0 = np.zeros(3)
-        v0 = ca.vertcat([50, 0, 0])
-        q0 = Quaternion(ca.vertcat(0, 0, 0, 1))
+        v0 = ca.vertcat([80, 0, 0])
+        q0 = Quaternion(ca.vertcat(1, 0, 0, 0))
         # q0 = ca.vertcat([0.215566, -0.568766, 0.255647, 0.751452])#q0.inverse()
         omega0 = np.array([0, 0, 0])
 
         state = ca.vertcat(q0, x0, v0, omega0)
         control = np.zeros(aircraft.num_controls)
-        control[0] = 1
-        control[6:9] = aircraft_params['aero_centre_offset']
+        control[1] = 1
+        control[6:9] = traj_dict['aircraft']['aero_centre_offset']
 
     dyn = aircraft.state_update
-    dt = .1
-    tf = 30.0
+    dt = 1
+    tf = 100.0
     state_list = np.zeros((aircraft.num_states, int(tf / dt)))
 
     # dt_sym = ca.MX.sym('dt', 1)
@@ -704,13 +782,19 @@ if __name__ == '__main__':
     # state_list = state_list[:, :t-10]
     # print(state_list[0, :])
     first = None
-    # t -= 5
+    t -=5
+    def save(filepath):
+        with h5py.File(filepath, "a") as h5file:
+            grp = h5file.create_group(f'iteration_0')
+            grp.create_dataset('state', data=state_list[:, :t])
+            grp.create_dataset('control', data=control.reshape(-1, 1))
+    
+    
+    filepath = os.path.join("data", "trajectories", "simulation.h5")
+    if os.path.exists(filepath):
+        os.remove(filepath)
+    save(filepath)
 
-    # print(f"Final State: {state_list[:, t-10:t]}")
-    fig = plt.figure(figsize=(18, 9))
-    fig = plot_state(fig, state_list, control, aircraft, t, dt, first=0, control_list = control_list)
-    fig.savefig('test.png')
-    plt.show()
-
-    plt.plot(control_list)
-    plt.show(block=True)
+    plotter = TrajectoryPlotter(filepath, aircraft)
+    plotter.plot(0)
+    plt.show(block = True)

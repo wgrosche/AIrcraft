@@ -22,13 +22,13 @@ BASEPATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 print(BASEPATH)
 sys.path.append(BASEPATH)
 
-from src.dynamics import Aircraft, load_model
+from src.dynamics import Aircraft
 from src.waypoints import waypoint_distances, setup_progress_vars, x_guess
 # from src.preprocessing import get_airplane_params
 from src.models import ScaledModel, MiniModel
 # from src.visualisation import plot
 from src.plotting import plot, debug
-from src.utils import Control, State, TrajectoryConfiguration
+from src.utils import Control, State, TrajectoryConfiguration, load_model
 
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else 
                       ("mps" if torch.backends.mps.is_available() else "cpu"))
