@@ -138,6 +138,7 @@ class Aircraft:
         
         self.EPSILON = opts.epsilon
         self.STEPS = opts.physical_integration_substeps
+        self.opts = opts
 
         self.grav = ca.vertcat(0, 0, 9.81)
         self.S = opts.aircraft_config.reference_area
@@ -204,6 +205,7 @@ class Aircraft:
         """
         Inertia Tensor around the Centre of Mass
         """
+        opts = self.opts
 
         Ixx = opts.aircraft_config.Ixx
         Iyy = opts.aircraft_config.Iyy

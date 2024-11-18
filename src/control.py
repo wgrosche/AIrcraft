@@ -1,3 +1,49 @@
+"""
+Waypoint constraint formulation for moving horizon mpc:
+
+While a waypoint is not reached all waypoints other than the next and the one after that aren't considered.
+
+Minimising time to next waypoint while maintaining waypoint constraint on current waypoint.
+
+Once waypoint constraint is satisfied soften constraint on new current waypoint and introduce hard constraint on new next waypoint.
+
+Switching will be non-differentiable if naively implemented.
+
+How to handle case where all or one of the next 2 waypoints are out of horizon?
+
+Minimise distances instead of imposing final state constraint.
+
+Formulating the moving horizon mpc:
+
+Num control nodes = 10
+Max dt (don't know if this should be flexible) = 0.25s (human reaction time for realistic control input)
+
+waypoints = [...]
+current_waypoint = waypoints[0]
+next_waypoint = waypoints[1]
+
+state = state_0
+
+def check_waypoint_reached(state_list):
+    check whether the waypoint condition is met for any state in the state list
+
+
+while not final_waypoint_reached:
+    if check_waypoint_reached(state_list):
+        waypoint_index = i+1
+        current_waypoint = next_waypoint
+        next_waypoint = waypoints[i]
+    
+    opti problem with warm start?
+
+
+
+
+"""
+
+
+
+
 import casadi as ca
 import numpy as np
 from typing import List, Optional, Union
@@ -19,6 +65,17 @@ import matplotlib.pyplot as plt
 from liecasadi import Quaternion
 import h5py
 from scipy.interpolate import CubicSpline
+
+import torch
+
+BASEPATH = os.path.dirname(os.path.abspath(__file__)).split('src')[0]
+NETWORKPATH = os.path.join(BASEPATH, 'data', 'networks')
+DATAPATH = os.path.join(BASEPATH, 'data')
+DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else 
+                      ("mps" if torch.backends.mps.is_available() else "cpu"))
+sys.path.append(BASEPATH)
+from pathlib import Path
+from src.dynamics import AircraftOpts
 
 default_solver_options = {'ipopt': {'max_iter': 10000,
                                     'tol': 1e-2,
@@ -166,9 +223,9 @@ class ControlProblem:
         opti = self.opti
         dynamics = self.dynamics
 
-        alpha = self.aircraft._alpha
-        beta = self.aircraft._beta
-        airspeed = self.aircraft._airspeed
+        alpha = self.aircraft.alpha
+        beta = self.aircraft.beta
+        airspeed = self.aircraft.airspeed
 
         opti.subject_to(opti.bounded(state_envelope.alpha.lb,
             alpha(node.state, node.control), state_envelope.alpha.ub))
@@ -537,13 +594,26 @@ class ControlProblem:
     
 
 def main():
-    opti = ca.Opti()
+
     model = load_model()
     traj_dict = json.load(open('data/glider/problem_definition.json'))
+
     trajectory_config = TrajectoryConfiguration(traj_dict)
 
+    aircraft_config = trajectory_config.aircraft
+
+    linear_path = Path(DATAPATH) / 'glider' / 'linearised.csv'
+    model_path = Path(NETWORKPATH) / 'model-dynamics.pth'
+
+    opts = AircraftOpts(linear_path=linear_path, aircraft_config=aircraft_config)
+
+    aircraft = Aircraft(opts = opts)
+
+
+    opti = ca.Opti()
+
     num_control_nodes = 40
-    aircraft = Aircraft(traj_dict['aircraft'], model, LINEAR=True)
+    # aircraft = Aircraft(traj_dict['aircraft'], model)#, LINEAR=True)
     problem = ControlProblem(opti, aircraft, trajectory_config, num_control_nodes)
 
     problem.setup()
