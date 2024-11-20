@@ -27,7 +27,7 @@ from src.waypoints import waypoint_distances, setup_progress_vars, x_guess
 # from src.preprocessing import get_airplane_params
 from src.models import ScaledModel, MiniModel
 # from src.visualisation import plot
-from src.plotting import plot, debug
+from src.plotting import plot, debug, TrajectoryPlotter
 from src.utils import Control, State, TrajectoryConfiguration, load_model
 
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else 
@@ -347,21 +347,37 @@ def main():
         
     sol = opti.solve()
 
-    fig = plt.figure(figsize=(10, 10))
-    ax = fig.add_subplot(211, projection='3d')
-    ax2 = fig.add_subplot(212)
+    plotter = TrajectoryPlotter(filepath, aircraft)
+    plotter.plot(-1)
+    plt.show(block = True)
 
-    plot(
-        ax, 
-        sol.value(state),
-        waypoints, 
-        1, 
-        ax2, 
-        sol.value(control), 
-        sol.value(time), 
-        None, 
-        filepath = None
-        )
+    # fig = plt.figure(figsize=(10, 10))
+    # ax = fig.add_subplot(211, projection='3d')
+    # ax2 = fig.add_subplot(212)
+
+    # plot(
+    #     ax, 
+    #     sol.value(state),
+    #     waypoints, 
+    #     1, 
+    #     ax2, 
+    #     sol.value(control), 
+    #     sol.value(time), 
+    #     None, 
+    #     filepath = None
+    #     )
+
+    def save(filepath):
+        with h5py.File(filepath, "a") as h5file:
+            grp = h5file.create_group(f'iteration_0')
+            grp.create_dataset('state', data=state_list[:, :t])
+            grp.create_dataset('control', data=control_list[:, :t])
+    
+    
+    filepath = os.path.join("data", "trajectories", "simulation.h5")
+    if os.path.exists(filepath):
+        os.remove(filepath)
+    save(filepath)
     
     spy(sol.value(ca.jacobian(opti.g,opti.x)))
 

@@ -102,9 +102,9 @@ class Aircraft:
     relate to the forces and moments in the body frame:
 
     F_X = q_bar * S * C_X
-    M_l = q_bar * S * b * C_X
-    M_m = q_bar * S * c * C_X
-    M_b = q_bar * S * b * C_X
+    M_l = q_bar * S * b * C_l
+    M_m = q_bar * S * c * C_m
+    M_b = q_bar * S * b * C_n
 
     Where S is the reference area for the aircraft, b is span and c is chord
 
@@ -149,8 +149,6 @@ class Aircraft:
         self.control
 
     
-
-
     @property
     def state(self):
         if not hasattr(self, '_state_initialized') or not self._state_initialized:
@@ -646,8 +644,6 @@ class Aircraft:
             ) #, {'jit':True}
     
 
-   
-
 if __name__ == '__main__':
     model = load_model()
     traj_dict = json.load(open('data/glider/problem_definition.json'))
@@ -659,7 +655,8 @@ if __name__ == '__main__':
     linear_path = Path(DATAPATH) / 'glider' / 'linearised.csv'
     model_path = Path(NETWORKPATH) / 'model-dynamics.pth'
 
-    opts = AircraftOpts(linear_path=linear_path, aircraft_config=aircraft_config)
+    opts = AircraftOpts(nn_model_path=model_path, aircraft_config=aircraft_config)
+    # opts = AircraftOpts(linear_path=linear_path, aircraft_config=aircraft_config)
 
     aircraft = Aircraft(opts = opts)
 
@@ -684,8 +681,8 @@ if __name__ == '__main__':
         control[6:9] = traj_dict['aircraft']['aero_centre_offset']
 
     dyn = aircraft.state_update
-    dt = .1
-    tf = 100.0
+    dt = .01
+    tf = 1.0
     state_list = np.zeros((aircraft.num_states, int(tf / dt)))
 
     # dt_sym = ca.MX.sym('dt', 1)
@@ -702,39 +699,10 @@ if __name__ == '__main__':
             state_list[:, i] = state.full().flatten()
             control_list[:, i] = control
             state = dyn(state, control, dt)
-            # print("Roll Angle:", np.rad2deg(aircraft._phi(state, control).full().flatten()))
-            # print("Switch condition: ", np.rad2deg((aircraft._phi(state, control).full().flatten() - np.pi)))
-            # if np.rad2deg(aircraft._phi(state, control).full().flatten()) > 60:
-            #     if ail_pos:
-            #         control[0] += 0.5
-            #     else:
-            #         control[0] = 0
-            #         ail_pos = True
-            # elif np.rad2deg(aircraft._phi(state, control).full().flatten()) < -60:
-            #     if not ail_pos:
-            #         control[0] -= 0.5
-            #     else:
-            #         control[0] = 0
-            #         ail_pos = False
-
-            # if np.rad2deg(aircraft._alpha(state, control).full().flatten()) > 5:
-            #     if ele_pos:
-            #         control[1] += 0.5
-            #     else:
-            #         control[1] = 0
-            #         ele_pos = True
-            # elif np.rad2deg(aircraft._alpha(state, control).full().flatten()) < -5:
-            #     if not ele_pos:
-            #         control[1] -= 0.5
-            #     else:
-            #         control[1] = 0
-            #         ele_pos = False
-            # control_list.append(control[0])
                     
             t += 1
     print(state)
-    # state_list = state_list[:, :t-10]
-    # print(state_list[0, :])
+
     first = None
     # t -=5
     def save(filepath):
