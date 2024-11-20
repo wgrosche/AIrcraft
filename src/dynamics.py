@@ -149,8 +149,6 @@ class Aircraft:
         self.control
 
     
-
-
     @property
     def state(self):
         if not hasattr(self, '_state_initialized') or not self._state_initialized:
@@ -646,8 +644,6 @@ class Aircraft:
             ) #, {'jit':True}
     
 
-   
-
 if __name__ == '__main__':
     model = load_model()
     traj_dict = json.load(open('data/glider/problem_definition.json'))
@@ -685,8 +681,8 @@ if __name__ == '__main__':
         control[6:9] = traj_dict['aircraft']['aero_centre_offset']
 
     dyn = aircraft.state_update
-    dt = .1
-    tf = 100.0
+    dt = .01
+    tf = 1.0
     state_list = np.zeros((aircraft.num_states, int(tf / dt)))
 
     # dt_sym = ca.MX.sym('dt', 1)
@@ -706,7 +702,7 @@ if __name__ == '__main__':
                     
             t += 1
     print(state)
-    
+
     first = None
     # t -=5
     def save(filepath):

@@ -20,7 +20,7 @@ def load_model(
                                            else ("mps" if torch.backends.mps.is_available() 
                                                  else "cpu"))
         ) -> ScaledModel:
-    checkpoint = torch.load(filepath, map_location=device)
+    checkpoint = torch.load(filepath, map_location=device, weights_only=True)
 
     scaler = (checkpoint['input_mean'], 
               checkpoint['input_std'], 
