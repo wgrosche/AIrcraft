@@ -141,7 +141,7 @@ def main():
                         break
 
     else:
-        checkpoint = torch.load(os.path.join(NETWORKPATH, 'model-dynamics.pth'), map_location=DEVICE)
+        checkpoint = torch.load(os.path.join(NETWORKPATH, 'model-dynamics.pth'), map_location=DEVICE, weights_only=True)
         scaler = checkpoint['input_mean'], checkpoint['input_std'], checkpoint['output_mean'], checkpoint['output_std']
         model = ScaledModel(5, 6, scaler=scaler).to(DEVICE)
         model.load_state_dict(checkpoint['model_state_dict'])
