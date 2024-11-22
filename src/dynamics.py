@@ -144,6 +144,7 @@ class Aircraft:
         self.b = opts.aircraft_config.span
         self.c = opts.aircraft_config.chord
         self.mass = opts.aircraft_config.mass
+        self.opts = opts
 
         self.state
         self.control
@@ -203,10 +204,10 @@ class Aircraft:
         Inertia Tensor around the Centre of Mass
         """
 
-        Ixx = opts.aircraft_config.Ixx
-        Iyy = opts.aircraft_config.Iyy
-        Ixz = opts.aircraft_config.Ixz
-        Izz = opts.aircraft_config.Izz
+        Ixx = self.opts.aircraft_config.Ixx
+        Iyy = self.opts.aircraft_config.Iyy
+        Ixz = self.opts.aircraft_config.Ixz
+        Izz = self.opts.aircraft_config.Izz
 
         aero_inertia_tensor = ca.vertcat(
             ca.horzcat(Ixx, 0  , Ixz),
@@ -676,13 +677,13 @@ if __name__ == '__main__':
 
         state = ca.vertcat(q0, x0, v0, omega0)
         control = np.zeros(aircraft.num_controls)
-        control[0] = 0.05
-        control[1] = 4
+        control[0] = 0
+        control[1] = 0
         control[6:9] = traj_dict['aircraft']['aero_centre_offset']
 
     dyn = aircraft.state_update
-    dt = .01
-    tf = 1.0
+    dt = .1
+    tf = 5.0
     state_list = np.zeros((aircraft.num_states, int(tf / dt)))
 
     # dt_sym = ca.MX.sym('dt', 1)
@@ -717,6 +718,6 @@ if __name__ == '__main__':
         os.remove(filepath)
     save(filepath)
 
-    plotter = TrajectoryPlotter(filepath, aircraft)
-    plotter.plot(0)
+    plotter = TrajectoryPlotter(aircraft)
+    plotter.plot(filepath=filepath)
     plt.show(block = True)
