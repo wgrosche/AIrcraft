@@ -136,6 +136,11 @@ class ControlProblem:
 
         self.nodes = num_control_nodes
         self.waypoints = trajectory_config.waypoints()
+        self.current_waypoint = self.waypoints[0]
+        if len(self.waypoints) > 1:
+            self.next_waypoint = self.waypoints[1]
+        else:
+            self.next_waypoint = None
         self.trajectory = trajectory_config
         self.num_waypoints = self.waypoints.shape[0] - 1
         self.distances = cumulative_distances(self.waypoints)
@@ -274,10 +279,9 @@ class ControlProblem:
              time:Optional[ca.MX] = None):
         return time ** 2
 
-    def setup_interval(self):
-        waypoints = retrieve_waypoints(state)
-        
-        pass
+
+
+
 
     def setup(self):
         opti = self.opti
