@@ -412,9 +412,9 @@ class TrajectoryPlotter:
     def plot_thrust(self, trajectory_data:TrajectoryData):
         control = trajectory_data.control
         ax = self.axes.thrust
-        self._update_or_create_line(ax, '_T_x_line', control[0, :], r'$T_x$')
-        self._update_or_create_line(ax, '_T_y_line', control[1, :], r'$T_y$')
-        self._update_or_create_line(ax, '_T_z_line', control[2, :], r'$T_z$')
+        self._update_or_create_line(ax, '_T_x_line', control[3, :], r'$T_x$')
+        self._update_or_create_line(ax, '_T_y_line', control[4, :], r'$T_y$')
+        self._update_or_create_line(ax, '_T_z_line', control[5, :], r'$T_z$')
         ax.legend()
         ax.grid(True)
         ax.set_title('Thrust (N)')

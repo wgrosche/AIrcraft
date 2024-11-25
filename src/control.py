@@ -242,6 +242,8 @@ class ControlProblem:
         opti.subject_to(node.state_next == dynamics(node.state, node.control, dt))
 
 
+
+
     def waypoint_constraint(self, node:Node):#, waypoint_node:int):
         """
         Waypoint constraint implementation from:
@@ -271,6 +273,11 @@ class ControlProblem:
     def loss(self, state:Optional[ca.MX] = None, control:Optional[ca.MX] = None, 
              time:Optional[ca.MX] = None):
         return time ** 2
+
+    def setup_interval(self):
+        waypoints = retrieve_waypoints(state)
+        
+        pass
 
     def setup(self):
         opti = self.opti
@@ -598,15 +605,15 @@ def main():
     linear_path = Path(DATAPATH) / 'glider' / 'linearised.csv'
     model_path = Path(NETWORKPATH) / 'model-dynamics.pth'
 
-    opts = AircraftOpts(linear_path=linear_path, aircraft_config=aircraft_config)
-    # opts = AircraftOpts(nn_model_path=model_path, aircraft_config=aircraft_config)
+    # opts = AircraftOpts(linear_path=linear_path, aircraft_config=aircraft_config)
+    opts = AircraftOpts(nn_model_path=model_path, aircraft_config=aircraft_config)
 
     aircraft = Aircraft(opts = opts)
 
 
     opti = ca.Opti()
 
-    num_control_nodes = 5
+    num_control_nodes = 40
     # aircraft = Aircraft(traj_dict['aircraft'], model)#, LINEAR=True)
     problem = ControlProblem(opti, aircraft, trajectory_config, num_control_nodes)
 
