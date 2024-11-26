@@ -93,9 +93,8 @@ class MHE:
         waypoints = self.waypoints
         state_dim = X_init.shape[0]
 
-        node_list = [Node(index = 0, 
-                          state=scale_state * opti.variable(scale_state.shape[0]), 
-                          reached=opti.variable())]
+        initial_state = scale_state * opti.variable(scale_state.shape[0])
+        opti.subject_to(initial_state == X_init)
 
         if np.linalg.norm(waypoints[0] - X_init[3:7]) < max_dist:
             # if waypoint is reachable within horizon
