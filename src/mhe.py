@@ -16,46 +16,59 @@ scale_control = ca.DM(ca.vertcat(
     ))
 scale_time = 1
 
-@dataclass
-class Node:
-    index:int = None
-    state:ca.MX = None
-    state_next:ca.MX = None
-    control:ca.MX = None
-    reached:ca.MX = None
+opts = {'scale_state': scale_state, 
+        'scale_control': scale_control, 
+        'scale_time': scale_time, 
+        'aircraft':aircraft,
+        'traj_dict': traj_dict}
 
-    def create(opti, index, state_dim, control_dim):
-        return Node(
-            index=index,
-            state = scale_state * opti.variable(scale_state.shape[0]),
-            control = scale_control * opti.variable(scale_control.shape[0]),
-            reached = opti.variable()
-        )
-    
-@dataclass
-class Envelope:
-    alpha:ca.MX = None
-    beta:ca.MX = None
-    airspeed:ca.MX = None
+class ControlNode:
+    def __init__(self, opti, opts = {}):
+        self.state = opts['scale_state'] * opti.variable(scale_state.shape[0])
+        self.control = opts['scale_control'] * opti.variable(scale_control.shape[0])
+        self.reached = opti.variable()
+        self.aircraft = opts['aircraft']
+        self.opti = opti
+        self.traj_dict = opts['traj_dict']
+
+        self.constrain_control()
+        self.constrain_state()
 
 
-def state_constraint(opti, node1:Node, node2:Node, dt:ca.MX, aircraft:Aircraft, 
-                     state_envelope:Envelope):
-    
-    dynamics = aircraft.state_update
+    def constrain_state(self):
+        opti = self.opti
+        aircraft = self.aircraft
+        dynamics = aircraft.state_update
+        state_envelope = self.traj_dict.state_envelope
 
-    alpha = aircraft.alpha
-    beta = aircraft.beta
-    airspeed = aircraft.airspeed
+        alpha = aircraft.alpha
+        beta = aircraft.beta
+        airspeed = aircraft.airspeed
 
-    opti.subject_to(opti.bounded(state_envelope.alpha.lb,
-        alpha(node2.state, node2.control), state_envelope.alpha.ub))
+        opti.subject_to(opti.bounded(state_envelope.alpha.lb,
+        alpha(self.state, self.control), state_envelope.alpha.ub))
 
-    opti.subject_to(opti.bounded(state_envelope.beta.lb,
-        beta(node2.state, node2.control), state_envelope.beta.ub))
+        opti.subject_to(opti.bounded(state_envelope.beta.lb,
+            beta(self.state, self.control), state_envelope.beta.ub))
 
-    opti.subject_to(opti.bounded(state_envelope.airspeed.lb,
-        airspeed(node2.state, node2.control), state_envelope.airspeed.ub))
+        opti.subject_to(opti.bounded(state_envelope.airspeed.lb,
+            airspeed(self.state, self.control), state_envelope.airspeed.ub))
+        
+    def constrain_control(self):
+        control_envelope = self.trajectory.control
+        opti = self.opti
+        com = self.trajectory.aircraft.aero_centre_offset
+
+        opti.subject_to(opti.bounded(control_envelope.lb[:6],
+                self.control[:6], control_envelope.ub[:6]))
+        
+        opti.subject_to(opti.bounded(np.zeros(self.control[9:].shape),
+                self.control[9:], np.zeros(self.control[9:].shape)))
+        
+        opti.subject_to(self.control[6:9]==com)
+
+        
+
     
     opti.subject_to(node2.state_next == dynamics(node1.state, node2.control, dt))
 
