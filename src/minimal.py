@@ -451,7 +451,7 @@ def main():
 
     opti = ca.Opti()
 
-    num_control_nodes = 50
+    num_control_nodes = 40
     # aircraft = Aircraft(traj_dict['aircraft'], model)#, LINEAR=True)
     problem = ControlProblem(opti, aircraft, trajectory_config, num_control_nodes)
 

@@ -678,7 +678,7 @@ if __name__ == '__main__':
         state = ca.vertcat(q0, x0, v0, omega0)
         control = np.zeros(aircraft.num_controls)
         control[0] = 0
-        control[1] = 0
+        control[1] = 3
         control[6:9] = traj_dict['aircraft']['aero_centre_offset']
 
     dyn = aircraft.state_update
