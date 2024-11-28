@@ -144,6 +144,7 @@ class Aircraft:
         self.b = opts.aircraft_config.span
         self.c = opts.aircraft_config.chord
         self.mass = opts.aircraft_config.mass
+        self.com = opts.aircraft_config.aero_centre_offset
         self.opts = opts
 
         self.state
@@ -177,20 +178,12 @@ class Aircraft:
     @property
     def control(self):
         if not hasattr(self, '_control_initialized') or not self._control_initialized:
-            self._v_wind_ned = ca.MX.sym('v_wind_ned', 3)
             self._aileron = ca.MX.sym('aileron')
             self._elevator = ca.MX.sym('elevator')
-            self._rudder = ca.MX.sym('rudder')
-            self._throttle = ca.MX.sym('throttle', 3)
-            self._centre_of_mass = ca.MX.sym('centre_of_mass', 3)
 
             self._control = ca.vertcat(
             self._aileron, 
-            self._elevator, 
-            self._rudder, 
-            self._throttle, 
-            self._centre_of_mass,
-            self._v_wind_ned
+            self._elevator
             )
             self.num_controls = self._control.size()[0]
 
@@ -217,7 +210,7 @@ class Aircraft:
 
         mass = self.mass
 
-        com = self._centre_of_mass
+        com = self.com
         
         x, y, z = com[0], com[1], com[2]
 
@@ -242,9 +235,8 @@ class Aircraft:
     def v_frd_rel(self):
         q_frd_ned = Quaternion(self._q_frd_ned)
         v_ned = Quaternion(ca.vertcat(self._v_ned, 0))
-        v_wind_ned = Quaternion(ca.vertcat(self._v_wind_ned, 0))
 
-        self._v_frd_rel = (q_frd_ned.inverse() * (v_ned - v_wind_ned) 
+        self._v_frd_rel = (q_frd_ned.inverse() * (v_ned) 
                             * q_frd_ned).coeffs()[:3] + self.EPSILON
         
         return ca.Function('v_frd_rel', [self.state, self.control], 
@@ -452,7 +444,7 @@ class Aircraft:
             self.qbar
 
         forces = self._coefficients[:3] * self._qbar * self.S
-        forces += self._throttle
+        # forces += self._throttle
 
         self._forces_frd = forces
         return ca.Function('forces_frd', 
@@ -475,9 +467,7 @@ class Aircraft:
     def moments_from_forces_frd(self):
         if not hasattr(self, '_forces_frd'):
             self.forces_frd
-
-        com = self._centre_of_mass
-        self._moments_from_forces_frd = ca.cross(com, self._forces_frd)
+        self._moments_from_forces_frd = ca.cross(self.com, self._forces_frd)
         
         return ca.Function('moments_from_forces_frd', 
             [self.state, self.control], [self._moments_from_forces_frd])
@@ -678,8 +668,8 @@ if __name__ == '__main__':
         state = ca.vertcat(q0, x0, v0, omega0)
         control = np.zeros(aircraft.num_controls)
         control[0] = 0
-        control[1] = 3
-        control[6:9] = traj_dict['aircraft']['aero_centre_offset']
+        control[1] = 1
+        # control[6:9] = traj_dict['aircraft']['aero_centre_offset']
 
     dyn = aircraft.state_update
     dt = .1
@@ -708,38 +698,37 @@ if __name__ == '__main__':
 
 
 
-    # # dt_sym = ca.MX.sym('dt', 1)
-    # t = 0
-    # target_roll = np.deg2rad(60)
-    # ele_pos = True
-    # ail_pos = True
-    # control_list = np.zeros((aircraft.num_controls, int(tf / dt)))
-    # for i in tqdm(range(int(tf / dt)), desc = 'Simulating Trajectory:'):
-    #     if np.isnan(state[0]):
-    #         print('Aircraft crashed')
-    #         break
-    #     else:
-    #         state_list[:, i] = state.full().flatten()
-    #         control_list[:, i] = control
-    #         state = dyn(state, control, dt)
+    # dt_sym = ca.MX.sym('dt', 1)
+    t = 0
+    ele_pos = True
+    ail_pos = True
+    control_list = np.zeros((aircraft.num_controls, int(tf / dt)))
+    for i in tqdm(range(int(tf / dt)), desc = 'Simulating Trajectory:'):
+        if np.isnan(state[0]):
+            print('Aircraft crashed')
+            break
+        else:
+            state_list[:, i] = state.full().flatten()
+            control_list[:, i] = control
+            state = dyn(state, control, dt)
                     
-    #         t += 1
-    # print(state)
+            t += 1
+    print(state)
 
-    # first = None
-    # # t -=5
-    # def save(filepath):
-    #     with h5py.File(filepath, "a") as h5file:
-    #         grp = h5file.create_group(f'iteration_0')
-    #         grp.create_dataset('state', data=state_list[:, :t])
-    #         grp.create_dataset('control', data=control_list[:, :t])
+    first = None
+    # t -=5
+    def save(filepath):
+        with h5py.File(filepath, "a") as h5file:
+            grp = h5file.create_group(f'iteration_0')
+            grp.create_dataset('state', data=state_list[:, :t])
+            grp.create_dataset('control', data=control_list[:, :t])
     
     
-    # filepath = os.path.join("data", "trajectories", "simulation.h5")
-    # if os.path.exists(filepath):
-    #     os.remove(filepath)
-    # save(filepath)
+    filepath = os.path.join("data", "trajectories", "simulation.h5")
+    if os.path.exists(filepath):
+        os.remove(filepath)
+    save(filepath)
 
-    # plotter = TrajectoryPlotter(aircraft)
-    # plotter.plot(filepath=filepath)
-    # plt.show(block = True)
+    plotter = TrajectoryPlotter(aircraft)
+    plotter.plot(filepath=filepath)
+    plt.show(block = True)
