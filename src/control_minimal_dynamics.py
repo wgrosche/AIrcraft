@@ -55,7 +55,7 @@ BASEPATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 print(BASEPATH)
 sys.path.append(BASEPATH)
 
-from src.dynamics import Aircraft
+from src.dynamics_minimal import Aircraft
 from collections import namedtuple
 from scipy.spatial.transform import Rotation as R
 from src.utils import TrajectoryConfiguration, load_model
@@ -171,10 +171,7 @@ class ControlProblem:
                             [1, 1, 1]
                             ), 
                         scale_control = ca.vertcat(
-                            5, 5, 5,
-                            [1e2, 1e2, 1e2],
-                            [1, 1, 1],
-                            [1e2, 1e2, 1e2]
+                            5, 5
                             ), 
                         scale_time = 1,
                         ):
@@ -214,14 +211,8 @@ class ControlProblem:
         opti = self.opti
         com = self.trajectory.aircraft.aero_centre_offset
 
-        opti.subject_to(opti.bounded(control_envelope.lb[:6],
-                node.control[:6], control_envelope.ub[:6]))
-        
-        opti.subject_to(opti.bounded(np.zeros(node.control[9:].shape),
-                node.control[9:], np.zeros(node.control[9:].shape)))
-        
-        if fix_com:
-            opti.subject_to(node.control[6:9]==com)
+        opti.subject_to(opti.bounded(control_envelope.lb[:2],
+                node.control[:2], control_envelope.ub[:2]))
 
 
 
@@ -425,7 +416,7 @@ class ControlProblem:
         plt.show(block = False)
         # TODO: investigate fig.add_subfigure for better plotting
         self.opti.solver('ipopt', opts)
-        self.opti.callback(lambda i: self.callback(plotter, i, filepath))
+        # self.opti.callback(lambda i: self.callback(plotter, i, filepath))
         plt.show()
 
         if warm_start != (None, None):
@@ -448,8 +439,8 @@ class ControlProblem:
 
         control_guess = np.zeros(self.control.shape)
 
-        control_guess[6:9, :] = np.repeat([self.trajectory.aircraft.aero_centre_offset], 
-                                          self.control.shape[1], axis = 0).T
+        # control_guess[6:9, :] = np.repeat([self.trajectory.aircraft.aero_centre_offset], 
+        #                                   self.control.shape[1], axis = 0).T
 
         if self.VERBOSE:
             print("State Trajectory Guess: ", x_guess)
@@ -624,20 +615,31 @@ def main():
     problem.setup()
     (sol, opti) = problem.solve(filepath= os.path.join(BASEPATH, 'data', 'trajectories', 'traj_control.hdf5'))
 
-    _, ax = plt.subplots(1, 1)  # 1 row, 1 column of subplots
-    problem.plot_convergence(ax, sol)
+    plotter = TrajectoryPlotter(aircraft)
+    trajectory_data = TrajectoryData(
+                state = np.array(sol.value(problem.state))[:, 1:],
+                control = np.array(sol.value(problem.control)),
+                time = np.array(sol.value(problem.time))
+            )
+            
+    plotter.plot(trajectory_data = trajectory_data)
+    plt.show(block = True)
+
+
+    # _, ax = plt.subplots(1, 1)  # 1 row, 1 column of subplots
+    # problem.plot_convergence(ax, sol)
     
-    # sol_traj = sol.value(problem.state)
-    opti = ca.Opti()
-    aircraft = Aircraft(traj_dict['aircraft'], model, LINEAR=False)
-    problem = ControlProblem(opti, aircraft, trajectory_config, num_control_nodes)
+    # # sol_traj = sol.value(problem.state)
+    # opti = ca.Opti()
+    # aircraft = Aircraft(traj_dict['aircraft'], model, LINEAR=False)
+    # problem = ControlProblem(opti, aircraft, trajectory_config, num_control_nodes)
 
-    problem.setup()
-    # problem.opti.set_initial(problem.state, sol_traj)
-    (sol, opti) = problem.solve(filepath= os.path.join(BASEPATH, 'data', 'trajectories', 'traj_control_nn.hdf5'), warm_start=(sol, opti))
+    # problem.setup()
+    # # problem.opti.set_initial(problem.state, sol_traj)
+    # (sol, opti) = problem.solve(filepath= os.path.join(BASEPATH, 'data', 'trajectories', 'traj_control_nn.hdf5'), warm_start=(sol, opti))
 
-    _, ax = plt.subplots(1, 1)  # 1 row, 1 column of subplots
-    problem.plot_convergence(ax, sol)
+    # _, ax = plt.subplots(1, 1)  # 1 row, 1 column of subplots
+    # problem.plot_convergence(ax, sol)
 
     return sol
 
