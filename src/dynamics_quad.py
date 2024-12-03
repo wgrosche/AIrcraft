@@ -180,12 +180,10 @@ class Aircraft:
         if not hasattr(self, '_control_initialized') or not self._control_initialized:
             self._aileron = ca.MX.sym('aileron')
             self._elevator = ca.MX.sym('elevator')
-            self._thrust = ca.MX.sym('thrust')
 
             self._control = ca.vertcat(
             self._aileron, 
-            self._elevator,
-            self._thrust
+            self._elevator
             )
             self.num_controls = self._control.size()[0]
 
@@ -445,17 +443,8 @@ class Aircraft:
         if not hasattr(self, '_qbar'):
             self.qbar
 
-        forces = self._coefficients[:3] * self._qbar * self.S# + self._thrust
+        forces = self._coefficients[:3] * self._qbar * self.S
         # forces += self._throttle
-        speed_threshold = 100.0  # m/s
-        penalty_factor = 20.0  # Scale factor for additional drag
-
-        # Smooth penalty function for increased drag
-        excess_speed = self._airspeed - speed_threshold
-        additional_drag = penalty_factor * ca.fmax(0, excess_speed)**2  # Quadratic penalty for smoothness
-
-        # Apply the additional drag along the x-axis (forward direction)
-        forces[0] -= additional_drag
 
         self._forces_frd = forces
         return ca.Function('forces_frd', 
@@ -684,7 +673,7 @@ if __name__ == '__main__':
 
     dyn = aircraft.state_update
     dt = .1
-    tf = 50.0
+    tf = 5.0
     state_list = np.zeros((aircraft.num_states, int(tf / dt)))
 
     # investigate stiffness:

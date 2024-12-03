@@ -410,16 +410,32 @@ class TrajectoryPlotter:
         ax.set_title('Control Surface Deflctions')
 
     def plot_thrust(self, trajectory_data:TrajectoryData):
-        control = trajectory_data.control
-        if control.shape[0] < 6:
-            return
+        state = trajectory_data.state
+        x_data = state[4, :]
+        y_data = state[5, :]
         ax = self.axes.thrust
-        self._update_or_create_line(ax, '_T_x_line', control[3, :], r'$T_x$')
-        self._update_or_create_line(ax, '_T_y_line', control[4, :], r'$T_y$')
-        self._update_or_create_line(ax, '_T_z_line', control[5, :], r'$T_z$')
+
+        if not hasattr(self, '_waypoint_line'):
+            line, = ax.plot(x_data, y_data, label= 'Trajectory')
+            setattr(self, '_waypoint_line', line)
+        else:
+            line = getattr(self, '_waypoint_line')
+            line.set_ydata(y_data)
+            line.set_xdata(x_data)
         ax.legend()
         ax.grid(True)
-        ax.set_title('Thrust (N)')
+        ax.set_title('Waypoints')
+
+        # control = trajectory_data.control
+        # if control.shape[0] < 6:
+        #     return
+        # ax = self.axes.thrust
+        # self._update_or_create_line(ax, '_T_x_line', control[3, :], r'$T_x$')
+        # self._update_or_create_line(ax, '_T_y_line', control[4, :], r'$T_y$')
+        # self._update_or_create_line(ax, '_T_z_line', control[5, :], r'$T_z$')
+        # ax.legend()
+        # ax.grid(True)
+        # ax.set_title('Thrust (N)')
 
     def plot_progress_variables(self, trajectory_data:TrajectoryData):
         ax = self.axes.progress
@@ -464,6 +480,8 @@ class TrajectoryPlotter:
         self.plot_state(trajectory_data)
         self.plot_control(trajectory_data)
         self.plot_progress_variables(trajectory_data)
+
+        self.figure.suptitle(f"Final Time: {trajectory_data.time}")
 
     def save(self, iteration:Optional[int] = None, save_path = os.path.join(VISUPATH, 'trajectory_image.png')):
         if iteration is not None:

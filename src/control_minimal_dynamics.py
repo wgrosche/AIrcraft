@@ -171,7 +171,7 @@ class ControlProblem:
                             [1, 1, 1]
                             ), 
                         scale_control = ca.vertcat(
-                            5, 5
+                            10, 10, 10
                             ), 
                         scale_time = 1,
                         ):
@@ -195,7 +195,7 @@ class ControlProblem:
 
             if i < self.nodes:
                 control_list.append(ca.DM(scale_control) *          
-                            opti.variable(self.control_dim))
+                            opti.variable(self.control_dim) - ca.DM(5))
                 mu_list.append(opti.variable(self.num_waypoints))
                 nu_list.append(opti.variable(self.num_waypoints))
                 
@@ -206,13 +206,13 @@ class ControlProblem:
         self.mu = ca.hcat(mu_list)
         self.nu = ca.hcat(nu_list)
 
-    def control_constraint(self, node:Node, fix_com:bool = True):
+    def control_constraint(self, node:Node):
         control_envelope = self.trajectory.control
         opti = self.opti
-        com = self.trajectory.aircraft.aero_centre_offset
 
         opti.subject_to(opti.bounded(control_envelope.lb[:2],
                 node.control[:2], control_envelope.ub[:2]))
+        opti.subject_to(opti.bounded(0, node.control[2], 10))
 
 
 
@@ -267,8 +267,14 @@ class ControlProblem:
         return None #waypoint_node
 
     def loss(self, state:Optional[ca.MX] = None, control:Optional[ca.MX] = None, 
-             time:Optional[ca.MX] = None):
-        return time ** 2
+            time:Optional[ca.MX] = None):
+        lambda_rate = 1.0
+        rate_penalty = 0
+        for i in range(self.nodes - 1):
+            rate_penalty += ca.sumsqr(self.control[:, i+1] - self.control[:, i])
+         
+
+        return time ** 2 + lambda_rate * rate_penalty
 
 
 
@@ -411,9 +417,9 @@ class ControlProblem:
         if filepath is not None:
             if os.path.exists(filepath):
                 os.remove(filepath)
-        plt.ion()
-        plotter = TrajectoryPlotter(self.aircraft)
-        plt.show(block = False)
+        # plt.ion()
+        # plotter = TrajectoryPlotter(self.aircraft)
+        # plt.show(block = False)
         # TODO: investigate fig.add_subfigure for better plotting
         self.opti.solver('ipopt', opts)
         # self.opti.callback(lambda i: self.callback(plotter, i, filepath))
@@ -608,12 +614,18 @@ def main():
 
     opti = ca.Opti()
 
-    num_control_nodes = 40
+    num_control_nodes = 100
     # aircraft = Aircraft(traj_dict['aircraft'], model)#, LINEAR=True)
     problem = ControlProblem(opti, aircraft, trajectory_config, num_control_nodes)
 
     problem.setup()
     (sol, opti) = problem.solve(filepath= os.path.join(BASEPATH, 'data', 'trajectories', 'traj_control.hdf5'))
+
+    # save sol
+    import pickle
+
+    with(open('solution.pkl', 'wb')) as f:
+        pickle.dump(sol, f)
 
     plotter = TrajectoryPlotter(aircraft)
     trajectory_data = TrajectoryData(
@@ -623,6 +635,7 @@ def main():
             )
             
     plotter.plot(trajectory_data = trajectory_data)
+
     plt.show(block = True)
 
 

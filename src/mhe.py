@@ -9,10 +9,7 @@ scale_state = ca.DM(ca.vertcat(
     [1, 1, 1]
     ))
 scale_control = ca.DM(ca.vertcat(
-    5, 5, 5,
-    [1e2, 1e2, 1e2],
-    [1, 1, 1],
-    [1e2, 1e2, 1e2]
+    5, 5
     ))
 scale_time = 1
 
