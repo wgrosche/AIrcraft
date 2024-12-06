@@ -207,13 +207,13 @@ def process_sim_dataset(
     forces = np.einsum('ijk,jk->ik', rotmat, forces).T
     moments = np.einsum('ijk,jk->ik', rotmat, moments).T
 
-    output['CX'] = - forces[:, 0] / (q * S)
+    output['CX'] = forces[:, 0] / (q * S)
     output['CY'] = forces[:, 1] / (q * S)
-    output['CZ'] = - forces[:, 2] / (q * S)
+    output['CZ'] = forces[:, 2] / (q * S)
 
-    output['Cl'] = - moments[:, 0] / (q * S * b)
+    output['Cl'] = moments[:, 0] / (q * S * b)
     output['Cm'] = moments[:, 1] / (q * S * c)
-    output['Cn'] = - moments[:, 2] / (q * S * b)
+    output['Cn'] = moments[:, 2] / (q * S * b)
 
     # centre control surface deflections
     output['aileron'] = -(np.array(input['ctrl1'], dtype=float) - 5.0)
@@ -323,9 +323,9 @@ def process_wt_dataset(
     forces = np.einsum('ijk,jk->ik', rotmat, forces).T
     moments = np.einsum('ijk,jk->ik', rotmat, moments).T
 
-    output['CX'] = - forces[:, 0]
+    output['CX'] = forces[:, 0]
     output['CY'] = forces[:, 1]
-    output['CZ'] = - forces[:, 2]
+    output['CZ'] = forces[:, 2]
 
     output['Cl'] = moments[:, 0]
     output['Cm'] = moments[:, 1] * 4 # NOTE: don't know whats going on here, 
@@ -394,10 +394,10 @@ def main():
 
     
     data_wt = process_sim_dataset(wt_sim, wt_params, fs_params, 
-                                  axes = np.array([[1, -1, 1, 1, 1, 1]]).T)
+                                  axes = np.array([[-1, 1, -1, 1, 1, 1]]).T)
     
     data_fs = process_sim_dataset(fs_sim, fs_params, fs_params, 
-                                  axes = np.array([[-1, 1, 1, -1, 1, -1]]).T, body=False)
+                                  axes = np.array([[-1, -1, -1, 1, 1, 1]]).T, body=False)
     # data_fs = data_fs.where(data_fs['aileron'] == 0)
     # data_fs = data_fs.where(data_fs['elevator'] == 0)
 
@@ -418,7 +418,7 @@ def main():
     wt_real = pd.read_csv(wt_raw_path) # load windtunnel data (wind frame)
 
     data_real = process_wt_dataset(wt_real, fs_params, fs_params,
-                                   axes = np.array([[1, 1, 1, -1, -1, -1]]).T)
+                                   axes = np.array([[-1, -1, -1, -1, -1, -1]]).T, body = False)
     output_path = os.path.join(DATA_DIR, 'processed', 'data_real.csv')
     data_real.to_csv(output_path, index=False)
 
