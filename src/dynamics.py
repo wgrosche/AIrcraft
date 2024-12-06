@@ -144,6 +144,7 @@ class Aircraft:
         self.b = opts.aircraft_config.span
         self.c = opts.aircraft_config.chord
         self.mass = opts.aircraft_config.mass
+        self.opts = opts
 
         self.state
         self.control
@@ -203,10 +204,10 @@ class Aircraft:
         Inertia Tensor around the Centre of Mass
         """
 
-        Ixx = opts.aircraft_config.Ixx
-        Iyy = opts.aircraft_config.Iyy
-        Ixz = opts.aircraft_config.Ixz
-        Izz = opts.aircraft_config.Izz
+        Ixx = self.opts.aircraft_config.Ixx
+        Iyy = self.opts.aircraft_config.Iyy
+        Ixz = self.opts.aircraft_config.Ixz
+        Izz = self.opts.aircraft_config.Izz
 
         aero_inertia_tensor = ca.vertcat(
             ca.horzcat(Ixx, 0  , Ixz),
@@ -676,47 +677,69 @@ if __name__ == '__main__':
 
         state = ca.vertcat(q0, x0, v0, omega0)
         control = np.zeros(aircraft.num_controls)
-        control[0] = 0.05
-        control[1] = 4
+        control[0] = 0
+        control[1] = 3
         control[6:9] = traj_dict['aircraft']['aero_centre_offset']
 
     dyn = aircraft.state_update
-    dt = .01
-    tf = 1.0
+    dt = .1
+    tf = 5.0
     state_list = np.zeros((aircraft.num_states, int(tf / dt)))
 
-    # dt_sym = ca.MX.sym('dt', 1)
-    t = 0
-    target_roll = np.deg2rad(60)
-    ele_pos = True
-    ail_pos = True
-    control_list = np.zeros((aircraft.num_controls, int(tf / dt)))
-    for i in tqdm(range(int(tf / dt)), desc = 'Simulating Trajectory:'):
-        if np.isnan(state[0]):
-            print('Aircraft crashed')
-            break
-        else:
-            state_list[:, i] = state.full().flatten()
-            control_list[:, i] = control
-            state = dyn(state, control, dt)
+    # investigate stiffness:
+
+    # Define f(state, control) (e.g., the dynamics function)
+    f = aircraft.state_derivative(aircraft.state, aircraft.control)
+
+    # Compute the Jacobian of f w.r.t state
+    J = ca.jacobian(f, aircraft.state)
+
+    # Create a CasADi function for numerical evaluation
+    J_func = ca.Function('J', [aircraft.state, aircraft.control], [J])
+
+    # Evaluate J numerically for a specific state and control
+    J_val = J_func(state, control)
+
+    # Compute eigenvalues using numpy
+    eigvals = np.linalg.eigvals(np.array(J_val))
+
+    print(eigvals)
+    
+
+
+
+    # # dt_sym = ca.MX.sym('dt', 1)
+    # t = 0
+    # target_roll = np.deg2rad(60)
+    # ele_pos = True
+    # ail_pos = True
+    # control_list = np.zeros((aircraft.num_controls, int(tf / dt)))
+    # for i in tqdm(range(int(tf / dt)), desc = 'Simulating Trajectory:'):
+    #     if np.isnan(state[0]):
+    #         print('Aircraft crashed')
+    #         break
+    #     else:
+    #         state_list[:, i] = state.full().flatten()
+    #         control_list[:, i] = control
+    #         state = dyn(state, control, dt)
                     
-            t += 1
-    print(state)
+    #         t += 1
+    # print(state)
 
-    first = None
-    # t -=5
-    def save(filepath):
-        with h5py.File(filepath, "a") as h5file:
-            grp = h5file.create_group(f'iteration_0')
-            grp.create_dataset('state', data=state_list[:, :t])
-            grp.create_dataset('control', data=control_list[:, :t])
+    # first = None
+    # # t -=5
+    # def save(filepath):
+    #     with h5py.File(filepath, "a") as h5file:
+    #         grp = h5file.create_group(f'iteration_0')
+    #         grp.create_dataset('state', data=state_list[:, :t])
+    #         grp.create_dataset('control', data=control_list[:, :t])
     
     
-    filepath = os.path.join("data", "trajectories", "simulation.h5")
-    if os.path.exists(filepath):
-        os.remove(filepath)
-    save(filepath)
+    # filepath = os.path.join("data", "trajectories", "simulation.h5")
+    # if os.path.exists(filepath):
+    #     os.remove(filepath)
+    # save(filepath)
 
-    plotter = TrajectoryPlotter(filepath, aircraft)
-    plotter.plot(0)
-    plt.show(block = True)
+    # plotter = TrajectoryPlotter(aircraft)
+    # plotter.plot(filepath=filepath)
+    # plt.show(block = True)

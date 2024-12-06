@@ -65,7 +65,9 @@ import matplotlib.pyplot as plt
 from liecasadi import Quaternion
 import h5py
 from scipy.interpolate import CubicSpline
+from src.plotting import TrajectoryPlotter, TrajectoryData
 
+import threading
 import torch
 
 BASEPATH = os.path.dirname(os.path.abspath(__file__)).split('src')[0]
@@ -77,6 +79,7 @@ sys.path.append(BASEPATH)
 from pathlib import Path
 from src.dynamics import AircraftOpts
 
+plt.ion()
 default_solver_options = {'ipopt': {'max_iter': 10000,
                                     'tol': 1e-2,
                                     'acceptable_tol': 1e-2,
@@ -133,6 +136,11 @@ class ControlProblem:
 
         self.nodes = num_control_nodes
         self.waypoints = trajectory_config.waypoints()
+        self.current_waypoint = self.waypoints[0]
+        if len(self.waypoints) > 1:
+            self.next_waypoint = self.waypoints[1]
+        else:
+            self.next_waypoint = None
         self.trajectory = trajectory_config
         self.num_waypoints = self.waypoints.shape[0] - 1
         self.distances = cumulative_distances(self.waypoints)
@@ -239,6 +247,8 @@ class ControlProblem:
         opti.subject_to(node.state_next == dynamics(node.state, node.control, dt))
 
 
+
+
     def waypoint_constraint(self, node:Node):#, waypoint_node:int):
         """
         Waypoint constraint implementation from:
@@ -268,6 +278,10 @@ class ControlProblem:
     def loss(self, state:Optional[ca.MX] = None, control:Optional[ca.MX] = None, 
              time:Optional[ca.MX] = None):
         return time ** 2
+
+
+
+
 
     def setup(self):
         opti = self.opti
@@ -337,27 +351,6 @@ class ControlProblem:
 
         opti.minimize(self.loss(state = state, control = control, time = time))
 
-        if self.VERBOSE:
-            constraints = opti.g
-            print(f"Constraint 545: {constraints[576]}")
-
-    def plot_sparsity(self, ax:plt.axes):
-        jacobian = self.opti.debug.value(
-            ca.jacobian(self.opti.g, self.opti.x)
-            ).toarray()
-        
-        ax.clear()
-        ax.spy(jacobian)
-        plt.draw()
-        plt.pause(0.01)
-
-    def plot_trajectory(self, ax:plt.axes):
-        state = self.opti.debug.value(self.state)
-        ax.clear()
-        ax.plot(state[4, :], state[5, :], state[6, :])
-        plt.draw()
-        plt.pause(0.01)
-
     def save_progress(self, filepath, iteration):
         if filepath is not None:
             # save the state, control and time to a file
@@ -383,10 +376,23 @@ class ControlProblem:
         plt.tight_layout()
         plt.show(block = True)
 
-    def callback(self, axs:List[plt.axes], iteration:int, filepath:str):
+    def callback(self, plotter:TrajectoryPlotter, iteration:int, filepath:str):
         if iteration % 10 == 5:
-            self.plot_sparsity(axs[0])
-            self.plot_trajectory(axs[1])
+            trajectory_data = TrajectoryData(
+                state = np.array(self.opti.debug.value(self.state))[:, 1:],
+                control = np.array(self.opti.debug.value(self.control)),
+                time = np.array(self.opti.debug.value(self.time)),
+                lam = np.array(self.opti.debug.value(self.lam)),
+                mu = np.array(self.opti.debug.value(self.mu)),
+                nu = np.array(self.opti.debug.value(self.nu))
+            )
+            
+            plotter.plot(trajectory_data = trajectory_data)
+            plt.pause(0.001)
+
+
+            # self.plot_sparsity(axs[0])
+            # self.plot_trajectory(axs[1])
 
         if filepath is not None:
             self.sol_state_list.append(self.opti.debug.value(self.state))
@@ -414,13 +420,12 @@ class ControlProblem:
         if filepath is not None:
             if os.path.exists(filepath):
                 os.remove(filepath)
-
-        fig = plt.figure(figsize=(10, 10))
-        ax = fig.add_subplot(211)
-        ax2 = fig.add_subplot(212, projection = '3d')
+        plt.ion()
+        plotter = TrajectoryPlotter(self.aircraft)
+        plt.show(block = False)
         # TODO: investigate fig.add_subfigure for better plotting
         self.opti.solver('ipopt', opts)
-        self.opti.callback(lambda i: self.callback([ax, ax2], i, filepath))
+        self.opti.callback(lambda i: self.callback(plotter, i, filepath))
         plt.show()
 
         if warm_start != (None, None):
@@ -429,7 +434,8 @@ class ControlProblem:
             # lam_g0 = warm_sol.value(warm_opti.lam_g)
             # self.opti.set_initial(self.opti.lam_g, lam_g0)
         sol = self.opti.solve()
-        
+        plt.ioff()
+        plt.show(block=True)        
         return (sol, self.opti)
 
 
@@ -456,7 +462,6 @@ class ControlProblem:
         self.opti.set_initial(self.time, time_guess)
         self.opti.set_initial(self.control, control_guess)
     
-
     def waypoint_variable_guess(self):
 
         num_waypoints = self.num_waypoints
@@ -504,7 +509,6 @@ class ControlProblem:
             x_guess[5, :] = np.interp(np.linspace(0, len(y_vals)-1, len(y_vals)), np.linspace(0, len(t_fine)-1, len(t_fine)), y_smooth)
             x_guess[6, :] = np.interp(np.linspace(0, len(z_vals)-1, len(z_vals)), np.linspace(0, len(t_fine)-1, len(t_fine)), z_smooth)
             return x_guess
-
 
     def state_guess(self, trajectory:TrajectoryConfiguration):
         """
@@ -583,11 +587,11 @@ class ControlProblem:
         # x_guess = self.smooth_trajectory(x_guess)
 
         time_guess = distance[-1] / velocity_guess
-        if self.VERBOSE:
-            fig = plt.figure()
-            ax = fig.add_subplot(111, projection = '3d')
-            ax.plot(x_guess[4, :], x_guess[5, :], x_guess[6, :])
-            plt.show(block = True)
+        # if self.VERBOSE:
+        #     fig = plt.figure()
+        #     ax = fig.add_subplot(111, projection = '3d')
+        #     ax.plot(x_guess[4, :], x_guess[5, :], x_guess[6, :])
+        #     plt.show(block = True)
         
         
         return x_guess, time_guess
@@ -605,7 +609,8 @@ def main():
     linear_path = Path(DATAPATH) / 'glider' / 'linearised.csv'
     model_path = Path(NETWORKPATH) / 'model-dynamics.pth'
 
-    opts = AircraftOpts(linear_path=linear_path, aircraft_config=aircraft_config)
+    # opts = AircraftOpts(linear_path=linear_path, aircraft_config=aircraft_config)
+    opts = AircraftOpts(nn_model_path=model_path, aircraft_config=aircraft_config)
 
     aircraft = Aircraft(opts = opts)
 

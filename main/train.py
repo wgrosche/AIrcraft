@@ -141,7 +141,7 @@ def main():
                         break
 
     else:
-        checkpoint = torch.load(os.path.join(NETWORKPATH, 'model-dynamics.pth'), map_location=DEVICE)
+        checkpoint = torch.load(os.path.join(NETWORKPATH, 'model-dynamics.pth'), map_location=DEVICE, weights_only=True)
         scaler = checkpoint['input_mean'], checkpoint['input_std'], checkpoint['output_mean'], checkpoint['output_std']
         model = ScaledModel(5, 6, scaler=scaler).to(DEVICE)
         model.load_state_dict(checkpoint['model_state_dict'])
@@ -163,7 +163,9 @@ def main():
     targets = np.concatenate(targets, axis=0)
     outputs = np.concatenate(outputs, axis=0)
 
-    # create meshgrid for plotting
+    # import seaborn as sns
+    # import pandas as pd
+
     # inp_grid = pd.DataFrame(inputs, columns = ['q','alpha','beta','aileron','elevator'])
     # x_plotting = create_grid(inp_grid, 10)
     # x_plotting['aileron'] = 0
@@ -171,19 +173,70 @@ def main():
     # x_plotting = x_plotting.drop_duplicates()
     # x_plotting_inp = torch.tensor(x_plotting.astype('float32').values).to(DEVICE)
     # y_plotting = model(x_plotting_inp).detach().cpu().numpy()
-    # # 3D plot for each output feature
-    # fig = plt.figure(figsize=(15, 10))
-    # for i in range(6):
-    #     ax = fig.add_subplot(2, 3, i+1, projection='3d')
-    #     ax.scatter(inputs[:,1], inputs[:,2], targets[:, i], label='True', color='b')
-    #     ax.scatter(inputs[:,1], inputs[:,2], outputs[:, i], label='Predicted', color='r')
-    #     ax.scatter(x_plotting.iloc[:,1], x_plotting.iloc[:,2], y_plotting[:,i])
-    #     ax.set_xlabel(input_features[1])
-    #     ax.set_ylabel(input_features[2])
-    #     ax.set_zlabel(output_features[i])
+
+    # # Assume inputs, targets, and outputs are already available (e.g., as tensors or numpy arrays)
+    # # `x_plotting` is the meshgrid for the input features (e.g., alpha, beta)
+    # # `y_plotting` is the model's predicted outputs for the meshgrid
+    # # `input_features` and `output_features` are the names of the respective variables
+
+    # # 2D scatter plots for each output feature
+    # fig, axes = plt.subplots(2, 3, figsize=(15, 10), constrained_layout=True)
+    # axes = axes.ravel()
+
+    # for i, feature in enumerate(output_features):  # Loop through each output feature (e.g., CX, CY, ...)
+    #     ax = axes[i]
+        
+    #     # Plot true data (targets)
+    #     sns.scatterplot(x=inputs[:, 1], y=targets[:, i], ax=ax, label="True", color="blue", alpha=0.6)
+        
+    #     # Plot predicted data
+    #     sns.scatterplot(x=inputs[:, 1], y=outputs[:, i], ax=ax, label="Predicted", color="orange", alpha=0.6)
+        
+    #     # Plot predictions on the meshgrid
+    #     # sns.scatterplot(x=x_plotting.iloc[:, 1], y=y_plotting[:, i], ax=ax, label="Linearized Model", color="green", alpha=0.6)
+        
+    #     # Set labels and title
+    #     ax.set_title(f"{feature} vs Alpha", fontsize=14)
+    #     ax.set_xlabel(input_features[1], fontsize=12)  # E.g., 'alpha'
+    #     ax.set_ylabel(feature, fontsize=12)  # E.g., 'CX', 'CY', ...
     #     ax.legend()
-    # plt.savefig(os.path.join(VISUPATH, 'predictions.png'))
-    # plt.show(block=True)
+
+    # # Save the figure
+    # plt.savefig("2D_output_comparison.png", format="png", dpi=300)
+
+    # # Show the plots
+    # plt.show()
+
+    # return None
+
+
+    # create meshgrid for plotting
+    inp_grid = pd.DataFrame(inputs, columns = ['q','alpha','beta','aileron','elevator'])
+    x_plotting = create_grid(inp_grid, 10)
+    plotting_features = [r"$C_X$", r"$C_Y$", r"$C_Z$", r"$C_L$", r"$C_M$", r"$C_N$"]
+    x_plotting['aileron'] = 0
+    x_plotting['elevator'] = 0
+    x_plotting = x_plotting.drop_duplicates()
+    x_plotting_inp = torch.tensor(x_plotting.astype('float32').values).to(DEVICE)
+    y_plotting = model(x_plotting_inp).detach().cpu().numpy()
+    # 3D plot for each output feature
+    fig = plt.figure(figsize=(15, 10))
+    for i in range(6):
+        ax = fig.add_subplot(2, 3, i+1, projection='3d')
+        ax.scatter(inputs[:,1], inputs[:,2], targets[:, i], label='True', color='b')
+        ax.scatter(inputs[:,1], inputs[:,2], outputs[:, i], label='Predicted', color='r')
+        ax.scatter(x_plotting.iloc[:,1], x_plotting.iloc[:,2], y_plotting[:,i])
+        # ax.set_xlabel(input_features[1])
+        # ax.set_ylabel(input_features[2])
+        ax.set_xlabel(r"Angle of Attack ($\alpha$ [rad])")
+        ax.set_ylabel(r"Angle of Sideslip ($\beta$ [rad])")
+        ax.set_zlabel(plotting_features[i])
+        ax.set_title(plotting_features[i])
+        ax.legend()
+    fig.suptitle("Predicted Aerodynamic Coefficients")
+    fig.tight_layout()
+    plt.savefig(os.path.join(VISUPATH, 'predictions.png'))
+    plt.show(block=True)
 
     def linearised_model(filepath, inputs, feature):
         coeff_table = json.load(filepath)
@@ -219,16 +272,20 @@ def main():
         
         # Predict outputs
         y_plotting = model(x_plotting_inp).detach().cpu().numpy()
+        mask = (inputs[:, 3] == aileron_value) & (inputs[:, 4] == elevator_value)
+        plot_vals = np.where(mask[:, np.newaxis], targets, np.nan)
+
+
 
         
         
         # Clear the axes and replot for each feature
         for i, ax in enumerate(axes):
             ax.cla()
-            ax.scatter(inputs[:, 1], inputs[:, 2], targets[:, i], label='True', color='b')
-            ax.scatter(inputs[:, 1], inputs[:, 2], outputs[:, i], label='Predicted', color='r')
-            ax.scatter(x_plotting.iloc[:, 1], x_plotting.iloc[:, 2], y_plotting[:, i], label='New Prediction', color='g')
-            ax.scatter(x_plotting.iloc[:, 1], x_plotting.iloc[:, 2], linearised_model(open('data/glider/linearised.json'), x_plotting, output_features[i]), label='Linear', color='k')
+            ax.scatter(inputs[:, 1], inputs[:, 2], plot_vals[:, i], label='True', color='r')
+            # ax.scatter(inputs[:, 1], inputs[:, 2], outputs[:, i], label='Predicted', color='r')
+            ax.scatter(x_plotting.iloc[:, 1], x_plotting.iloc[:, 2], y_plotting[:, i], label='New Prediction', color='b')
+            ax.scatter(x_plotting.iloc[:, 1], x_plotting.iloc[:, 2], linearised_model(open('data/glider/linearised.json'), x_plotting, output_features[i]), label='Linear', color='g')
             
             ax.set_xlabel(input_features[1])
             ax.set_ylabel(input_features[2])
@@ -238,8 +295,11 @@ def main():
         fig.suptitle(f"Aileron: {aileron_value}, Elevator: {elevator_value}")
 
     # Set up frames for the animation
+    
     aileron_values = np.linspace(-5, 5, num=10)
-    elevator_values = np.linspace(-5, 5, num=10)
+    elevator_values = np.linspace(0, 0, num=1)
+    # aileron_values = np.linspace(-5, 5, num=10)
+    # elevator_values = np.linspace(-5, 5, num=10)
     frames = [(aileron, elevator) for aileron in aileron_values for elevator in elevator_values]
 
     # Create animation

@@ -118,12 +118,12 @@ class ScaledModel(nn.Module):
         self.core_layers = nn.Sequential(
             nn.Linear(input_size, 16),
             # nn.ELU(),
-            nn.Linear(16, 64),
+            nn.Linear(16, 32),
             # nn.ELU(),
-            nn.Linear(64, 64),
+            # nn.Linear(64, 64),
             # nn.ELU(),
             nn.Tanh(),
-            nn.Linear(64, output_size),
+            nn.Linear(32, output_size),
         )
         
         # Initialize buffers for scaling parameters if a scaler is provided

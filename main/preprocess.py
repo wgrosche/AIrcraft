@@ -82,6 +82,14 @@ import os
 import matplotlib.pyplot as plt
 import json
 
+# Constants
+RHO = 1.225 # air density
+IN_TO_M = 0.0254
+LBF_TO_N = 4.44822
+LBS_TO_KG = 0.453592
+MACH_TO_MS = 343
+
+
 def R(alpha, beta):
     """
     Rotation matrix from wind to body axes. It is transposed for np.einsum
@@ -155,7 +163,7 @@ def process_sim_dataset(
         - delta_elevator is defined positive if the elevator is deflected 
                             downward (positive z direction)
     """
-    RHO = 1.225 # air density
+    
     output = pd.DataFrame(columns = ['q', 'alpha', 'beta', 'aileron', 
                                      'elevator', 'windtunnel', 'CX', 'CY', 'CZ', 
                                      'Cl', 'Cm', 'Cn'])
@@ -273,13 +281,7 @@ def process_wt_dataset(
         - delta_elevator is defined positive if the elevator is deflected 
                             downward (positive z direction)
     """
-    # constants for unit conversion
-    RHO = 1.225 # air density
-    IN_TO_M = 0.0254
-    LBF_TO_N = 4.44822
-    LBS_TO_KG = 0.453592
-    MACH_TO_MS = 343
-
+    
     output = pd.DataFrame(columns = ['q', 'alpha', 'beta', 'aileron', 
                                      'elevator', 'windtunnel', 'CX', 'CY', 'CZ', 
                                      'Cl', 'Cm', 'Cn'])
@@ -395,7 +397,9 @@ def main():
                                   axes = np.array([[1, -1, 1, 1, 1, 1]]).T)
     
     data_fs = process_sim_dataset(fs_sim, fs_params, fs_params, 
-                                  axes = np.array([[-1, 1, 1, -1, 1, -1]]).T)
+                                  axes = np.array([[-1, 1, 1, -1, 1, -1]]).T, body=False)
+    # data_fs = data_fs.where(data_fs['aileron'] == 0)
+    # data_fs = data_fs.where(data_fs['elevator'] == 0)
 
     data =  pd.concat([data_fs, data_wt], ignore_index=True)
 

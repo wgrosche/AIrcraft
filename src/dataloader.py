@@ -36,6 +36,8 @@ class AeroDataset(Dataset):
         dataset = pd.DataFrame(columns=self.input_features + self.output_features)
         for file in os.listdir(self.data_dir):
             if file.endswith('.csv'):
+                if file == 'data_real.csv':
+                    continue
                 temp = pd.read_csv(self.data_dir / file)
                 print(temp.head())
                 dataset = pd.concat([dataset, temp[self.input_features + self.output_features]], axis=0)
