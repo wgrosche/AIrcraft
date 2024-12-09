@@ -41,6 +41,7 @@ class AircraftOpts:
     epsilon:float = 1e-6
     physical_integration_substeps:int = 100
     linear_path:Path = None
+    poly_path:Path = None
     nn_model_path:Path = None
     aircraft_config:TrajectoryConfiguration.AircraftConfiguration = None
     realtime:bool = False # Work in progress implementation of faster nn eval
@@ -120,14 +121,20 @@ class Aircraft:
         EPSILON: smoothing parameter for non-smoothly-differentiable functions
         STEPS: number of integration steps in each state update
         """
-        
+        self.LINEAR = False
 
         if opts.linear_path:
             self.LINEAR = True
             self.linear_coeffs = ca.DM(np.array(pd.read_csv(opts.linear_path)))
+            self.fitted_models = None
+        elif opts.poly_path:
+            import pickle
+            with open(opts.poly_path, 'rb') as file:
+                self.fitted_models = pickle.load(file)
 
         elif opts.nn_model_path:
             self.LINEAR = False
+            self.fitted_models = None
             model = load_model(filepath=opts.nn_model_path)
             if opts.realtime:
                 self.model = RealTimeL4CasADi(model, approximation_order=1)
@@ -365,6 +372,9 @@ class Aircraft:
         
         if self.LINEAR:
             outputs = ca.mtimes(self.linear_coeffs, ca.vertcat(inputs, 1))
+
+        elif self.fitted_models is not None:
+            outputs = ca.vertcat(*[self.fitted_models[i]['casadi_function'](inputs) for i in self.fitted_models.keys()])
         else:
             outputs = self.model(ca.reshape(inputs, 1, -1))
             outputs = ca.vertcat(outputs.T)
@@ -656,8 +666,10 @@ if __name__ == '__main__':
 
     linear_path = Path(DATAPATH) / 'glider' / 'linearised.csv'
     model_path = Path(NETWORKPATH) / 'model-dynamics.pth'
+    poly_path = Path('/Users/grosche/Documents/GitHub/AIrcraft/main/fitted_models_casadi.pkl')
 
-    opts = AircraftOpts(nn_model_path=model_path, aircraft_config=aircraft_config)
+    # opts = AircraftOpts(nn_model_path=model_path, aircraft_config=aircraft_config)
+    opts = AircraftOpts(poly_path=poly_path, aircraft_config=aircraft_config)
     # opts = AircraftOpts(linear_path=linear_path, aircraft_config=aircraft_config)
 
     aircraft = Aircraft(opts = opts)
@@ -679,7 +691,7 @@ if __name__ == '__main__':
         state = ca.vertcat(q0, x0, v0, omega0)
         control = np.zeros(aircraft.num_controls)
         control[0] = 0
-        control[1] = 1
+        control[1] = 4
         # control[6:9] = traj_dict['aircraft']['aero_centre_offset']
 
     dyn = aircraft.state_update
