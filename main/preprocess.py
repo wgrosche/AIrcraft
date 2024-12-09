@@ -187,7 +187,8 @@ def process_sim_dataset(
     if body:
         rotmat = R(np.zeros_like(alpha), np.zeros_like(beta))
     else:
-        rotmat = R(alpha, beta)
+        # rotmat = R(alpha, beta)
+        rotmat = R(-alpha, -beta)
 
     forces = np.array([
             np.array(input['fx'], dtype=float),
@@ -204,10 +205,13 @@ def process_sim_dataset(
     
     moments *= axes[3:]
 
+    print(rotmat)
+
     forces = np.einsum('ijk,jk->ik', rotmat, forces).T
     moments = np.einsum('ijk,jk->ik', rotmat, moments).T
 
-    output['CX'] = - forces[:, 0] / (q * S)
+    output['CX'] = forces[:, 0] / (q * S)
+    # output['CX'] = - forces[:, 0] / (q * S)
     output['CY'] = forces[:, 1] / (q * S)
     output['CZ'] = - forces[:, 2] / (q * S)
 
@@ -289,7 +293,7 @@ def process_wt_dataset(
     S = params['reference_area']
 
     scale_factor = params['span'] / goal_params['span']
-    
+
     q = 0.5 * RHO * S * (input['MACH'] * MACH_TO_MS) ** 2
 
     # sign flip for alpha convention in sim data vs control
@@ -305,6 +309,7 @@ def process_wt_dataset(
         beta = beta
     else:
         rotmat = R(alpha, beta)
+        # rotmat = R(alpha, beta)
 
     forces = np.array([
             np.array(input['CDWA'], dtype=float),
@@ -318,12 +323,14 @@ def process_wt_dataset(
             np.array(input['CMWA25'], dtype=float), # pitching coeff
             np.array(input['CNWA25'], dtype=float)  # yawing coeff
             ])
+
     moments *= axes[3:]
+    print(rotmat)
 
     forces = np.einsum('ijk,jk->ik', rotmat, forces).T
     moments = np.einsum('ijk,jk->ik', rotmat, moments).T
 
-    output['CX'] = - forces[:, 0]
+    output['CX'] = -forces[:, 0]
     output['CY'] = forces[:, 1]
     output['CZ'] = - forces[:, 2]
 
@@ -391,12 +398,16 @@ def main():
     fs_sim = np.load(fs_path, allow_pickle=True) 
     fs_params = json.load(open(os.path.join(PARAMS_DIR, 'glider_fs.json')))
 
+    from copy import deepcopy
+    fs_params_2 = deepcopy(fs_params)
+    fs_params_2['reference_area'] = 0.225454
+
 
     
     data_wt = process_sim_dataset(wt_sim, wt_params, fs_params, 
-                                  axes = np.array([[1, -1, 1, 1, 1, 1]]).T)
+                                  axes = np.array([[-1, -1, 1, 1, 1, 1]]).T, body=True)
     
-    data_fs = process_sim_dataset(fs_sim, fs_params, fs_params, 
+    data_fs = process_sim_dataset(fs_sim, fs_params_2, fs_params, 
                                   axes = np.array([[-1, 1, 1, -1, 1, -1]]).T, body=False)
     # data_fs = data_fs.where(data_fs['aileron'] == 0)
     # data_fs = data_fs.where(data_fs['elevator'] == 0)
@@ -404,7 +415,7 @@ def main():
     data =  pd.concat([data_fs, data_wt], ignore_index=True)
 
     output_path = os.path.join(DATA_DIR, 'processed', 'data_sim.csv')
-    data.to_csv(output_path, index=False)
+    
 
     wt_raw_path = os.path.join(
         RAW_DATA_DIR, 
@@ -418,18 +429,43 @@ def main():
     wt_real = pd.read_csv(wt_raw_path) # load windtunnel data (wind frame)
 
     data_real = process_wt_dataset(wt_real, fs_params, fs_params,
-                                   axes = np.array([[1, 1, 1, -1, -1, -1]]).T)
-    output_path = os.path.join(DATA_DIR, 'processed', 'data_real.csv')
-    data_real.to_csv(output_path, index=False)
+                                   axes = np.array([[1, 1, 1, -1, -1, -1]]).T, body=False)
+    # data_real = process_wt_dataset(wt_real, fs_params, fs_params,
+    #                                axes = np.array([[-1, 1, 1, -1, -1, -1]]).T, body = True)
+    # output_path = os.path.join(DATA_DIR, 'processed', 'data_real.csv')
+    # data_real.to_csv(output_path, index=False)
 
     fig = plt.figure(figsize=(18, 10))
     for i in range(6):
         ax = fig.add_subplot(2, 3, i+1, projection='3d')
         ax.set_title(f"{data.columns[i + 6]}")
 
-    plot(fig, data_wt, label = 'sim')
+    # plot data in body frame
+
+    # TODO: at some later data it would be prudent to rigorously examine why
+    # the step from freestream to wind to body is necessary to get the drag coefficients to align.
+
+    rotmat = R(-data['alpha'], -data['beta'])
+
+    # convert to forces and moments in wind frame
+
+    forces = np.einsum('ijk,jk->ik', rotmat, data.iloc[:, 6:9].to_numpy().T).T
+    moments = np.einsum('ijk,jk->ik', rotmat, data.iloc[:, 9:12].to_numpy().T).T
+
+    data['CX'] = forces[:, 0]
+    data['CY'] = forces[:, 1]
+    data['CZ'] = forces[:, 2]
+    data['Cl'] = moments[:, 0]
+    data['Cm'] = moments[:, 1]
+    data['Cn'] = moments[:, 2]
+    # plot data in wind frame
+    # plot(fig, data, label = "body frame")
+    # plt.show()
+
+    data.to_csv(output_path, index=False)
+    plot(fig, data, label = 'sim')
     plot(fig, data_real, label = 'real')
-    plot(fig, data_fs, label='controls')
+    # plot(fig, data_fs, label='controls')
     plt.show()
 
 if __name__ == "__main__":
