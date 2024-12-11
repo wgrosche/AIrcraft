@@ -39,7 +39,7 @@ SCALING = False
 DATA_DIR = os.path.join(BASEPATH, 'data', 'processed')
 MODEL_DIR = os.path.join(DATA_DIR, 'models')
 
-RETRAIN = True # Flag to retrain the model, otherwise just loads existing
+RETRAIN = False # Flag to retrain the model, otherwise just loads existing
 # model for plotting
 
 # Determine max number of workers for dataloader
@@ -208,7 +208,10 @@ def main():
     # plt.show()
 
     # return None
-
+    import pickle
+    with open('/mnt/e/Github/AIrcraft/main/fitted_models_casadi.pkl', 'rb') as file:
+        casadi_dict = pickle.load(file)
+        casadi_functions = casadi_dict['casadi_functions']
 
     # create meshgrid for plotting
     inp_grid = pd.DataFrame(inputs, columns = ['q','alpha','beta','aileron','elevator'])
@@ -222,10 +225,12 @@ def main():
     # 3D plot for each output feature
     fig = plt.figure(figsize=(15, 10))
     for i in range(6):
+        
         ax = fig.add_subplot(2, 3, i+1, projection='3d')
         ax.scatter(inputs[:,1], inputs[:,2], targets[:, i], label='True', color='b')
         ax.scatter(inputs[:,1], inputs[:,2], outputs[:, i], label='Predicted', color='r')
         ax.scatter(x_plotting.iloc[:,1], x_plotting.iloc[:,2], y_plotting[:,i])
+        ax.scatter(x_plotting.iloc[:,1], x_plotting.iloc[:,2], casadi_functions[output_features[i]](x_plotting.values.T).full().flatten(), label = 'polymodel')
         # ax.set_xlabel(input_features[1])
         # ax.set_ylabel(input_features[2])
         ax.set_xlabel(r"Angle of Attack ($\alpha$ [rad])")
@@ -285,12 +290,18 @@ def main():
             ax.scatter(inputs[:, 1], inputs[:, 2], plot_vals[:, i], label='True', color='r')
             # ax.scatter(inputs[:, 1], inputs[:, 2], outputs[:, i], label='Predicted', color='r')
             ax.scatter(x_plotting.iloc[:, 1], x_plotting.iloc[:, 2], y_plotting[:, i], label='New Prediction', color='b')
-            ax.scatter(x_plotting.iloc[:, 1], x_plotting.iloc[:, 2], linearised_model(open('data/glider/linearised.json'), x_plotting, output_features[i]), label='Linear', color='g')
+            # ax.scatter(x_plotting.iloc[:, 1], x_plotting.iloc[:, 2], linearised_model(open('data/glider/linearised.json'), x_plotting, output_features[i]), label='Linear', color='g')
+            ax.scatter(x_plotting.iloc[:,1], x_plotting.iloc[:,2], casadi_functions[output_features[i]](x_plotting.values.T).full().flatten(), label = 'polymodel')
             
             ax.set_xlabel(input_features[1])
             ax.set_ylabel(input_features[2])
             ax.set_zlabel(output_features[i])
             ax.legend()
+            # Set axis limits
+            ax.set_xlim(-0.4, 0.4)  # Adjust as per your expected range for alpha
+            ax.set_ylim(-0.4, 0.4)  # Adjust as per your expected range for beta
+            # ax.set_zlim(-0.4, 0.4)  # Adjust as per your expected range for output_features[i]
+
         
         fig.suptitle(f"Aileron: {aileron_value}, Elevator: {elevator_value}")
 

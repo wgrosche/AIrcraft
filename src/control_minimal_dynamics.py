@@ -55,7 +55,7 @@ BASEPATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 print(BASEPATH)
 sys.path.append(BASEPATH)
 
-from src.dynamics_minimal import Aircraft
+from src.dynamics_minimal import Aircraft, AircraftOpts
 from collections import namedtuple
 from scipy.spatial.transform import Rotation as R
 from src.utils import TrajectoryConfiguration, load_model
@@ -77,7 +77,6 @@ DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else
                       ("mps" if torch.backends.mps.is_available() else "cpu"))
 sys.path.append(BASEPATH)
 from pathlib import Path
-from src.dynamics import AircraftOpts
 
 plt.ion()
 default_solver_options = {'ipopt': {'max_iter': 10000,
@@ -606,8 +605,13 @@ def main():
     linear_path = Path(DATAPATH) / 'glider' / 'linearised.csv'
     model_path = Path(NETWORKPATH) / 'model-dynamics.pth'
 
+    poly_path = Path("main/fitted_models_casadi.pkl")
+
+    # opts = AircraftOpts(nn_model_path=model_path, aircraft_config=aircraft_config)
+    opts = AircraftOpts(poly_path=poly_path, aircraft_config=aircraft_config)
+
     # opts = AircraftOpts(linear_path=linear_path, aircraft_config=aircraft_config)
-    opts = AircraftOpts(nn_model_path=model_path, aircraft_config=aircraft_config)
+    # opts = AircraftOpts(nn_model_path=model_path, aircraft_config=aircraft_config)
 
     aircraft = Aircraft(opts = opts)
 
