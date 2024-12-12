@@ -439,6 +439,10 @@ def main():
 
     # opts = AircraftOpts(linear_path=linear_path, aircraft_config=aircraft_config)
     opts = AircraftOpts(nn_model_path=model_path, aircraft_config=aircraft_config)#, physical_integration_substeps=10)
+    poly_path = Path("main/fitted_models_casadi.pkl")
+
+    # opts = AircraftOpts(nn_model_path=model_path, aircraft_config=aircraft_config)
+    opts = AircraftOpts(poly_path=poly_path, aircraft_config=aircraft_config)
 
     aircraft = Aircraft(opts = opts)
 

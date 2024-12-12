@@ -41,6 +41,7 @@ class AircraftOpts:
     epsilon:float = 1e-6
     physical_integration_substeps:int = 100
     linear_path:Path = None
+    poly_path:Path = None
     nn_model_path:Path = None
     aircraft_config:TrajectoryConfiguration.AircraftConfiguration = None
     realtime:bool = False # Work in progress implementation of faster nn eval
@@ -120,14 +121,20 @@ class Aircraft:
         EPSILON: smoothing parameter for non-smoothly-differentiable functions
         STEPS: number of integration steps in each state update
         """
-        
+        self.LINEAR = False
 
         if opts.linear_path:
             self.LINEAR = True
             self.linear_coeffs = ca.DM(np.array(pd.read_csv(opts.linear_path)))
+            self.fitted_models = None
+        elif opts.poly_path:
+            import pickle
+            with open(opts.poly_path, 'rb') as file:
+                self.fitted_models = pickle.load(file)
 
         elif opts.nn_model_path:
             self.LINEAR = False
+            self.fitted_models = None
             model = load_model(filepath=opts.nn_model_path)
             if opts.realtime:
                 self.model = RealTimeL4CasADi(model, approximation_order=1)
@@ -365,6 +372,9 @@ class Aircraft:
         
         if self.LINEAR:
             outputs = ca.mtimes(self.linear_coeffs, ca.vertcat(inputs, 1))
+
+        elif self.fitted_models is not None:
+            outputs = ca.vertcat(*[self.fitted_models['casadi_functions'][i](inputs) for i in self.fitted_models['casadi_functions'].keys()])
         else:
             outputs = self.model(ca.reshape(inputs, 1, -1))
             outputs = ca.vertcat(outputs.T)
@@ -372,7 +382,7 @@ class Aircraft:
         stall_angle_alpha = np.deg2rad(10)
         stall_angle_beta = np.deg2rad(10)
 
-        steepness = 2
+        steepness = 10
 
         alpha_scaling = 1 / (1 + ca.exp(steepness * (alpha - stall_angle_alpha)))
         beta_scaling = 1 / (1 + ca.exp(steepness * (beta - stall_angle_beta)))
@@ -423,7 +433,7 @@ class Aircraft:
         outputs[3] += 0.001 * r * scale
 
         # pitching moment rates
-        outputs[4] += -0.03 * q * scale
+        outputs[4] += -0.05 * q * scale
 
         # yaw moment rates
         outputs[5] *= -1
@@ -448,7 +458,7 @@ class Aircraft:
         forces = self._coefficients[:3] * self._qbar * self.S# + self._thrust
         # forces += self._throttle
         speed_threshold = 100.0  # m/s
-        penalty_factor = 20.0  # Scale factor for additional drag
+        penalty_factor = 0.0  # Scale factor for additional drag
 
         # Smooth penalty function for increased drag
         excess_speed = self._airspeed - speed_threshold
@@ -656,8 +666,10 @@ if __name__ == '__main__':
 
     linear_path = Path(DATAPATH) / 'glider' / 'linearised.csv'
     model_path = Path(NETWORKPATH) / 'model-dynamics.pth'
+    poly_path = Path("main/fitted_models_casadi.pkl")
 
-    opts = AircraftOpts(nn_model_path=model_path, aircraft_config=aircraft_config)
+    # opts = AircraftOpts(nn_model_path=model_path, aircraft_config=aircraft_config)
+    opts = AircraftOpts(poly_path=poly_path, aircraft_config=aircraft_config)
     # opts = AircraftOpts(linear_path=linear_path, aircraft_config=aircraft_config)
 
     aircraft = Aircraft(opts = opts)
@@ -678,13 +690,13 @@ if __name__ == '__main__':
 
         state = ca.vertcat(q0, x0, v0, omega0)
         control = np.zeros(aircraft.num_controls)
-        control[0] = 0
-        control[1] = 1
+        control[0] = 2
+        control[1] = 2
         # control[6:9] = traj_dict['aircraft']['aero_centre_offset']
 
     dyn = aircraft.state_update
-    dt = .1
-    tf = 50.0
+    dt = .01
+    tf = 5.0
     state_list = np.zeros((aircraft.num_states, int(tf / dt)))
 
     # investigate stiffness:
