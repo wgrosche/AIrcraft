@@ -433,7 +433,7 @@ class Aircraft:
         outputs[3] += 0.001 * r * scale
 
         # pitching moment rates
-        outputs[4] += -0.03 * q * scale
+        outputs[4] += -0.05 * q * scale
 
         # yaw moment rates
         outputs[5] *= -1
@@ -458,7 +458,7 @@ class Aircraft:
         forces = self._coefficients[:3] * self._qbar * self.S# + self._thrust
         # forces += self._throttle
         speed_threshold = 100.0  # m/s
-        penalty_factor = 1.0  # Scale factor for additional drag
+        penalty_factor = 0.0  # Scale factor for additional drag
 
         # Smooth penalty function for increased drag
         excess_speed = self._airspeed - speed_threshold
@@ -690,12 +690,12 @@ if __name__ == '__main__':
 
         state = ca.vertcat(q0, x0, v0, omega0)
         control = np.zeros(aircraft.num_controls)
-        control[0] = 0
-        control[1] = 0
+        control[0] = 2
+        control[1] = 2
         # control[6:9] = traj_dict['aircraft']['aero_centre_offset']
 
     dyn = aircraft.state_update
-    dt = .1
+    dt = .01
     tf = 5.0
     state_list = np.zeros((aircraft.num_states, int(tf / dt)))
 

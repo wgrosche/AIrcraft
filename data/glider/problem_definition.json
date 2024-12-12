@@ -1,6 +1,6 @@
 {
     "waypoints": {
-        "waypoints" : [[50, 0 , 0], [75, 75, 0], [0, 100, 0]],
+        "waypoints" : [[50, 0 , 0]],
         "initial_state" : [0, 0, 0, 1, 0, 0, 0, 60, 0, 0, 0, 0, 0],
         "default_velocity" : 50,
         "waypoint_indices" : [0, 1],

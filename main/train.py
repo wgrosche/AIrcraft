@@ -209,7 +209,7 @@ def main():
 
     # return None
     import pickle
-    with open('/mnt/e/Github/AIrcraft/main/fitted_models_casadi.pkl', 'rb') as file:
+    with open(os.path.join(BASEPATH, 'main', 'fitted_models_casadi.pkl'), 'rb') as file:
         casadi_dict = pickle.load(file)
         casadi_functions = casadi_dict['casadi_functions']
 
@@ -219,6 +219,7 @@ def main():
     plotting_features = [r"$C_X$", r"$C_Y$", r"$C_Z$", r"$C_L$", r"$C_M$", r"$C_N$"]
     x_plotting['aileron'] = 0
     x_plotting['elevator'] = 0
+    x_plotting['q'] = 60
     x_plotting = x_plotting.drop_duplicates()
     x_plotting_inp = torch.tensor(x_plotting.astype('float32').values).to(DEVICE)
     y_plotting = model(x_plotting_inp).detach().cpu().numpy()
@@ -231,6 +232,8 @@ def main():
         ax.scatter(inputs[:,1], inputs[:,2], outputs[:, i], label='Predicted', color='r')
         ax.scatter(x_plotting.iloc[:,1], x_plotting.iloc[:,2], y_plotting[:,i])
         ax.scatter(x_plotting.iloc[:,1], x_plotting.iloc[:,2], casadi_functions[output_features[i]](x_plotting.values.T).full().flatten(), label = 'polymodel')
+        ax.scatter(inputs[:, 1], inputs[:, 2], casadi_functions[output_features[i]](inputs.T).full().flatten(), label = 'polymodel_inputs')
+
         # ax.set_xlabel(input_features[1])
         # ax.set_ylabel(input_features[2])
         ax.set_xlabel(r"Angle of Attack ($\alpha$ [rad])")
@@ -292,7 +295,8 @@ def main():
             ax.scatter(x_plotting.iloc[:, 1], x_plotting.iloc[:, 2], y_plotting[:, i], label='New Prediction', color='b')
             # ax.scatter(x_plotting.iloc[:, 1], x_plotting.iloc[:, 2], linearised_model(open('data/glider/linearised.json'), x_plotting, output_features[i]), label='Linear', color='g')
             ax.scatter(x_plotting.iloc[:,1], x_plotting.iloc[:,2], casadi_functions[output_features[i]](x_plotting.values.T).full().flatten(), label = 'polymodel')
-            
+            ax.scatter(inputs[:, 1], inputs[:, 2], casadi_functions[output_features[i]](inputs.T).full().flatten(), label = 'polymodel_inputs')
+
             ax.set_xlabel(input_features[1])
             ax.set_ylabel(input_features[2])
             ax.set_zlabel(output_features[i])
@@ -300,7 +304,7 @@ def main():
             # Set axis limits
             ax.set_xlim(-0.4, 0.4)  # Adjust as per your expected range for alpha
             ax.set_ylim(-0.4, 0.4)  # Adjust as per your expected range for beta
-            # ax.set_zlim(-0.4, 0.4)  # Adjust as per your expected range for output_features[i]
+            ax.set_zlim(np.min(casadi_functions[output_features[i]](x_plotting.values.T).full().flatten()), np.max(casadi_functions[output_features[i]](x_plotting.values.T).full().flatten()))  # Adjust as per your expected range for output_features[i]
 
         
         fig.suptitle(f"Aileron: {aileron_value}, Elevator: {elevator_value}")
@@ -308,7 +312,7 @@ def main():
     # Set up frames for the animation
     
     aileron_values = np.linspace(-5, 5, num=10)
-    elevator_values = np.linspace(0, 0, num=1)
+    elevator_values = np.linspace(-5, 5, num=10)
     # aileron_values = np.linspace(-5, 5, num=10)
     # elevator_values = np.linspace(-5, 5, num=10)
     frames = [(aileron, elevator) for aileron in aileron_values for elevator in elevator_values]

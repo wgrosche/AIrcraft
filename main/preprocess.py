@@ -429,7 +429,7 @@ def main():
     wt_real = pd.read_csv(wt_raw_path) # load windtunnel data (wind frame)
 
     data_real = process_wt_dataset(wt_real, fs_params, fs_params,
-                                   axes = np.array([[1, 1, 1, -1, -1, -1]]).T, body=False)
+                                   axes = np.array([[1, 1, 1, -1, -1, -1]]).T, body=True)
     # data_real = process_wt_dataset(wt_real, fs_params, fs_params,
     #                                axes = np.array([[-1, 1, 1, -1, -1, -1]]).T, body = True)
     # output_path = os.path.join(DATA_DIR, 'processed', 'data_real.csv')
@@ -445,19 +445,23 @@ def main():
     # TODO: at some later data it would be prudent to rigorously examine why
     # the step from freestream to wind to body is necessary to get the drag coefficients to align.
 
-    rotmat = R(-data['alpha'], -data['beta'])
 
-    # convert to forces and moments in wind frame
+    """To switch frames to body"""
+    # rotmat = R(-data['alpha'], -data['beta'])
 
-    forces = np.einsum('ijk,jk->ik', rotmat, data.iloc[:, 6:9].to_numpy().T).T
-    moments = np.einsum('ijk,jk->ik', rotmat, data.iloc[:, 9:12].to_numpy().T).T
+    # # convert to forces and moments in wind frame
 
-    data['CX'] = forces[:, 0]
-    data['CY'] = forces[:, 1]
-    data['CZ'] = forces[:, 2]
-    data['Cl'] = moments[:, 0]
-    data['Cm'] = moments[:, 1]
-    data['Cn'] = moments[:, 2]
+    # forces = np.einsum('ijk,jk->ik', rotmat, data.iloc[:, 6:9].to_numpy().T).T
+    # moments = np.einsum('ijk,jk->ik', rotmat, data.iloc[:, 9:12].to_numpy().T).T
+
+    # data['CX'] = forces[:, 0]
+    # data['CY'] = forces[:, 1]
+    # data['CZ'] = forces[:, 2]
+    # data['Cl'] = moments[:, 0]
+    # data['Cm'] = moments[:, 1]
+    # data['Cn'] = moments[:, 2]
+
+
     # plot data in wind frame
     # plot(fig, data, label = "body frame")
     # plt.show()
