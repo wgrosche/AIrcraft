@@ -76,6 +76,7 @@ class Planner:
       ipopt_options = {}
       ipopt_options['max_iter'] = 10000
       self.solver_options['ipopt'] = ipopt_options
+      self.solver_options['ipopt']['hessian_approximation']= 'limited-memory'
     if 'solver_type' in options:
       self.solver_type = options['solver_type']
     else:
@@ -335,6 +336,7 @@ class Planner:
       callback.set_size(self.x.shape[0], self.g.shape[0], self.NPW)
       callback.set_wp(self.wp)
       self.solver_options['iteration_callback'] = callback
+
 
     self.solver = nlpsol('solver', self.solver_type, self.nlp, self.solver_options)
 
