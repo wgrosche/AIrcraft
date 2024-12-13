@@ -129,7 +129,7 @@ class ControlProblem:
         self.state_dim = aircraft.num_states
         self.control_dim = aircraft.num_controls
 
-        self.dynamics = aircraft.state_update
+        self.dynamics = aircraft.state_update.expand()
 
         
 

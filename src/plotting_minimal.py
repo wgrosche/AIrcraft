@@ -227,13 +227,14 @@ class TrajectoryPlotter:
                             z_axis[::step, 0], z_axis[::step, 1], z_axis[::step, 2],
                             color='b', length=10, label='Down', normalize=True),
             }
+        # In your plot_position method, modify the else block for quivers:
         else:
-            self._quivers['x'].set_segments(
-                np.array([position[0, ::step], position[1, ::step], position[2, ::step]]).T)
-            self._quivers['y'].set_segments(
-                np.array([y_axis[::step, 0], y_axis[::step, 1], y_axis[::step, 2]]).T)
-            self._quivers['z'].set_segments(
-                np.array([z_axis[::step, 0], z_axis[::step, 1], z_axis[::step, 2]]).T)
+            for axis, data in zip(['x', 'y', 'z'], [x_axis, y_axis, z_axis]):
+                starts = np.array([position[0, ::step], position[1, ::step], position[2, ::step]]).T
+                ends = starts + data[::step] * 10  # Scale factor of 10 matches your original length
+                segments = np.stack([starts, ends], axis=1)
+                self._quivers[axis].set_segments(segments)
+
 
         # Customize plot appearance
         ax.set_xlabel('North')
