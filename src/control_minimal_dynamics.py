@@ -83,7 +83,7 @@ default_solver_options = {'ipopt': {'max_iter': 10000,
                                     'tol': 1e-2,
                                     'acceptable_tol': 1e-2,
                                     'acceptable_obj_change_tol': 1e-2,
-                                    'hessian_approximation': 'limited-memory'
+                                    # 'hessian_approximation': 'limited-memory'
                                     },
                         'print_time': 10,
                         'expand' : True
@@ -423,8 +423,8 @@ class ControlProblem:
         # plt.show(block = False)
         # TODO: investigate fig.add_subfigure for better plotting
         self.opti.solver('ipopt', opts)
-        self.opti.callback(lambda i: self.callback(plotter, i, filepath))
-        plt.show()
+        # self.opti.callback(lambda i: self.callback(plotter, i, filepath))
+        # plt.show()
 
         if warm_start != (None, None):
             warm_sol, warm_opti = warm_start
@@ -620,7 +620,7 @@ def main():
 
     opti = ca.Opti()
 
-    num_control_nodes =50
+    num_control_nodes = 100
     # aircraft = Aircraft(traj_dict['aircraft'], model)#, LINEAR=True)
     problem = ControlProblem(opti, aircraft, trajectory_config, num_control_nodes)
 
