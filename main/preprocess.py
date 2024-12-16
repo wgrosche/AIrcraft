@@ -366,8 +366,10 @@ def process_wt_dataset(
 def plot(fig, data:pd.DataFrame, label:str = 'sim'):
     data_wt = data.where(data['windtunnel'] == True).sample(frac=.1).dropna()
     data_fs = data.where(data['windtunnel'] == False).dropna()
-    for i, ax in enumerate(fig.axes):
-        # ax = fig.add_subplot(2, 3, i+1, projection='3d')
+    print(data_wt.head())
+    print(data_fs.head())
+    for i, ax in enumerate(fig.axes[:6]):
+        ax = fig.add_subplot(2, 3, i+1, projection='3d')
         if not data_wt.empty:
             ax.scatter(data_wt['alpha'], data_wt['beta'], data_wt.iloc[:, i+6], 
                     marker='o', label=f'{label} windtunnel')
@@ -378,6 +380,8 @@ def plot(fig, data:pd.DataFrame, label:str = 'sim'):
         ax.set_ylabel('beta')
         ax.set_zlabel(data.columns[i+6])
         ax.legend()
+
+
 
     
 
@@ -409,13 +413,19 @@ def main():
     
     data_fs = process_sim_dataset(fs_sim, fs_params_2, fs_params, 
                                   axes = np.array([[-1, 1, 1, -1, 1, -1]]).T, body=False)
+    
+    print(fs_sim['fx'].shape)
+    
+    print(data_fs['aileron'].where(data_fs['aileron'] == -5).dropna())
+    # data_fs['Cl'] *= 4 # TODO: Why?
+    data_wt['Cl'] /= 4 # TODO: Why?
     # data_fs = data_fs.where(data_fs['aileron'] == 0)
     # data_fs = data_fs.where(data_fs['elevator'] == 0)
 
     data =  pd.concat([data_fs, data_wt], ignore_index=True)
 
     output_path = os.path.join(DATA_DIR, 'processed', 'data_sim.csv')
-    
+    data.to_csv(output_path, index=False)
 
     wt_raw_path = os.path.join(
         RAW_DATA_DIR, 
@@ -435,10 +445,10 @@ def main():
     # output_path = os.path.join(DATA_DIR, 'processed', 'data_real.csv')
     # data_real.to_csv(output_path, index=False)
 
-    fig = plt.figure(figsize=(18, 10))
-    for i in range(6):
-        ax = fig.add_subplot(2, 3, i+1, projection='3d')
-        ax.set_title(f"{data.columns[i + 6]}")
+    # fig = plt.figure(figsize=(18, 10))
+    # for i in range(6):
+    #     ax = fig.add_subplot(2, 3, i+1, projection='3d')
+    #     ax.set_title(f"{data.columns[i + 6]}")
 
     # plot data in body frame
 
@@ -465,12 +475,170 @@ def main():
     # plot data in wind frame
     # plot(fig, data, label = "body frame")
     # plt.show()
+    data =  pd.concat([data_fs, data_wt.sample(frac = 0.1)], ignore_index=True)
+    
+    # data.where(data['aileron'] < -2, inplace=True)
+    # data.where(data['elevator'] == 0, inplace=True)
 
-    data.to_csv(output_path, index=False)
-    plot(fig, data, label = 'sim')
-    plot(fig, data_real, label = 'real')
-    # plot(fig, data_fs, label='controls')
-    plt.show()
+    import matplotlib.pyplot as plt
+    from matplotlib.widgets import Slider
+    # def create_interactive_aero_plot(data):
+    #     fig = plt.figure(figsize=(18, 10))
+    #     plt.subplots_adjust(bottom=0.2)
+        
+    #     # Create scatter plot objects once
+    #     # scatter_objects = []
+    #     axes = []
+    #     for i in range(6):
+    #         ax = fig.add_subplot(2, 3, i+1, projection='3d')
+    #         ax.set_title(f"{data.columns[i + 6]}")
+            
+    #         # Create empty scatter plots and store references
+    #         scatter = ax.scatter(data['alpha'], data['beta'], data.iloc[:, i+6], marker='o', label='sim')
+    #         # scatter_fs = ax.scatter([], [], [], marker='o', label='freestream')
+    #         # scatter_objects.append((scatter_wt, scatter_fs))
+            
+    #         ax.set_xlabel('alpha')
+    #         ax.set_ylabel('beta')
+    #         ax.set_zlabel(data.columns[i+6])
+
+    #         ax.legend()
+    #         axes.append(ax)
+        
+    #     ax_aileron = plt.axes([0.2, 0.1, 0.6, 0.03])
+    #     ax_elevator = plt.axes([0.2, 0.05, 0.6, 0.03])
+        
+    #     s_aileron = Slider(ax_aileron, 'Aileron', data['aileron'].min(), data['aileron'].max(), valinit=0, dragging=True)
+    #     s_elevator = Slider(ax_elevator, 'Elevator', data['elevator'].min(), data['elevator'].max(), valinit=0, dragging=True)
+        
+        # def update(val):
+        #     filtered_data = data[
+        #         (data['aileron'].between(s_aileron.val-0.1, s_aileron.val+0.1)) & 
+        #         (data['elevator'].between(s_elevator.val-0.1, s_elevator.val+0.1))
+        #     ]
+            
+        #     # data_wt = filtered_data.where(filtered_data['windtunnel'] == True).dropna()
+        #     # data_fs = filtered_data.where(filtered_data['windtunnel'] == False).dropna()
+            
+        #     # for i, (scatter_wt, scatter_fs) in enumerate(scatter_objects):
+        #     #     if not filtered_data.empty:
+        #     scatter._offsets3d = (filtered_data['alpha'], filtered_data['beta'], filtered_data.iloc[:, i+6])
+        #         # if not data_fs.empty:
+        #         #     scatter_fs._offsets3d = (data_fs['alpha'], data_fs['beta'], data_fs.iloc[:, i+6])
+            
+        #     fig.canvas.draw_idle()
+        
+        # s_aileron.on_changed(update)
+        # s_elevator.on_changed(update)
+        
+        # update(None)  # Initial plot
+        # plt.show()
+
+    def create_interactive_aero_plot(data):
+        fig = plt.figure(figsize=(18, 10))
+        plt.subplots_adjust(bottom=0.2)
+        
+        # Pre-compute all possible filtered datasets
+        aileron_values = np.unique(data['aileron'])
+        elevator_values = np.unique(data['elevator'])
+        filtered_datasets = {}
+        for a in aileron_values:
+            for e in elevator_values:
+                key = (a, e)
+                filtered_datasets[key] = data[
+                    (data['aileron'].between(a-0.1, a+0.1)) & 
+                    (data['elevator'].between(e-0.1, e+0.1))
+                ]
+        
+        scatter_plots = []
+        for i in range(6):
+            ax = fig.add_subplot(2, 3, i+1, projection='3d')
+            ax.set_title(f"{data.columns[i + 6]}")
+            scatter = ax.scatter(data['alpha'], data['beta'], 
+                                    data.iloc[:, i+6], marker='o', label='sim')
+            scatter_plots.append((scatter, i))
+            ax.set_xlabel('alpha')
+            ax.set_ylabel('beta')
+            ax.set_zlabel(data.columns[i+6])
+            ax.legend()
+        
+        ax_aileron = plt.axes([0.2, 0.1, 0.6, 0.03])
+        ax_elevator = plt.axes([0.2, 0.05, 0.6, 0.03])
+        
+        s_aileron = Slider(ax_aileron, 'Aileron', data['aileron'].min(), data['aileron'].max(), 
+                        valinit=0, dragging=True)
+        s_elevator = Slider(ax_elevator, 'Elevator', data['elevator'].min(), data['elevator'].max(), 
+                        valinit=0, dragging=True)
+        
+        def update(val):
+            # Find nearest pre-computed dataset
+            nearest_a = aileron_values[np.abs(aileron_values - s_aileron.val).argmin()]
+            nearest_e = elevator_values[np.abs(elevator_values - s_elevator.val).argmin()]
+            filtered_data = filtered_datasets[(nearest_a, nearest_e)]
+            
+            for scatter, i in scatter_plots:
+                scatter._offsets3d = (filtered_data['alpha'], filtered_data['beta'], 
+                                    filtered_data.iloc[:, i+6])
+            fig.canvas.draw_idle()
+    
+        s_aileron.on_changed(update)
+        s_elevator.on_changed(update)
+        update(None)
+        plt.show()
+
+
+    # def create_interactive_aero_plot(data):
+    #     # Create main figure with subplots
+    #     fig = plt.figure(figsize=(18, 10))
+        
+    #     # Add space at bottom for sliders
+    #     plt.subplots_adjust(bottom=0.2)
+        
+    #     # Create 6 subplots for different coefficients
+    #     axes = []
+    #     for i in range(6):
+    #         ax = fig.add_subplot(2, 3, i+1, projection='3d')
+    #         ax.set_title(f"{data.columns[i + 6]}")
+    #         axes.append(ax)
+        
+    #     # Create slider axes
+    #     ax_aileron = plt.axes([0.2, 0.1, 0.6, 0.03])
+    #     ax_elevator = plt.axes([0.2, 0.05, 0.6, 0.03])
+        
+    #     # Create sliders
+    #     s_aileron = Slider(ax_aileron, 'Aileron', data['aileron'].min(), data['aileron'].max(), valinit=0)
+    #     s_elevator = Slider(ax_elevator, 'Elevator', data['elevator'].min(), data['elevator'].max(), valinit=0)
+        
+    #     def update(val):
+    #         # print(data.head())
+    #         # Clear all subplots
+    #         for ax in axes:
+    #             ax.clear()
+                
+    #         # Filter data based on slider values
+    #         filtered_data = data[
+    #             (data['aileron'].between(s_aileron.val-0.5, s_aileron.val+0.5)) & 
+    #             (data['elevator'].between(s_elevator.val-0.5, s_elevator.val+0.5))
+    #         ]
+            
+    #         # Plot filtered data
+    #         plot(fig, filtered_data)
+    #         fig.canvas.draw_idle()
+        
+    #     s_aileron.on_changed(update)
+    #     s_elevator.on_changed(update)
+    #     print(data.head())
+    #     # Initial plot
+    #     plot(fig, data)
+    #     plt.show()
+
+    # Use it by calling:
+    create_interactive_aero_plot(data)
+
+    # plot(fig, data, label = 'sim')
+    # # plot(fig, data_real, label = 'real')
+    # plot(fig, data_wt, label='neutral')
+    # plt.show()
 
 if __name__ == "__main__":
     main()

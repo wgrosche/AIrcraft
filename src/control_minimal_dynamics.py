@@ -65,7 +65,7 @@ import matplotlib.pyplot as plt
 from liecasadi import Quaternion
 import h5py
 from scipy.interpolate import CubicSpline
-from src.plotting import TrajectoryPlotter, TrajectoryData
+from src.plotting_minimal import TrajectoryPlotter, TrajectoryData
 
 import threading
 import torch
@@ -86,7 +86,7 @@ default_solver_options = {'ipopt': {'max_iter': 10000,
                                     'hessian_approximation': 'limited-memory'
                                     },
                         'print_time': 10,
-                        # 'expand' : True
+                        'expand' : True
                         }
 
 def cumulative_distances(waypoints:np.ndarray, VERBOSE:bool = False):
@@ -235,6 +235,8 @@ class ControlProblem:
             airspeed(node.state, node.control), state_envelope.airspeed.ub))
         
         opti.subject_to(node.state_next == dynamics(node.state, node.control, dt))
+
+        opti.subject_to(node.state[6] > 0.5)
 
 
 
@@ -417,11 +419,11 @@ class ControlProblem:
             if os.path.exists(filepath):
                 os.remove(filepath)
         # plt.ion()
-        # plotter = TrajectoryPlotter(self.aircraft)
+        plotter = TrajectoryPlotter(self.aircraft)
         # plt.show(block = False)
         # TODO: investigate fig.add_subfigure for better plotting
         self.opti.solver('ipopt', opts)
-        # self.opti.callback(lambda i: self.callback(plotter, i, filepath))
+        self.opti.callback(lambda i: self.callback(plotter, i, filepath))
         plt.show()
 
         if warm_start != (None, None):
@@ -618,7 +620,7 @@ def main():
 
     opti = ca.Opti()
 
-    num_control_nodes = 100
+    num_control_nodes =50
     # aircraft = Aircraft(traj_dict['aircraft'], model)#, LINEAR=True)
     problem = ControlProblem(opti, aircraft, trajectory_config, num_control_nodes)
 

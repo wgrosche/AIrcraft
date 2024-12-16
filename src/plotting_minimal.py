@@ -118,7 +118,7 @@ class PlotAxes:
 
 
 class TrajectoryPlotter:
-    def __init__(self, aircraft):
+    def __init__(self, aircraft, figsize=(15, 15)):
         self.aircraft = aircraft
         # if isinstance(data_source, str):
         #     self.filepath = data_source
@@ -127,7 +127,7 @@ class TrajectoryPlotter:
         #     self.filepath = None
         #     self.data = data_source
         
-        self.figure = plt.figure(figsize=(15, 15))
+        self.figure = plt.figure(figsize=figsize)
         self.axes = PlotAxes(self.figure)
         # self.figure.tight_layout()
         self.lines = {}
@@ -235,7 +235,10 @@ class TrajectoryPlotter:
                 segments = np.stack([starts, ends], axis=1)
                 self._quivers[axis].set_segments(segments)
 
-
+        # update axis limits
+        ax.set_xlim(np.min(position[0, :]), np.max(position[0, :]))
+        ax.set_ylim(np.min(position[1, :]), np.max(position[1, :]))
+        ax.set_zlim(np.min(position[2, :]), np.max(position[2, :]))
         # Customize plot appearance
         ax.set_xlabel('North')
         ax.set_ylabel('East')
