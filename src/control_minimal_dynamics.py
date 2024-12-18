@@ -85,8 +85,7 @@ default_solver_options = {'ipopt': {'max_iter': 10000,
                                     'acceptable_obj_change_tol': 1e-2,
                                     # 'hessian_approximation': 'limited-memory'
                                     },
-                        'print_time': 10,
-                        'expand' : True
+                        'print_time': 10
                         }
 
 def cumulative_distances(waypoints:np.ndarray, VERBOSE:bool = False):
@@ -209,9 +208,11 @@ class ControlProblem:
         control_envelope = self.trajectory.control
         opti = self.opti
 
-        opti.subject_to(opti.bounded(control_envelope.lb[:2],
-                node.control[:2], control_envelope.ub[:2]))
-        opti.subject_to(opti.bounded(0, node.control[2], 10))
+        opti.subject_to(opti.bounded(-2,
+                node.control[0], 2))
+        opti.subject_to(opti.bounded(-5,
+                node.control[1], 5))
+        # opti.subject_to(opti.bounded(0, node.control[2], 10))
 
 
 
@@ -225,14 +226,23 @@ class ControlProblem:
         beta = self.aircraft.beta
         airspeed = self.aircraft.airspeed
 
-        opti.subject_to(opti.bounded(state_envelope.alpha.lb,
-            alpha(node.state, node.control), state_envelope.alpha.ub))
+        # opti.subject_to(opti.bounded(state_envelope.alpha.lb,
+        #     alpha(node.state, node.control), state_envelope.alpha.ub))
 
-        opti.subject_to(opti.bounded(state_envelope.beta.lb,
-            beta(node.state, node.control), state_envelope.beta.ub))
+        # opti.subject_to(opti.bounded(state_envelope.beta.lb,
+        #     beta(node.state, node.control), state_envelope.beta.ub))
 
-        opti.subject_to(opti.bounded(state_envelope.airspeed.lb,
-            airspeed(node.state, node.control), state_envelope.airspeed.ub))
+        # opti.subject_to(opti.bounded(state_envelope.airspeed.lb,
+        #     airspeed(node.state, node.control), state_envelope.airspeed.ub))
+        
+        opti.subject_to(opti.bounded(60,
+            alpha(node.state, node.control), 100))
+
+        opti.subject_to(opti.bounded(-np.deg2rad(10),
+            beta(node.state, node.control), np.deg2rad(10)))
+
+        opti.subject_to(opti.bounded(-np.deg2rad(10),
+            airspeed(node.state, node.control), np.deg2rad(10)))
         
         opti.subject_to(node.state_next == dynamics(node.state, node.control, dt))
 

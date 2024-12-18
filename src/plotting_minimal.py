@@ -17,7 +17,7 @@ import sys
 BASEPATH = os.path.dirname(os.path.abspath(__file__)).split('main')[0]
 sys.path.append(BASEPATH)
 
-from utils import load_model
+from src.utils import load_model
 DATAPATH = os.path.join(BASEPATH, 'data')
 NETWORKPATH = os.path.join(DATAPATH, 'networks')
 VISUPATH = os.path.join(DATAPATH, 'visualisation')

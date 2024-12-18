@@ -31,7 +31,7 @@ sys.path.append(BASEPATH)
 
 from src.models import ScaledModel
 from src.utils import load_model, TrajectoryConfiguration
-from src.plotting import TrajectoryPlotter
+from src.plotting_minimal import TrajectoryPlotter
 from dataclasses import dataclass
 
 print(DEVICE)
@@ -387,7 +387,7 @@ class Aircraft:
         alpha_scaling = 1 / (1 + ca.exp(steepness * (alpha - stall_angle_alpha)))
         beta_scaling = 1 / (1 + ca.exp(steepness * (beta - stall_angle_beta)))
         
-        
+        # outputs[2] *= -1
         outputs[2] *= alpha_scaling
         outputs[2] *= beta_scaling
 
@@ -428,7 +428,8 @@ class Aircraft:
         """
         scale = 1
         # roll moment rates
-        outputs[3] /= 4
+        
+        outputs[3] /= 16
         outputs[3] += -0.005 * p * scale
         outputs[3] += 0.001 * r * scale
 
@@ -469,7 +470,7 @@ class Aircraft:
 
         self._forces_frd = forces
         return ca.Function('forces_frd', 
-            [self.state, self.control], [forces])
+            [self.state, self.control], [forces]).expand()
     
     @property
     def moments_aero_frd(self):
@@ -482,7 +483,7 @@ class Aircraft:
 
         self._moments_aero_frd = moments_aero
         return ca.Function('moments_aero_frd', 
-            [self.state, self.control], [moments_aero])
+            [self.state, self.control], [moments_aero]).expand()
     
     @property
     def moments_from_forces_frd(self):
@@ -491,7 +492,7 @@ class Aircraft:
         self._moments_from_forces_frd = ca.cross(self.com, self._forces_frd)
         
         return ca.Function('moments_from_forces_frd', 
-            [self.state, self.control], [self._moments_from_forces_frd])
+            [self.state, self.control], [self._moments_from_forces_frd]).expand()
     
     @property
     def moments_frd(self):
@@ -503,7 +504,7 @@ class Aircraft:
             self._moments_from_forces_frd
         
         return ca.Function('moments_frd', 
-            [self.state, self.control], [self._moments_frd])
+            [self.state, self.control], [self._moments_frd]).expand()
     
     @property
     def forces_ned(self):
@@ -513,7 +514,7 @@ class Aircraft:
         q_frd_ned = Quaternion(self._q_frd_ned)
         self._forces_ned = (q_frd_ned * forces_frd * q_frd_ned.inverse()).coeffs()[:3]
         return ca.Function('forces_ned', 
-            [self.state, self.control], [self._forces_ned])
+            [self.state, self.control], [self._forces_ned]).expand()
         
     @property
     def q_frd_ned_dot(self):
@@ -545,7 +546,7 @@ class Aircraft:
             'v_ecf_cm_e_dot', 
             [self.state, self.control], 
             [self._v_ned_dot]
-            )
+            ).expand()
 
     @property
     def omega_frd_ned_dot(self):
@@ -565,7 +566,7 @@ class Aircraft:
             'omega_frd_ned_dot', 
             [self.state, self.control], 
             [self._omega_frd_ned_dot]
-            )
+            ).expand()
     
     @property
     def state_derivative(self):
@@ -578,17 +579,17 @@ class Aircraft:
         if not hasattr(self, '_omega_frd_ned_dot'):
             self.omega_frd_ned_dot
         self._state_derivative = ca.vertcat(
-            self._q_frd_ned_dot, 
             self._p_ned_dot, 
             self._v_ned_dot, 
+            self._q_frd_ned_dot, 
             self._omega_frd_ned_dot
             )
         
         return ca.Function(
             'dynamics', 
             [self.state, self.control], 
-            [self._state_derivative]
-            )
+            [self._state_derivative], ['x', 'u'], ['x_dot']
+            ).expand()
     
     # @jit
     def state_step(self, state, control, dt_scaled):
@@ -653,7 +654,7 @@ class Aircraft:
             'state_update', 
             [self.state, self.control, dt], 
             [state]
-            ) #, {'jit':True}
+            ).expand() #, {'jit':True}
     
 
 if __name__ == '__main__':
@@ -690,7 +691,7 @@ if __name__ == '__main__':
 
         state = ca.vertcat(q0, x0, v0, omega0)
         control = np.zeros(aircraft.num_controls)
-        control[0] = -2
+        control[0] = 0
         control[1] = 2
         # control[6:9] = traj_dict['aircraft']['aero_centre_offset']
 

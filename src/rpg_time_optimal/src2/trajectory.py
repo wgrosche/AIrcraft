@@ -36,7 +36,7 @@ class Trajectory:
       raise Exception('Number of nodes per waypoint (NPW) must be provided!')
 
     self.NX = 13
-    self.NU = 4
+    self.NU = 3
     self.NPW = NPW
 
     if type(wp) == ca.MX or type(wp) == ca.DM:
@@ -90,7 +90,7 @@ class Trajectory:
       self.x[n_start+0::n_slice],
       self.x[n_start+1::n_slice],
       self.x[n_start+2::n_slice],
-      self.x[n_start+3::n_slice]
+      # self.x[n_start+3::n_slice]
     ])
 
     dt = self.t_total / self.N

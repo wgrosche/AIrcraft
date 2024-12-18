@@ -1,10 +1,9 @@
-gates: [[-1.1, -1.6, 3.6],
-        [-4.5, -6.0, 0.8]]
+gates: []
 initial:
-  position: [-5, 4.5, 1.2]
-  attitude: [1, 0, 0, 0]
-  velocity: [0, 0, 0]
+  position: [0, 0, 100]
+  attitude: [0, 0, 0, 1]
+  velocity: [80, 0, 0]
   omega: [0, 0, 0]
 
 end:
-  position: [4.75, -0.9, 1.2]
+  position: [200, 0, 50]
