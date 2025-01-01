@@ -186,8 +186,11 @@ class TrajectoryPlotter:
         """
         Plots the trajectory position and orientation axes in a 3D NED frame.
         """
-        position = trajectory_data.state[4:7, :]
-        quaternion = trajectory_data.state[:4, :]
+        # I think these are wrong (inherited); corrected lines below
+        # position = trajectory_data.state[4:7, :]
+        # quaternion = trajectory_data.state[:4, :]
+        position = trajectory_data.state[0:3, :]
+        quaternion = trajectory_data.state[6:10, :]
         ax = self.axes.position
         
         # Negate Z-axis for NED convention
@@ -414,13 +417,14 @@ class TrajectoryPlotter:
         ax.set_title('Control Surface Deflctions')
 
     def plot_thrust(self, trajectory_data:TrajectoryData):
+        state= trajectory_data.state
         control = trajectory_data.control
-        if control.shape[0] < 6:
-            return
+        # if control.shape[0] < 6:
+        #     return
         ax = self.axes.thrust
-        self._update_or_create_line(ax, '_T_x_line', control[3, :], r'$T_x$')
-        self._update_or_create_line(ax, '_T_y_line', control[4, :], r'$T_y$')
-        self._update_or_create_line(ax, '_T_z_line', control[5, :], r'$T_z$')
+        self._update_or_create_line(ax, '_T_x_line', state[0, :], r'$T_x$')
+        self._update_or_create_line(ax, '_T_y_line', state[1, :], r'$T_y$')
+        self._update_or_create_line(ax, '_T_z_line', state[2, :], r'$T_z$')
         ax.legend()
         ax.grid(True)
         ax.set_title('Thrust (N)')

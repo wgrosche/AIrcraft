@@ -168,9 +168,9 @@ class Aircraft:
             self._omega_frd_ned = ca.MX.sym('omega_frd_ned', 3)
 
             self._state = ca.vertcat(
-            self._q_frd_ned, 
             self._p_ned, 
             self._v_ned, 
+            self._q_frd_ned, 
             self._omega_frd_ned
             )
 
@@ -384,8 +384,8 @@ class Aircraft:
 
         steepness = 10
 
-        alpha_scaling = 1 / (1 + ca.exp(steepness * (alpha - stall_angle_alpha)))
-        beta_scaling = 1 / (1 + ca.exp(steepness * (beta - stall_angle_beta)))
+        alpha_scaling = 1 / (1 + ca.exp(steepness * (ca.fabs(alpha) - stall_angle_alpha)))
+        beta_scaling = 1 / (1 + ca.exp(steepness * (ca.fabs(beta) - stall_angle_beta)))
         
         # outputs[2] *= -1
         outputs[2] *= alpha_scaling
@@ -434,11 +434,11 @@ class Aircraft:
         outputs[3] += 0.001 * r * scale
 
         # pitching moment rates
-        outputs[4] += -0.05 * q * scale
+        outputs[4] += -0.2 * q * scale
 
         # yaw moment rates
         outputs[5] *= -1
-        outputs[5] += -0.0003 * p * scale
+        # outputs[5] += -0.0003 * p * scale
         outputs[5] += -0.001 * r * scale
 
         self._coefficients = outputs
@@ -613,8 +613,8 @@ class Aircraft:
 
         state = state + dt_scaled / 6 * (k1 + 2 * k2 + 2 * k3 + k4)
         # Normalize the quaternion
-        quaternion = Quaternion(state[:4])
-        state[:4] = quaternion.normalize().coeffs()
+        quaternion = Quaternion(state[6:10])
+        state[6:10] = quaternion.normalize().coeffs()
 
         # self._state_step = ca.Function('step', [state, control, dt_scaled], [state])
 
@@ -684,22 +684,23 @@ if __name__ == '__main__':
     else:
 
         x0 = np.zeros(3)
-        v0 = ca.vertcat([80, 0, 0])
-        q0 = Quaternion(ca.vertcat(0, 0, 0, 1))
+        v0 = ca.vertcat([30, 0, 3])
+        # would be helpful to have a conversion here between actual pitch, roll and yaw angles and the Quaternion q0, so we can enter the angles in a sensible way.
+        #q0 = Quaternion(ca.vertcat(0, 0, 0, 1))
+        q0 = Quaternion(ca.vertcat(.259, 0, 0, 0.966))
         # q0 = ca.vertcat([0.215566, -0.568766, 0.255647, 0.751452])#q0.inverse()
         omega0 = np.array([0, 0, 0])
 
-        state = ca.vertcat(q0, x0, v0, omega0)
+        state = ca.vertcat(x0, v0, q0, omega0)
         control = np.zeros(aircraft.num_controls)
-        control[0] = 0
-        control[1] = 2
+        control[0] = +0
+        control[1] = 3
         # control[6:9] = traj_dict['aircraft']['aero_centre_offset']
 
     dyn = aircraft.state_update
-    dt = .1
-    tf = 5.0
+    dt = .01
+    tf = 30
     state_list = np.zeros((aircraft.num_states, int(tf / dt)))
-
     # investigate stiffness:
 
     # Define f(state, control) (e.g., the dynamics function)
