@@ -501,7 +501,7 @@ def main():
     data['CX'] = forces[:, 0]
     data['CY'] = forces[:, 1]
     data['CZ'] = forces[:, 2]
-    data['Cl'] = moments[:, 0] * -1 / 16
+    data['Cl'] = moments[:, 0] * -1
     data['Cm'] = moments[:, 1]
     data['Cn'] = moments[:, 2] * -1
     
