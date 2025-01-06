@@ -143,6 +143,7 @@ class Aircraft:
         self.S = opts.aircraft_config.reference_area
         self.b = opts.aircraft_config.span
         self.c = opts.aircraft_config.chord
+        self.length = opts.aircraft_config.length
         self.mass = opts.aircraft_config.mass
         self.opts = opts
 
@@ -266,6 +267,49 @@ class Aircraft:
         v_frd_rel = self._v_frd_rel
         self._alpha = ca.atan2(v_frd_rel[2], v_frd_rel[0] + self.EPSILON)
         return ca.Function('alpha', [self.state, self.control], [self._alpha]).expand()
+    
+    @property
+    def elevator_alpha(self):
+        if not hasattr(self, '_v_frd_rel'):
+            self.v_frd_rel
+        v_frd_rel = self._v_frd_rel
+        self._elevator_alpha = ca.atan2(v_frd_rel[2] + self.length * self._omega_frd_ned[1], v_frd_rel[0] + self.EPSILON)
+        return ca.Function('elevator_alpha', [self.state, self.control], [self._elevator_alpha]).expand()
+    
+
+    @property
+    def elevator_alpha(self):
+        """
+        Includes changed angle of attack due to pitch rate
+        """
+        if not hasattr(self, '_v_frd_rel'):
+            self.v_frd_rel
+        v_frd_rel = self._v_frd_rel
+        self._elevator_alpha = ca.atan2(v_frd_rel[2] + self.length * self._omega_frd_ned[1], v_frd_rel[0] + self.EPSILON)
+        return ca.Function('elevator_alpha', [self.state, self.control], [self._elevator_alpha]).expand()
+    
+
+    @property
+    def left_wing_alpha(self):
+        """
+        Includes changed angle of attack due to roll rate
+        """
+        if not hasattr(self, '_v_frd_rel'):
+            self.v_frd_rel
+        v_frd_rel = self._v_frd_rel
+        self._left_wing_alpha = ca.atan2(v_frd_rel[2] - self.b * self._omega_frd_ned[0] / 4, v_frd_rel[0] + self.EPSILON)
+        return ca.Function('left_wing_alpha', [self.state, self.control], [self._left_wing_alpha]).expand()
+    
+    @property
+    def right_wing_alpha(self):
+        """
+        Includes changed angle of attack due to roll rate
+        """
+        if not hasattr(self, '_v_frd_rel'):
+            self.v_frd_rel
+        v_frd_rel = self._v_frd_rel
+        self._right_wing_alpha = ca.atan2(v_frd_rel[2] + self.b * self._omega_frd_ned[0] / 4, v_frd_rel[0] + self.EPSILON)
+        return ca.Function('right_wing_alpha', [self.state, self.control], [self._right_wing_alpha]).expand()
 
     @property
     def phi(self):
@@ -354,7 +398,17 @@ class Aircraft:
             self.alpha
         if not hasattr(self, '_beta'):
             self.beta
+        if not hasattr(self, '_elevator_alpha'):
+            self.elevator_alpha
+        if not hasattr(self, '_right_wing_alpha'):
+            self.right_wing_alpha
+        if not hasattr(self, '_left_wing_alpha'):
+            self.left_wing_alpha
+
         
+        left_wing_alpha = self._left_wing_alpha
+        right_wing_alpha = self._right_wing_alpha
+        elevator_alpha = self._elevator_alpha
         qbar = self._qbar
         alpha = self._alpha
         beta = self._beta
@@ -369,11 +423,8 @@ class Aircraft:
             elevator
             )
         
-        if self.LINEAR:
-            outputs = ca.mtimes(self.linear_coeffs, ca.vertcat(inputs, 1))
-        else:
-            outputs = self.model(ca.reshape(inputs, 1, -1))
-            outputs = ca.vertcat(outputs.T)
+        outputs = self.model(ca.reshape(inputs, 1, -1))
+        outputs = ca.vertcat(outputs.T)
 
         stall_angle_alpha = np.deg2rad(10)
         stall_angle_beta = np.deg2rad(10)
@@ -391,7 +442,7 @@ class Aircraft:
         outputs[4] *= beta_scaling
 
         p, q, r = self._omega_frd_ned[0], self._omega_frd_ned[1], self._omega_frd_ned[2]
-
+        
         # angular rate contributions
         # outputs[0] += 0.05 * self.omega_b_i_frd[0]
         # outputs[1] += -0.05 * self.omega_frd_ned[2]
@@ -421,6 +472,15 @@ class Aircraft:
         We flip the yaw moment, TODO: investigate
         We scale the roll moment down by a factor of 4 meaning we use the 
         windtunnel scale rather than the sim scale.
+
+
+        We derive the rate coefficients from the following assumptions:
+
+        1) all moments derive exclusively from the control surface contribution:
+            - the elevator gives us the pitching moment and thus the elevator's lift is: L = My / length
+            - the yawing moment is given by the sideforce on the rudder (we neglect the contribution from the fuselage) and is: Y = Mz / length
+            - the roll moment is given by the difference in lift between the left and right wing
+        2) the forces acting 
         """
         scale = 1
         # roll moment rates
