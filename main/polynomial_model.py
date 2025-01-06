@@ -300,7 +300,7 @@ def main():
 
 
     # Save the fitted models and CasADi functions
-    with open('fitted_models_casadi.pkl', 'wb') as file:
+    with open(os.path.join(NETWORKPATH, 'fitted_models_casadi.pkl'), 'wb') as file:
         pickle.dump({'fitted_models': fitted_models, 'casadi_functions': casadi_functions}, file)
 
 if __name__ == "__main__":

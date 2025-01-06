@@ -151,7 +151,9 @@ class Aircraft:
         self.b = opts.aircraft_config.span
         self.c = opts.aircraft_config.chord
         self.mass = opts.aircraft_config.mass
-        self.com = opts.aircraft_config.aero_centre_offset
+        self.com = opts.aircraft_config.aero_centre_offset # position of aerodynamic centre relative to the centre of mass
+        self.com[0] *= 1 #* 0.6
+        self.com[2] *= 1
         self.length = opts.aircraft_config.length
         self.opts = opts
 
@@ -271,13 +273,13 @@ class Aircraft:
     
 
     
-    @property
-    def elevator_alpha(self):
-        if not hasattr(self, '_v_frd_rel'):
-            self.v_frd_rel
-        v_frd_rel = self._v_frd_rel
-        self._elevator_alpha = ca.atan2(v_frd_rel[2] + self.length * self._omega_frd_ned[1], v_frd_rel[0] + self.EPSILON)
-        return ca.Function('elevator_alpha', [self.state, self.control], [self._elevator_alpha]).expand()
+    # @property
+    # def elevator_alpha(self):
+    #     if not hasattr(self, '_v_frd_rel'):
+    #         self.v_frd_rel
+    #     v_frd_rel = self._v_frd_rel
+    #     self._elevator_alpha = ca.atan2(v_frd_rel[2] + self.length * self._omega_frd_ned[1], v_frd_rel[0] + self.EPSILON)
+        # return ca.Function('elevator_alpha', [self.state, self.control], [self._elevator_alpha]).expand()
     
 
     @property
@@ -470,6 +472,8 @@ class Aircraft:
             aileron, 
             elevator
             )
+
+        # TODO: adapt reference areas for the relevant lifting surfaces. currently they are contributing too much (probably, especially the wings with the roll moment)
         
         if self.LINEAR:
             outputs = ca.mtimes(self.linear_coeffs, ca.vertcat(inputs, 1))
@@ -495,7 +499,7 @@ class Aircraft:
             )
             right_wing_lift_coeff = ca.vertcat(*[self.fitted_models['casadi_functions'][i](right_wing_inputs) for i in self.fitted_models['casadi_functions'].keys()])
 
-            outputs[3] += self.b / 4 * (right_wing_lift_coeff[2] - left_wing_lift_coeff[2])
+            outputs[3] += self.b / 4 * (right_wing_lift_coeff[2] / 2 - left_wing_lift_coeff[2] / 2)
 
             # pitch coefficient contribution due to pitch rate
             elevator_inputs = ca.vertcat(
@@ -522,6 +526,14 @@ class Aircraft:
         else:
             outputs = self.model(ca.reshape(inputs, 1, -1))
             outputs = ca.vertcat(outputs.T)
+
+
+        # outputs[0] = 0
+        # outputs[1] = 0
+        # # outputs[2] = 0
+        # outputs[3] = 0
+        # # outputs[4] = 0
+        # outputs[5] = 0
 
 
         # stall scaling
@@ -604,8 +616,8 @@ class Aircraft:
 
         forces = self._coefficients[:3] * self._qbar * self.S# + self._thrust
         # forces += self._throttle
-        speed_threshold = 100.0  # m/s
-        penalty_factor = 0.0  # Scale factor for additional drag
+        speed_threshold = 80.0  # m/s
+        penalty_factor = 10.0  # Scale factor for additional drag
 
         # Smooth penalty function for increased drag
         excess_speed = self._airspeed - speed_threshold
@@ -646,8 +658,7 @@ class Aircraft:
             self.moments_aero_frd
         if not hasattr(self, '_moments_from_forces_frd'):
             self.moments_from_forces_frd
-        self._moments_frd = self._moments_aero_frd + \
-            self._moments_from_forces_frd
+        self._moments_frd = self._moments_aero_frd + self._moments_from_forces_frd
         
         return ca.Function('moments_frd', 
             [self.state, self.control], [self._moments_frd]).expand()
@@ -813,7 +824,7 @@ if __name__ == '__main__':
 
     linear_path = Path(DATAPATH) / 'glider' / 'linearised.csv'
     model_path = Path(NETWORKPATH) / 'model-dynamics.pth'
-    poly_path = Path("main/fitted_models_casadi.pkl")
+    poly_path = Path(NETWORKPATH) / 'fitted_models_casadi.pkl'
 
     # opts = AircraftOpts(nn_model_path=model_path, aircraft_config=aircraft_config)
     opts = AircraftOpts(poly_path=poly_path, aircraft_config=aircraft_config)
@@ -830,17 +841,17 @@ if __name__ == '__main__':
     else:
 
         x0 = np.zeros(3)
-        v0 = ca.vertcat([30, 0, 3])
+        v0 = ca.vertcat([80, 0, 3])
         # would be helpful to have a conversion here between actual pitch, roll and yaw angles and the Quaternion q0, so we can enter the angles in a sensible way.
-        #q0 = Quaternion(ca.vertcat(0, 0, 0, 1))
-        q0 = Quaternion(ca.vertcat(.259, 0, 0, 0.966))
+        q0 = Quaternion(ca.vertcat(0, 0, 0, 1))
+        # q0 = Quaternion(ca.vertcat(.259, 0, 0, 0.966))
         # q0 = ca.vertcat([0.215566, -0.568766, 0.255647, 0.751452])#q0.inverse()
         omega0 = np.array([0, 0, 0])
 
         state = ca.vertcat(x0, v0, q0, omega0)
         control = np.zeros(aircraft.num_controls)
         control[0] = +0
-        control[1] = 3
+        control[1] = 0
         # control[6:9] = traj_dict['aircraft']['aero_centre_offset']
 
     dyn = aircraft.state_update
@@ -887,7 +898,7 @@ if __name__ == '__main__':
     print(state)
 
     first = None
-    # t -=5
+    # t -=10
     def save(filepath):
         with h5py.File(filepath, "a") as h5file:
             grp = h5file.create_group(f'iteration_0')

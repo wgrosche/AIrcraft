@@ -497,12 +497,13 @@ def main():
     forces = np.einsum('ijk,jk->ik', rotmat, data.iloc[:, 6:9].to_numpy().T).T
     moments = np.einsum('ijk,jk->ik', rotmat, data.iloc[:, 9:12].to_numpy().T).T
 
+    data['alpha'] *= -1
     data['CX'] = forces[:, 0]
     data['CY'] = forces[:, 1]
     data['CZ'] = forces[:, 2]
-    data['Cl'] = moments[:, 0]
+    data['Cl'] = moments[:, 0] * -1 / 16
     data['Cm'] = moments[:, 1]
-    data['Cn'] = moments[:, 2]
+    data['Cn'] = moments[:, 2] * -1
     
     create_interactive_aero_plot(data)
 

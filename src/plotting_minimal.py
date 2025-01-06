@@ -222,13 +222,13 @@ class TrajectoryPlotter:
             self._quivers = {
                 'x': ax.quiver(position[0, ::step], position[1, ::step], position[2, ::step],
                             x_axis[::step, 0], x_axis[::step, 1], x_axis[::step, 2],
-                            color='r', length=10, label='Forward', normalize=True),
+                            color='r', length=1, label='Forward', normalize=True),
                 'y': ax.quiver(position[0, ::step], position[1, ::step], position[2, ::step],
                             y_axis[::step, 0], y_axis[::step, 1], y_axis[::step, 2],
-                            color='g', length=10, label='Right', normalize=True),
+                            color='g', length=1, label='Right', normalize=True),
                 'z': ax.quiver(position[0, ::step], position[1, ::step], position[2, ::step],
                             z_axis[::step, 0], z_axis[::step, 1], z_axis[::step, 2],
-                            color='b', length=10, label='Down', normalize=True),
+                            color='b', length=1, label='Down', normalize=True),
             }
         # In your plot_position method, modify the else block for quivers:
         else:
@@ -370,6 +370,7 @@ class TrajectoryPlotter:
         control = trajectory_data.control
         ax = self.axes.forces
         forces_frd = self.aircraft.forces_frd(state, control).full()
+        # forces_frd = self.aircraft.forces_frd(state, control).full()
 
         self._update_or_create_line(ax, '_Fx_line', forces_frd[0, :], 'Fx')
         self._update_or_create_line(ax, '_Fy_line', forces_frd[1, :], 'Fy')
@@ -384,9 +385,15 @@ class TrajectoryPlotter:
         control = trajectory_data.control
         moments_frd = self.aircraft.moments_frd(state, control).full()
 
+        moments_aero_frd = self.aircraft.moments_aero_frd(state, control).full()
+
         self._update_or_create_line(ax, '_Mx_line', moments_frd[0, :], 'Mx')
         self._update_or_create_line(ax, '_My_line', moments_frd[1, :], 'My')
         self._update_or_create_line(ax, '_Mz_line', moments_frd[2, :], 'Mz')
+
+        self._update_or_create_line(ax, '_Mx_aero_line', moments_aero_frd[0, :], 'Mx_aero')
+        self._update_or_create_line(ax, '_My_aero_line', moments_aero_frd[1, :], 'My_aero')
+        self._update_or_create_line(ax, '_Mz_aero_line', moments_aero_frd[2, :], 'Mz_aero')
         ax.legend()
         ax.grid(True)
         ax.set_title('Aero Moments (FRD)')
