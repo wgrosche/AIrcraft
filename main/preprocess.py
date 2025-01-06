@@ -80,7 +80,9 @@ import pandas as pd
 import numpy as np
 import os
 import matplotlib.pyplot as plt
+from matplotlib.widgets import Slider
 import json
+from copy import deepcopy
 
 # Constants
 RHO = 1.225 # air density
@@ -88,6 +90,8 @@ IN_TO_M = 0.0254
 LBF_TO_N = 4.44822
 LBS_TO_KG = 0.453592
 MACH_TO_MS = 343
+
+process_real = False # flag to include real windtunnel data
 
 
 def R(alpha, beta):
@@ -242,7 +246,6 @@ def process_sim_dataset(
 
     return output
 
-
 def process_wt_dataset(
         input:pd.DataFrame, 
         params:dict, 
@@ -366,8 +369,10 @@ def process_wt_dataset(
 def plot(fig, data:pd.DataFrame, label:str = 'sim'):
     data_wt = data.where(data['windtunnel'] == True).sample(frac=.1).dropna()
     data_fs = data.where(data['windtunnel'] == False).dropna()
-    for i, ax in enumerate(fig.axes):
-        # ax = fig.add_subplot(2, 3, i+1, projection='3d')
+    print(data_wt.head())
+    print(data_fs.head())
+    for i, ax in enumerate(fig.axes[:6]):
+        ax = fig.add_subplot(2, 3, i+1, projection='3d')
         if not data_wt.empty:
             ax.scatter(data_wt['alpha'], data_wt['beta'], data_wt.iloc[:, i+6], 
                     marker='o', label=f'{label} windtunnel')
@@ -379,7 +384,57 @@ def plot(fig, data:pd.DataFrame, label:str = 'sim'):
         ax.set_zlabel(data.columns[i+6])
         ax.legend()
 
+def create_interactive_aero_plot(data):
+        fig = plt.figure(figsize=(18, 10))
+        plt.subplots_adjust(bottom=0.2)
+        
+        # Pre-compute all possible filtered datasets
+        aileron_values = np.unique(data['aileron'])
+        elevator_values = np.unique(data['elevator'])
+        filtered_datasets = {}
+        for a in aileron_values:
+            for e in elevator_values:
+                key = (a, e)
+                filtered_datasets[key] = data[
+                    (data['aileron'].between(a-0.1, a+0.1)) & 
+                    (data['elevator'].between(e-0.1, e+0.1))
+                ]
+        
+        scatter_plots = []
+        for i in range(6):
+            ax = fig.add_subplot(2, 3, i+1, projection='3d')
+            ax.set_title(f"{data.columns[i + 6]}")
+            scatter = ax.scatter(data['alpha'], data['beta'], 
+                                    data.iloc[:, i+6], marker='o', label='sim')
+            scatter_plots.append((scatter, i))
+            ax.set_xlabel('alpha')
+            ax.set_ylabel('beta')
+            ax.set_zlabel(data.columns[i+6])
+            ax.legend()
+        
+        ax_aileron = plt.axes([0.2, 0.1, 0.6, 0.03])
+        ax_elevator = plt.axes([0.2, 0.05, 0.6, 0.03])
+        
+        s_aileron = Slider(ax_aileron, 'Aileron', data['aileron'].min(), data['aileron'].max(), 
+                        valinit=0, dragging=True)
+        s_elevator = Slider(ax_elevator, 'Elevator', data['elevator'].min(), data['elevator'].max(), 
+                        valinit=0, dragging=True)
+        
+        def update(val):
+            # Find nearest pre-computed dataset
+            nearest_a = aileron_values[np.abs(aileron_values - s_aileron.val).argmin()]
+            nearest_e = elevator_values[np.abs(elevator_values - s_elevator.val).argmin()]
+            filtered_data = filtered_datasets[(nearest_a, nearest_e)]
+            
+            for scatter, i in scatter_plots:
+                scatter._offsets3d = (filtered_data['alpha'], filtered_data['beta'], 
+                                    filtered_data.iloc[:, i+6])
+            fig.canvas.draw_idle()
     
+        s_aileron.on_changed(update)
+        s_elevator.on_changed(update)
+        update(None)
+        plt.show(block=True)
 
 def main():
     BASEPATH = os.path.dirname(os.path.abspath(__file__)).split('main')[0]
@@ -398,7 +453,7 @@ def main():
     fs_sim = np.load(fs_path, allow_pickle=True) 
     fs_params = json.load(open(os.path.join(PARAMS_DIR, 'glider_fs.json')))
 
-    from copy import deepcopy
+    
     fs_params_2 = deepcopy(fs_params)
     fs_params_2['reference_area'] = 0.225454
 
@@ -409,68 +464,50 @@ def main():
     
     data_fs = process_sim_dataset(fs_sim, fs_params_2, fs_params, 
                                   axes = np.array([[-1, 1, 1, -1, 1, -1]]).T, body=False)
-    # data_fs = data_fs.where(data_fs['aileron'] == 0)
-    # data_fs = data_fs.where(data_fs['elevator'] == 0)
+    
+    # data_fs['Cl'] *= 4 # TODO: Why?
+    data_wt['Cl'] /= 4 # TODO: Why?
 
     data =  pd.concat([data_fs, data_wt], ignore_index=True)
 
-    output_path = os.path.join(DATA_DIR, 'processed', 'data_sim.csv')
     
 
-    wt_raw_path = os.path.join(
-        RAW_DATA_DIR, 
-        'windtunnel', 
-        'real', 
-        'ProcessedData', 
-        'UW2344', 
-        'FinalData', 
-        'finaldata_uw2344.csv'
-    )
-    wt_real = pd.read_csv(wt_raw_path) # load windtunnel data (wind frame)
+    if process_real:
+        wt_raw_path = os.path.join(
+            RAW_DATA_DIR, 
+            'windtunnel', 
+            'real', 
+            'ProcessedData', 
+            'UW2344', 
+            'FinalData', 
+            'finaldata_uw2344.csv'
+        )
+        wt_real = pd.read_csv(wt_raw_path) # load windtunnel data (wind frame)
 
-    data_real = process_wt_dataset(wt_real, fs_params, fs_params,
+        data_real = process_wt_dataset(wt_real, fs_params, fs_params,
                                    axes = np.array([[1, 1, 1, -1, -1, -1]]).T, body=True)
-    # data_real = process_wt_dataset(wt_real, fs_params, fs_params,
-    #                                axes = np.array([[-1, 1, 1, -1, -1, -1]]).T, body = True)
-    # output_path = os.path.join(DATA_DIR, 'processed', 'data_real.csv')
-    # data_real.to_csv(output_path, index=False)
+        data_real.to_csv(os.path.join(DATA_DIR, 'processed', 'data_real.csv'), index=False)
+        data =  pd.concat([data, data_real], ignore_index=True)
 
-    fig = plt.figure(figsize=(18, 10))
-    for i in range(6):
-        ax = fig.add_subplot(2, 3, i+1, projection='3d')
-        ax.set_title(f"{data.columns[i + 6]}")
 
-    # plot data in body frame
-
-    # TODO: at some later data it would be prudent to rigorously examine why
-    # the step from freestream to wind to body is necessary to get the drag coefficients to align.
 
 
     """To switch frames to body"""
-    # rotmat = R(-data['alpha'], -data['beta'])
+    rotmat = R(-data['alpha'], -data['beta'])
+    forces = np.einsum('ijk,jk->ik', rotmat, data.iloc[:, 6:9].to_numpy().T).T
+    moments = np.einsum('ijk,jk->ik', rotmat, data.iloc[:, 9:12].to_numpy().T).T
 
-    # # convert to forces and moments in wind frame
+    data['CX'] = forces[:, 0]
+    data['CY'] = forces[:, 1]
+    data['CZ'] = forces[:, 2]
+    data['Cl'] = moments[:, 0]
+    data['Cm'] = moments[:, 1]
+    data['Cn'] = moments[:, 2]
+    
+    create_interactive_aero_plot(data)
 
-    # forces = np.einsum('ijk,jk->ik', rotmat, data.iloc[:, 6:9].to_numpy().T).T
-    # moments = np.einsum('ijk,jk->ik', rotmat, data.iloc[:, 9:12].to_numpy().T).T
-
-    # data['CX'] = forces[:, 0]
-    # data['CY'] = forces[:, 1]
-    # data['CZ'] = forces[:, 2]
-    # data['Cl'] = moments[:, 0]
-    # data['Cm'] = moments[:, 1]
-    # data['Cn'] = moments[:, 2]
-
-
-    # plot data in wind frame
-    # plot(fig, data, label = "body frame")
-    # plt.show()
-
+    output_path = os.path.join(DATA_DIR, 'processed', 'data_sim.csv')
     data.to_csv(output_path, index=False)
-    plot(fig, data, label = 'sim')
-    plot(fig, data_real, label = 'real')
-    # plot(fig, data_fs, label='controls')
-    plt.show()
 
 if __name__ == "__main__":
     main()

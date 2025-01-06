@@ -17,7 +17,7 @@ import sys
 BASEPATH = os.path.dirname(os.path.abspath(__file__)).split('main')[0]
 sys.path.append(BASEPATH)
 
-from utils import load_model
+from src.utils import load_model
 DATAPATH = os.path.join(BASEPATH, 'data')
 NETWORKPATH = os.path.join(DATAPATH, 'networks')
 VISUPATH = os.path.join(DATAPATH, 'visualisation')
@@ -118,7 +118,7 @@ class PlotAxes:
 
 
 class TrajectoryPlotter:
-    def __init__(self, aircraft):
+    def __init__(self, aircraft, figsize=(15, 15)):
         self.aircraft = aircraft
         # if isinstance(data_source, str):
         #     self.filepath = data_source
@@ -127,7 +127,7 @@ class TrajectoryPlotter:
         #     self.filepath = None
         #     self.data = data_source
         
-        self.figure = plt.figure(figsize=(15, 15))
+        self.figure = plt.figure(figsize=figsize)
         self.axes = PlotAxes(self.figure)
         # self.figure.tight_layout()
         self.lines = {}
@@ -186,8 +186,11 @@ class TrajectoryPlotter:
         """
         Plots the trajectory position and orientation axes in a 3D NED frame.
         """
-        position = trajectory_data.state[4:7, :]
-        quaternion = trajectory_data.state[:4, :]
+        # I think these are wrong (inherited); corrected lines below
+        # position = trajectory_data.state[4:7, :]
+        # quaternion = trajectory_data.state[:4, :]
+        position = trajectory_data.state[0:3, :]
+        quaternion = trajectory_data.state[6:10, :]
         ax = self.axes.position
         
         # Negate Z-axis for NED convention
@@ -227,14 +230,18 @@ class TrajectoryPlotter:
                             z_axis[::step, 0], z_axis[::step, 1], z_axis[::step, 2],
                             color='b', length=10, label='Down', normalize=True),
             }
+        # In your plot_position method, modify the else block for quivers:
         else:
-            self._quivers['x'].set_segments(
-                np.array([position[0, ::step], position[1, ::step], position[2, ::step]]).T)
-            self._quivers['y'].set_segments(
-                np.array([y_axis[::step, 0], y_axis[::step, 1], y_axis[::step, 2]]).T)
-            self._quivers['z'].set_segments(
-                np.array([z_axis[::step, 0], z_axis[::step, 1], z_axis[::step, 2]]).T)
+            for axis, data in zip(['x', 'y', 'z'], [x_axis, y_axis, z_axis]):
+                starts = np.array([position[0, ::step], position[1, ::step], position[2, ::step]]).T
+                ends = starts + data[::step] * 10  # Scale factor of 10 matches your original length
+                segments = np.stack([starts, ends], axis=1)
+                self._quivers[axis].set_segments(segments)
 
+        # update axis limits
+        ax.set_xlim(np.min(position[0, :]), np.max(position[0, :]))
+        ax.set_ylim(np.min(position[1, :]), np.max(position[1, :]))
+        ax.set_zlim(np.min(position[2, :]), np.max(position[2, :]))
         # Customize plot appearance
         ax.set_xlabel('North')
         ax.set_ylabel('East')
@@ -410,13 +417,14 @@ class TrajectoryPlotter:
         ax.set_title('Control Surface Deflctions')
 
     def plot_thrust(self, trajectory_data:TrajectoryData):
+        state= trajectory_data.state
         control = trajectory_data.control
-        if control.shape[0] < 6:
-            return
+        # if control.shape[0] < 6:
+        #     return
         ax = self.axes.thrust
-        self._update_or_create_line(ax, '_T_x_line', control[3, :], r'$T_x$')
-        self._update_or_create_line(ax, '_T_y_line', control[4, :], r'$T_y$')
-        self._update_or_create_line(ax, '_T_z_line', control[5, :], r'$T_z$')
+        self._update_or_create_line(ax, '_T_x_line', state[0, :], r'$T_x$')
+        self._update_or_create_line(ax, '_T_y_line', state[1, :], r'$T_y$')
+        self._update_or_create_line(ax, '_T_z_line', state[2, :], r'$T_z$')
         ax.legend()
         ax.grid(True)
         ax.set_title('Thrust (N)')

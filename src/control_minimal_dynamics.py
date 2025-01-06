@@ -65,7 +65,7 @@ import matplotlib.pyplot as plt
 from liecasadi import Quaternion
 import h5py
 from scipy.interpolate import CubicSpline
-from src.plotting import TrajectoryPlotter, TrajectoryData
+from src.plotting_minimal import TrajectoryPlotter, TrajectoryData
 
 import threading
 import torch
@@ -83,10 +83,9 @@ default_solver_options = {'ipopt': {'max_iter': 10000,
                                     'tol': 1e-2,
                                     'acceptable_tol': 1e-2,
                                     'acceptable_obj_change_tol': 1e-2,
-                                    'hessian_approximation': 'limited-memory'
+                                    # 'hessian_approximation': 'limited-memory'
                                     },
-                        'print_time': 10,
-                        # 'expand' : True
+                        'print_time': 10
                         }
 
 def cumulative_distances(waypoints:np.ndarray, VERBOSE:bool = False):
@@ -129,7 +128,7 @@ class ControlProblem:
         self.state_dim = aircraft.num_states
         self.control_dim = aircraft.num_controls
 
-        self.dynamics = aircraft.state_update
+        self.dynamics = aircraft.state_update.expand()
 
         
 
@@ -209,9 +208,11 @@ class ControlProblem:
         control_envelope = self.trajectory.control
         opti = self.opti
 
-        opti.subject_to(opti.bounded(control_envelope.lb[:2],
-                node.control[:2], control_envelope.ub[:2]))
-        opti.subject_to(opti.bounded(0, node.control[2], 10))
+        opti.subject_to(opti.bounded(-2,
+                node.control[0], 2))
+        opti.subject_to(opti.bounded(-5,
+                node.control[1], 5))
+        # opti.subject_to(opti.bounded(0, node.control[2], 10))
 
 
 
@@ -225,16 +226,27 @@ class ControlProblem:
         beta = self.aircraft.beta
         airspeed = self.aircraft.airspeed
 
-        opti.subject_to(opti.bounded(state_envelope.alpha.lb,
-            alpha(node.state, node.control), state_envelope.alpha.ub))
+        # opti.subject_to(opti.bounded(state_envelope.alpha.lb,
+        #     alpha(node.state, node.control), state_envelope.alpha.ub))
 
-        opti.subject_to(opti.bounded(state_envelope.beta.lb,
-            beta(node.state, node.control), state_envelope.beta.ub))
+        # opti.subject_to(opti.bounded(state_envelope.beta.lb,
+        #     beta(node.state, node.control), state_envelope.beta.ub))
 
-        opti.subject_to(opti.bounded(state_envelope.airspeed.lb,
-            airspeed(node.state, node.control), state_envelope.airspeed.ub))
+        # opti.subject_to(opti.bounded(state_envelope.airspeed.lb,
+        #     airspeed(node.state, node.control), state_envelope.airspeed.ub))
+        
+        opti.subject_to(opti.bounded(60,
+            alpha(node.state, node.control), 100))
+
+        opti.subject_to(opti.bounded(-np.deg2rad(10),
+            beta(node.state, node.control), np.deg2rad(10)))
+
+        opti.subject_to(opti.bounded(-np.deg2rad(10),
+            airspeed(node.state, node.control), np.deg2rad(10)))
         
         opti.subject_to(node.state_next == dynamics(node.state, node.control, dt))
+
+        opti.subject_to(node.state[6] > 0.5)
 
 
 
@@ -417,12 +429,12 @@ class ControlProblem:
             if os.path.exists(filepath):
                 os.remove(filepath)
         # plt.ion()
-        # plotter = TrajectoryPlotter(self.aircraft)
+        plotter = TrajectoryPlotter(self.aircraft)
         # plt.show(block = False)
         # TODO: investigate fig.add_subfigure for better plotting
         self.opti.solver('ipopt', opts)
         # self.opti.callback(lambda i: self.callback(plotter, i, filepath))
-        plt.show()
+        # plt.show()
 
         if warm_start != (None, None):
             warm_sol, warm_opti = warm_start

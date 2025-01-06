@@ -1,0 +1,3 @@
+linear_solver = mumps
+mumps_mem_percent = 2000  # Increase memory allocated for MUMPS (default is 1000)
+mumps_pivtol = 1e-6       # Adjust pivot tolerance if needed

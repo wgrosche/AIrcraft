@@ -31,7 +31,7 @@ sys.path.append(BASEPATH)
 
 from src.models import ScaledModel
 from src.utils import load_model, TrajectoryConfiguration
-from src.plotting import TrajectoryPlotter
+from src.plotting_minimal import TrajectoryPlotter
 from dataclasses import dataclass
 
 print(DEVICE)
@@ -152,6 +152,7 @@ class Aircraft:
         self.c = opts.aircraft_config.chord
         self.mass = opts.aircraft_config.mass
         self.com = opts.aircraft_config.aero_centre_offset
+        self.length = opts.aircraft_config.length
         self.opts = opts
 
         self.state
@@ -168,9 +169,9 @@ class Aircraft:
             self._omega_frd_ned = ca.MX.sym('omega_frd_ned', 3)
 
             self._state = ca.vertcat(
-            self._q_frd_ned, 
             self._p_ned, 
             self._v_ned, 
+            self._q_frd_ned, 
             self._omega_frd_ned
             )
 
@@ -267,6 +268,52 @@ class Aircraft:
         v_frd_rel = self._v_frd_rel
         self._alpha = ca.atan2(v_frd_rel[2], v_frd_rel[0] + self.EPSILON)
         return ca.Function('alpha', [self.state, self.control], [self._alpha]).expand()
+    
+
+    
+    @property
+    def elevator_alpha(self):
+        if not hasattr(self, '_v_frd_rel'):
+            self.v_frd_rel
+        v_frd_rel = self._v_frd_rel
+        self._elevator_alpha = ca.atan2(v_frd_rel[2] + self.length * self._omega_frd_ned[1], v_frd_rel[0] + self.EPSILON)
+        return ca.Function('elevator_alpha', [self.state, self.control], [self._elevator_alpha]).expand()
+    
+
+    @property
+    def elevator_alpha(self):
+        """
+        Includes changed angle of attack due to pitch rate
+        """
+        if not hasattr(self, '_v_frd_rel'):
+            self.v_frd_rel
+        v_frd_rel = self._v_frd_rel
+        self._elevator_alpha = ca.atan2(v_frd_rel[2] + self.length * self._omega_frd_ned[1], v_frd_rel[0] + self.EPSILON)
+        return ca.Function('elevator_alpha', [self.state, self.control], [self._elevator_alpha]).expand()
+    
+
+    @property
+    def left_wing_alpha(self):
+        """
+        Includes changed angle of attack due to roll rate
+        """
+        if not hasattr(self, '_v_frd_rel'):
+            self.v_frd_rel
+        v_frd_rel = self._v_frd_rel
+        self._left_wing_alpha = ca.atan2(v_frd_rel[2] - self.b * self._omega_frd_ned[0] / 4, v_frd_rel[0] + self.EPSILON)
+        return ca.Function('left_wing_alpha', [self.state, self.control], [self._left_wing_alpha]).expand()
+    
+    @property
+    def right_wing_alpha(self):
+        """
+        Includes changed angle of attack due to roll rate
+        """
+        if not hasattr(self, '_v_frd_rel'):
+            self.v_frd_rel
+        v_frd_rel = self._v_frd_rel
+        self._right_wing_alpha = ca.atan2(v_frd_rel[2] + self.b * self._omega_frd_ned[0] / 4, v_frd_rel[0] + self.EPSILON)
+        return ca.Function('right_wing_alpha', [self.state, self.control], [self._right_wing_alpha]).expand()
+
 
     @property
     def phi(self):
@@ -336,6 +383,21 @@ class Aircraft:
         v_frd_rel = self._v_frd_rel
         self._beta = ca.asin(v_frd_rel[1] / self._airspeed)
         return ca.Function('beta', [self.state, self.control], [self._beta]).expand()
+    
+    @property
+    def rudder_beta(self):
+        if not hasattr(self, '_v_frd_rel'):
+            self.v_frd_rel
+        if not hasattr(self, '_airspeed'):
+            self.airspeed
+
+        
+        v_frd_rel = self._v_frd_rel
+        v_frd_rel[1] = v_frd_rel[1] + self.length * self._omega_frd_ned[2]
+
+        airspeed = ca.sqrt(ca.sumsqr(v_frd_rel) + self.EPSILON)
+        self._rudder_beta = ca.asin(v_frd_rel[1] / airspeed)
+        return ca.Function('rudder_beta', [self.state, self.control], [self._rudder_beta]).expand()
          
     @property
     def qbar(self):
@@ -343,6 +405,26 @@ class Aircraft:
             self.v_frd_rel
         self._qbar = 0.5 * 1.225 * ca.dot(self._v_frd_rel, self._v_frd_rel)
         return ca.Function('qbar', [self.state, self.control], [self._qbar]).expand()
+    
+    @property
+    def left_wing_qbar(self):
+        if not hasattr(self, '_v_frd_rel'):
+            self.v_frd_rel
+        
+        r = self._omega_frd_ned[2]
+        new_vel = self._v_frd_rel[0] + self.b * r / 4
+        self._left_wing_qbar = 0.5 * 1.225 * ca.dot(new_vel, new_vel)
+        return ca.Function('left_wing_qbar', [self.state, self.control], [self._left_wing_qbar]).expand()
+    
+    @property
+    def right_wing_qbar(self):
+        if not hasattr(self, '_v_frd_rel'):
+            self.v_frd_rel
+
+        r = self._omega_frd_ned[2]
+        new_vel = self._v_frd_rel[0] - self.b * r / 4
+        self._right_wing_qbar = 0.5 * 1.225 * ca.dot(new_vel, new_vel)
+        return ca.Function('right_wing_qbar', [self.state, self.control], [self._right_wing_qbar]).expand()
         
     @property
     def coefficients(self):
@@ -355,6 +437,25 @@ class Aircraft:
             self.alpha
         if not hasattr(self, '_beta'):
             self.beta
+        if not hasattr(self, '_elevator_alpha'):
+            self.elevator_alpha
+        if not hasattr(self, '_right_wing_alpha'):
+            self.right_wing_alpha
+        if not hasattr(self, '_left_wing_alpha'):
+            self.left_wing_alpha
+        if not hasattr(self, '_right_wing_qbar'):
+            self.right_wing_qbar
+        if not hasattr(self, '_left_wing_qbar'):
+            self.left_wing_qbar
+        if not hasattr(self, '_rudder_beta'):
+            self.rudder_beta
+
+        rudder_beta = self._rudder_beta
+        left_wing_qbar = self._left_wing_qbar
+        right_wing_qbar = self._right_wing_qbar
+        left_wing_alpha = self._left_wing_alpha
+        right_wing_alpha = self._right_wing_alpha
+        elevator_alpha = self._elevator_alpha
         
         qbar = self._qbar
         alpha = self._alpha
@@ -375,33 +476,78 @@ class Aircraft:
 
         elif self.fitted_models is not None:
             outputs = ca.vertcat(*[self.fitted_models['casadi_functions'][i](inputs) for i in self.fitted_models['casadi_functions'].keys()])
+
+            # roll rate contribution with terms due to changed angle of attack and airspeed
+            left_wing_inputs = ca.vertcat(
+                left_wing_qbar,
+                left_wing_alpha,
+                beta,
+                aileron,
+                elevator
+            )
+            left_wing_lift_coeff = ca.vertcat(*[self.fitted_models['casadi_functions'][i](left_wing_inputs) for i in self.fitted_models['casadi_functions'].keys()])
+            right_wing_inputs = ca.vertcat(
+                right_wing_qbar,
+                right_wing_alpha,
+                beta,
+                aileron,
+                elevator
+            )
+            right_wing_lift_coeff = ca.vertcat(*[self.fitted_models['casadi_functions'][i](right_wing_inputs) for i in self.fitted_models['casadi_functions'].keys()])
+
+            outputs[3] += self.b / 4 * (right_wing_lift_coeff[2] - left_wing_lift_coeff[2])
+
+            # pitch coefficient contribution due to pitch rate
+            elevator_inputs = ca.vertcat(
+                qbar,
+                elevator_alpha,
+                beta,
+                aileron,
+                elevator
+            )
+            elevator_damped_pitch_coeff = ca.vertcat(*[self.fitted_models['casadi_functions'][i](elevator_inputs) for i in self.fitted_models['casadi_functions'].keys()])
+            outputs[4] = elevator_damped_pitch_coeff[4]
+
+            # yaw coefficient contribution due to yaw rate
+            rudder_inputs = ca.vertcat(
+                qbar,
+                alpha,
+                rudder_beta,
+                aileron,
+                elevator
+            )  
+            rudder_damped_yaw_coeff = ca.vertcat(*[self.fitted_models['casadi_functions'][i](rudder_inputs) for i in self.fitted_models['casadi_functions'].keys()])
+            outputs[5] = rudder_damped_yaw_coeff[5]
+
         else:
             outputs = self.model(ca.reshape(inputs, 1, -1))
             outputs = ca.vertcat(outputs.T)
 
+
+        # stall scaling
         stall_angle_alpha = np.deg2rad(10)
         stall_angle_beta = np.deg2rad(10)
 
         steepness = 10
 
-        alpha_scaling = 1 / (1 + ca.exp(steepness * (alpha - stall_angle_alpha)))
-        beta_scaling = 1 / (1 + ca.exp(steepness * (beta - stall_angle_beta)))
+        alpha_scaling = 1 / (1 + ca.exp(steepness * (ca.fabs(alpha) - stall_angle_alpha)))
+        beta_scaling = 1 / (1 + ca.exp(steepness * (ca.fabs(beta) - stall_angle_beta)))
         
-        
+        # outputs[2] *= -1
         outputs[2] *= alpha_scaling
         outputs[2] *= beta_scaling
 
         outputs[4] *= alpha_scaling
         outputs[4] *= beta_scaling
 
-        p, q, r = self._omega_frd_ned[0], self._omega_frd_ned[1], self._omega_frd_ned[2]
+        # p, q, r = self._omega_frd_ned[0], self._omega_frd_ned[1], self._omega_frd_ned[2]
 
-        # angular rate contributions
-        # outputs[0] += 0.05 * self.omega_b_i_frd[0]
-        # outputs[1] += -0.05 * self.omega_frd_ned[2]
-        # outputs[2] += -0.1 * self.omega_frd_ned[0]
-        outputs[1] += -0.05 * r
-        outputs[2] += -0.1 * p
+        # # angular rate contributions
+        # # outputs[0] += 0.05 * self.omega_b_i_frd[0]
+        # # outputs[1] += -0.05 * self.omega_frd_ned[2]
+        # # outputs[2] += -0.1 * self.omega_frd_ned[0]
+        # outputs[1] += -0.05 * r
+        # outputs[2] += -0.1 * p
 
         """
         The relative amplitudes of the damping factors are taken from the cessna
@@ -426,19 +572,20 @@ class Aircraft:
         We scale the roll moment down by a factor of 4 meaning we use the 
         windtunnel scale rather than the sim scale.
         """
-        scale = 1
-        # roll moment rates
-        outputs[3] /= 4
-        outputs[3] += -0.005 * p * scale
-        outputs[3] += 0.001 * r * scale
+        # scale = 1
+        # # roll moment rates
+        
+        # outputs[3] /= 16
+        # outputs[3] += -0.005 * p * scale
+        # outputs[3] += 0.001 * r * scale
 
-        # pitching moment rates
-        outputs[4] += -0.05 * q * scale
+        # # pitching moment rates
+        # outputs[4] += -0.2 * q * scale
 
-        # yaw moment rates
-        outputs[5] *= -1
-        outputs[5] += -0.0003 * p * scale
-        outputs[5] += -0.001 * r * scale
+        # # yaw moment rates
+        # outputs[5] *= -1
+        # # outputs[5] += -0.0003 * p * scale
+        # outputs[5] += -0.001 * r * scale
 
         self._coefficients = outputs
 
@@ -469,7 +616,7 @@ class Aircraft:
 
         self._forces_frd = forces
         return ca.Function('forces_frd', 
-            [self.state, self.control], [forces])
+            [self.state, self.control], [forces]).expand()
     
     @property
     def moments_aero_frd(self):
@@ -482,7 +629,7 @@ class Aircraft:
 
         self._moments_aero_frd = moments_aero
         return ca.Function('moments_aero_frd', 
-            [self.state, self.control], [moments_aero])
+            [self.state, self.control], [moments_aero]).expand()
     
     @property
     def moments_from_forces_frd(self):
@@ -491,7 +638,7 @@ class Aircraft:
         self._moments_from_forces_frd = ca.cross(self.com, self._forces_frd)
         
         return ca.Function('moments_from_forces_frd', 
-            [self.state, self.control], [self._moments_from_forces_frd])
+            [self.state, self.control], [self._moments_from_forces_frd]).expand()
     
     @property
     def moments_frd(self):
@@ -503,7 +650,7 @@ class Aircraft:
             self._moments_from_forces_frd
         
         return ca.Function('moments_frd', 
-            [self.state, self.control], [self._moments_frd])
+            [self.state, self.control], [self._moments_frd]).expand()
     
     @property
     def forces_ned(self):
@@ -513,7 +660,7 @@ class Aircraft:
         q_frd_ned = Quaternion(self._q_frd_ned)
         self._forces_ned = (q_frd_ned * forces_frd * q_frd_ned.inverse()).coeffs()[:3]
         return ca.Function('forces_ned', 
-            [self.state, self.control], [self._forces_ned])
+            [self.state, self.control], [self._forces_ned]).expand()
         
     @property
     def q_frd_ned_dot(self):
@@ -545,7 +692,7 @@ class Aircraft:
             'v_ecf_cm_e_dot', 
             [self.state, self.control], 
             [self._v_ned_dot]
-            )
+            ).expand()
 
     @property
     def omega_frd_ned_dot(self):
@@ -565,7 +712,7 @@ class Aircraft:
             'omega_frd_ned_dot', 
             [self.state, self.control], 
             [self._omega_frd_ned_dot]
-            )
+            ).expand()
     
     @property
     def state_derivative(self):
@@ -578,17 +725,17 @@ class Aircraft:
         if not hasattr(self, '_omega_frd_ned_dot'):
             self.omega_frd_ned_dot
         self._state_derivative = ca.vertcat(
-            self._q_frd_ned_dot, 
             self._p_ned_dot, 
             self._v_ned_dot, 
+            self._q_frd_ned_dot, 
             self._omega_frd_ned_dot
             )
         
         return ca.Function(
             'dynamics', 
             [self.state, self.control], 
-            [self._state_derivative]
-            )
+            [self._state_derivative], ['x', 'u'], ['x_dot']
+            ).expand()
     
     # @jit
     def state_step(self, state, control, dt_scaled):
@@ -612,8 +759,8 @@ class Aircraft:
 
         state = state + dt_scaled / 6 * (k1 + 2 * k2 + 2 * k3 + k4)
         # Normalize the quaternion
-        quaternion = Quaternion(state[:4])
-        state[:4] = quaternion.normalize().coeffs()
+        quaternion = Quaternion(state[6:10])
+        state[6:10] = quaternion.normalize().coeffs()
 
         # self._state_step = ca.Function('step', [state, control, dt_scaled], [state])
 
@@ -653,7 +800,7 @@ class Aircraft:
             'state_update', 
             [self.state, self.control, dt], 
             [state]
-            ) #, {'jit':True}
+            ).expand() #, {'jit':True}
     
 
 if __name__ == '__main__':
@@ -683,22 +830,23 @@ if __name__ == '__main__':
     else:
 
         x0 = np.zeros(3)
-        v0 = ca.vertcat([80, 0, 0])
-        q0 = Quaternion(ca.vertcat(0, 0, 0, 1))
+        v0 = ca.vertcat([30, 0, 3])
+        # would be helpful to have a conversion here between actual pitch, roll and yaw angles and the Quaternion q0, so we can enter the angles in a sensible way.
+        #q0 = Quaternion(ca.vertcat(0, 0, 0, 1))
+        q0 = Quaternion(ca.vertcat(.259, 0, 0, 0.966))
         # q0 = ca.vertcat([0.215566, -0.568766, 0.255647, 0.751452])#q0.inverse()
         omega0 = np.array([0, 0, 0])
 
-        state = ca.vertcat(q0, x0, v0, omega0)
+        state = ca.vertcat(x0, v0, q0, omega0)
         control = np.zeros(aircraft.num_controls)
-        control[0] = 2
-        control[1] = 2
+        control[0] = +0
+        control[1] = 3
         # control[6:9] = traj_dict['aircraft']['aero_centre_offset']
 
     dyn = aircraft.state_update
     dt = .01
-    tf = 5.0
+    tf = 30
     state_list = np.zeros((aircraft.num_states, int(tf / dt)))
-
     # investigate stiffness:
 
     # Define f(state, control) (e.g., the dynamics function)

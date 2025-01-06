@@ -163,6 +163,7 @@ class TrajectoryConfiguration:
         def __init__(self, aircraft_dict:dict):
             self.mass = aircraft_dict.get('mass', 1.0)
             self.span = aircraft_dict.get('span', 1.0)
+            self.length = aircraft_dict.get('length', 1.2)
             self.chord = aircraft_dict.get('chord', 1.0)
             self.reference_area = aircraft_dict.get('reference_area', 0.238)
             self.aero_centre_offset = aircraft_dict.get('aero_centre_offset', [0.133, 0, 0.003])
