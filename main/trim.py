@@ -118,29 +118,28 @@ C_m_beta
 C_n_alpha
 C_n_beta < 0
 """
-
-
-
 import numpy as np
 import os
 import sys
 import json
 import casadi as ca
+from pathlib import Path
+from liecasadi import Quaternion
 
 # Set up paths and imports
 BASEPATH = os.path.dirname(os.path.abspath(__file__)).split('main')[0]
+NETWORKPATH = os.path.join(BASEPATH, 'data', 'networks')
+DATAPATH = os.path.join(BASEPATH, 'data')
 sys.path.append(BASEPATH)
 
-from src.dynamics import Aircraft
+from src.dynamics_minimal import Aircraft, AircraftOpts
 from src.utils import load_model, aero_to_state, TrajectoryConfiguration
-
 
 # Wrap functions for aerodynamic derivatives
 def wrap_aero(func, control):
     """
     Wraps a function so that it can take aerodynamic variables as input instead
     of the full state.
-
     """
     # define symbolic aerodynamic variables
     alpha = ca.MX.sym('alpha')
@@ -218,13 +217,53 @@ def jacobian_wrapper(
 
 
 def main():
-    # Load aircraft parameters and model
     model = load_model()
     traj_dict = json.load(open('data/glider/problem_definition.json'))
+
     trajectory_config = TrajectoryConfiguration(traj_dict)
 
+    aircraft_config = trajectory_config.aircraft
 
-    aircraft = Aircraft(traj_dict['aircraft'], model, LINEAR=False)
+    linear_path = Path(DATAPATH) / 'glider' / 'linearised.csv'
+    model_path = Path(NETWORKPATH) / 'model-dynamics.pth'
+    poly_path = Path(NETWORKPATH) / 'fitted_models_casadi.pkl'
+
+    # opts = AircraftOpts(nn_model_path=model_path, aircraft_config=aircraft_config)
+    opts = AircraftOpts(poly_path=poly_path, aircraft_config=aircraft_config)
+    # opts = AircraftOpts(linear_path=linear_path, aircraft_config=aircraft_config)
+
+    aircraft = Aircraft(opts = opts)
+
+    perturbation = False
+    
+    trim_state_and_control = None
+    if trim_state_and_control is not None:
+        state = ca.vertcat(trim_state_and_control[:aircraft.num_states])
+        control = np.array(trim_state_and_control[aircraft.num_states:])
+    else:
+
+        x0 = np.zeros(3)
+        v0 = ca.vertcat([50, 0, 0])
+        # would be helpful to have a conversion here between actual pitch, roll and yaw angles and the Quaternion q0, so we can enter the angles in a sensible way.
+        q0 = Quaternion(ca.vertcat(0, 0, 0, 1))
+        # q0 = Quaternion(ca.vertcat(.259, 0, 0, 0.966))
+        # q0 = ca.vertcat([0.215566, -0.568766, 0.255647, 0.751452])#q0.inverse()
+        omega0 = np.array([0, 0, 0])
+
+        state = ca.vertcat(x0, v0, q0, omega0)
+        control = np.zeros(aircraft.num_controls)
+        control[0] = +0
+        control[1] = 0
+        # control[6:9] = traj_dict['aircraft']['aero_centre_offset']
+
+    dyn = aircraft.state_update
+    dt = .1
+    tf = 30
+    state_list = np.zeros((aircraft.num_states, int(tf / dt)))
+    # investigate stiffness:
+
+    # Define f(state, control) (e.g., the dynamics function)
+    f = aircraft.state_derivative(aircraft.state, aircraft.control)
     forces_func = aircraft._forces_frd
 
     # Initialize state and control variables
