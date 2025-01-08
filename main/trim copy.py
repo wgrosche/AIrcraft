@@ -167,9 +167,9 @@ def main():
         'ipopt': {
             'max_iter': 10000,
             # 'print_level': 2,
-            'tol': 1e-4,
-            'acceptable_tol': 1e-4,
-            'acceptable_obj_change_tol': 1e-4,
+            # 'tol': 1e-4,
+            # 'acceptable_tol': 1e-8,
+            # 'acceptable_obj_change_tol': 1e-8,
             'hessian_approximation': 'limited-memory',  # Set Hessian approximation method here
         },
         'print_time': 10
