@@ -446,6 +446,8 @@ class Aircraft:
     def coefficients(self):
         """
         Forward pass of the ml model to retrieve aerodynamic coefficients.
+
+        To calculate damping factors the effective velocities (under the angular rotation) of the relevant lifting surfaces are calculated and passed as inputs to the model.
         """
         if not hasattr(self, '_qbar'):
             self.qbar
