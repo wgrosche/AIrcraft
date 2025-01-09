@@ -121,8 +121,8 @@ class ControlProblem:
         trajectory_config:TrajectoryConfiguration,
         num_control_nodes: int,
         VERBOSE:bool = True
-
         ):
+
         self.opti = opti
         self.aircraft = aircraft
         self.state_dim = aircraft.num_states
@@ -163,9 +163,9 @@ class ControlProblem:
 
     def setup_opti_vars(self, 
                         scale_state = ca.vertcat(
-                            [1, 1, 1, 1],
                             [1e3, 1e3, 1e3],
                             [1e2, 1e2, 1e2],
+                            [1, 1, 1, 1],
                             [1, 1, 1]
                             ), 
                         scale_control = ca.vertcat(
@@ -189,6 +189,7 @@ class ControlProblem:
 
             state_list.append(ca.DM(scale_state) * 
                               opti.variable(self.state_dim))
+            
             lam_list.append(opti.variable(self.num_waypoints))
 
             if i < self.nodes:
@@ -235,18 +236,18 @@ class ControlProblem:
         # opti.subject_to(opti.bounded(state_envelope.airspeed.lb,
         #     airspeed(node.state, node.control), state_envelope.airspeed.ub))
         
-        opti.subject_to(opti.bounded(60,
-            alpha(node.state, node.control), 100))
+        opti.subject_to(opti.bounded(30,
+            airspeed(node.state, node.control), 80))
 
         opti.subject_to(opti.bounded(-np.deg2rad(10),
             beta(node.state, node.control), np.deg2rad(10)))
 
         opti.subject_to(opti.bounded(-np.deg2rad(10),
-            airspeed(node.state, node.control), np.deg2rad(10)))
+            alpha(node.state, node.control), np.deg2rad(10)))
         
         opti.subject_to(node.state_next == dynamics(node.state, node.control, dt))
 
-        opti.subject_to(node.state[6] > 0.5)
+        opti.subject_to(node.state[2] > 0.5)
 
 
 
@@ -271,7 +272,7 @@ class ControlProblem:
             if j < num_waypoints - 1:
                 opti.subject_to(node.lam[j] - node.lam[j + 1] <= 0)
 
-            diff = node.state[4 + waypoint_indices] - waypoints[j, waypoint_indices]
+            diff = node.state[0 + waypoint_indices] - waypoints[j, waypoint_indices]
             opti.subject_to(opti.bounded(0, node.nu[j], tolerance**2))
             opti.subject_to(node.mu[j] * (ca.dot(diff, diff) - node.nu[j]) == 0)
 
@@ -317,9 +318,10 @@ class ControlProblem:
 
         if waypoint_info.initial_state is not None:
             initial_state = waypoint_info.initial_state
-            opti.subject_to(state[4:, 0] == initial_state[4:])
+            opti.subject_to(state[:6, 0] == initial_state[:6])
+            opti.subject_to(state[10:, 0] == initial_state[10:])
 
-        opti.subject_to(ca.dot(state[:4, 0], state[:4, 0]) == 1)
+        opti.subject_to(ca.dot(state[6:10, 0], state[6:10, 0]) == 1)
 
         opti.subject_to(lam[:, 0] == [1] * num_waypoints)
 
@@ -351,7 +353,7 @@ class ControlProblem:
             print("Predicted Switching Nodes: ", self.switch_var)
 
         self.opti.subject_to(
-            self.state[4 + waypoint_indices, -1] ==  final_waypoint)
+            self.state[waypoint_indices, -1] ==  final_waypoint)
         
         self.opti.subject_to(self.mu[:, -1] == [0] * self.num_waypoints)
 
@@ -576,12 +578,12 @@ class ControlProblem:
             # extend position guess
             pos_guess = (1 - interpolation) * wp_last + interpolation * wp_next
 
-            x_guess[4:7, i + 1] = np.reshape(pos_guess, (3,))
+            x_guess[:3, i + 1] = np.reshape(pos_guess, (3,))
             
 
             direction = (wp_next - wp_last) / ca.norm_2(wp_next - wp_last)
             vel_guess = velocity_guess * direction
-            x_guess[7:10, i + 1] = np.reshape(velocity_guess * direction, (3,))
+            x_guess[3:6, i + 1] = np.reshape(velocity_guess * direction, (3,))
 
             rotation, _ = R.align_vectors(np.array(direction).reshape(1, -1), [[1, 0, 0]])
 
@@ -590,7 +592,7 @@ class ControlProblem:
                 flip_y = R.from_euler('y', 180, degrees=True)
                 rotation = rotation * flip_y
 
-            x_guess[:4, i + 1] = (rotation * z_flip).as_quat()
+            x_guess[6:10, i + 1] = (rotation * z_flip).as_quat()
 
         # x_guess = self.smooth_trajectory(x_guess)
 
@@ -617,7 +619,7 @@ def main():
     linear_path = Path(DATAPATH) / 'glider' / 'linearised.csv'
     model_path = Path(NETWORKPATH) / 'model-dynamics.pth'
 
-    poly_path = Path("main/fitted_models_casadi.pkl")
+    poly_path = Path(NETWORKPATH) / "fitted_models_casadi.pkl"
 
     # opts = AircraftOpts(nn_model_path=model_path, aircraft_config=aircraft_config)
     opts = AircraftOpts(poly_path=poly_path, aircraft_config=aircraft_config)
