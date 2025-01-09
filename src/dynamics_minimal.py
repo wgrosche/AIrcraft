@@ -403,7 +403,7 @@ class Aircraft:
 
         
         v_frd_rel = self._v_frd_rel
-        v_frd_rel[1] = v_frd_rel[1] + self.rudder_moment_arm * self._omega_frd_ned[2]
+        v_frd_rel[1] = v_frd_rel[1] - self.rudder_moment_arm * self._omega_frd_ned[2]
 
         airspeed = ca.sqrt(ca.sumsqr(v_frd_rel) + self.EPSILON)
         self._rudder_beta = ca.asin(v_frd_rel[1] / airspeed)
@@ -851,10 +851,12 @@ if __name__ == '__main__':
 
     perturbation = False
     
-    trim_state_and_control = [0, 0, 0, 60, 2.29589e-41, 0, 0, 9.40395e-38, -2.93874e-39, 1, 0, 1.46937e-39, 0, -5.73657e-45, 0, 0, 0.0134613, -7.8085e-09, 0.00436365]
+    trim_state_and_control = [0, 0, 0, 30, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]# [0, 0, 0, 60, 2.29589e-41, 0, 0, 9.40395e-38, -2.93874e-39, 1, 0, 1.46937e-39, 0, -5.73657e-45, 0, 0, 0.0134613, -7.8085e-09, 0.00436365]
     if trim_state_and_control is not None:
         state = ca.vertcat(trim_state_and_control[:aircraft.num_states])
         control = np.array(trim_state_and_control[aircraft.num_states:-3])
+        control[0] = +1
+        control[1] = -0.5
         aircraft.com = np.array(trim_state_and_control[-3:])
     else:
 
@@ -869,12 +871,12 @@ if __name__ == '__main__':
         state = ca.vertcat(x0, v0, q0, omega0)
         control = np.zeros(aircraft.num_controls)
         control[0] = +0
-        control[1] = 0
+        control[1] = 3
         # control[6:9] = traj_dict['aircraft']['aero_centre_offset']
 
     dyn = aircraft.state_update
     dt = .01
-    tf = 10
+    tf = 5
     state_list = np.zeros((aircraft.num_states, int(tf / dt)))
     # investigate stiffness:
 

@@ -111,7 +111,7 @@ def main():
     
     # Initialize state and control variables
     x0 = np.zeros(3)
-    v0 = np.array([60, 0, 0])
+    v0 = np.array([30, 0, 0])
     q0 = np.array([0, 0, 0, 1])
     omega0 = np.array([0, 0, 0])
     state = ca.vertcat(x0, v0, q0, omega0)
