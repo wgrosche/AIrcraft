@@ -34,20 +34,54 @@ opts = AircraftOpts(poly_path=poly_path, aircraft_config=aircraft_config)
 aircraft = Aircraft(opts=opts)
 
 
+model = load_model()
+traj_dict = json.load(open('data/glider/problem_definition.json'))
+
+trajectory_config = TrajectoryConfiguration(traj_dict)
+
+aircraft_config = trajectory_config.aircraft
+
+NETWORKPATH = Path(BASEPATH) / 'data' / 'networks'
+
+linear_path = Path(DATAPATH) / 'glider' / 'linearised.csv'
+model_path = NETWORKPATH / 'model-dynamics.pth'
+poly_path = NETWORKPATH / 'fitted_models_casadi.pkl'
+
+# opts = AircraftOpts(nn_model_path=model_path, aircraft_config=aircraft_config)
+opts = AircraftOpts(poly_path=poly_path, aircraft_config=aircraft_config)
+# opts = AircraftOpts(linear_path=linear_path, aircraft_config=aircraft_config)
+
+aircraft = Aircraft(opts = opts)
+
+perturbation = False
+
+
+
+
 
 # Function to run the simulation
 def simulate_trajectory(tf, aileron, elevator, plotter):
     dt = 0.1
     num_steps = int(tf / dt)
 
-    # Initial conditions
-    x0 = np.zeros(3)
-    v0 = ca.vertcat([80, 0, 0])
-    q0 = Quaternion(ca.vertcat(0, 0, 0, 1))
-    omega0 = np.array([0, 0, 0])
+    trim_state_and_control = [0, 0, 0, 30, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]# [0, 0, 0, 60, 2.29589e-41, 0, 0, 9.40395e-38, -2.93874e-39, 1, 0, 1.46937e-39, 0, -5.73657e-45, 0, 0, 0.0134613, -7.8085e-09, 0.00436365]
 
-    state = ca.vertcat(q0, x0, v0, omega0)
-    control = np.zeros(aircraft.num_controls)
+    if trim_state_and_control is not None:
+        state = ca.vertcat(trim_state_and_control[:aircraft.num_states])
+        control = np.array(trim_state_and_control[aircraft.num_states:-3])
+        control[0] = +1
+        control[1] = -0.5
+        aircraft.com = np.array(trim_state_and_control[-3:])
+
+    else:
+        x0 = np.zeros(3)
+        v0 = ca.vertcat([80, 0, 0])
+        q0 = Quaternion(ca.vertcat(0, 0, 0, 1))
+        omega0 = np.array([0, 0, 0])
+        aircraft.com = np.array([0, 0, 0])
+
+    # state = ca.vertcat(x0, v0, q0, omega0)
+    # control = np.zeros(aircraft.num_controls)
     control[0] = aileron  # Aileron deflection
     control[1] = elevator  # Elevator deflection
 

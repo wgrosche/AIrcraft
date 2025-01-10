@@ -402,16 +402,21 @@ class TrajectoryPlotter:
         state = trajectory_data.state
         control = trajectory_data.control
 
-        if state is not None and control is not None:
+        if state is not None:
+            if control is not None:
+                self.plot_moments(trajectory_data)
+
+                self.plot_forces(trajectory_data)
+            else:
+                trajectory_data.control = np.zeros((3, state.shape[1]))
             
             self.plot_position(trajectory_data)
 
             self.plot_angles(trajectory_data)
             self.plot_velocity(trajectory_data)
-            self.plot_moments(trajectory_data)
-
             self.plot_rates(trajectory_data)
-            self.plot_forces(trajectory_data)
+
+            
         
     def plot_deflections(self, trajectory_data:TrajectoryData):
         ax = self.axes.controls

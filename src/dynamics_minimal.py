@@ -152,12 +152,12 @@ class Aircraft:
         self.c = opts.aircraft_config.chord
         self.mass = opts.aircraft_config.mass
         self.com = opts.aircraft_config.aero_centre_offset # position of aerodynamic centre relative to the centre of mass
-        self.com[0] = 0.028
+        # self.com[0] = 0.028
         self.rudder_moment_arm = 0.5 # distance between centre of mass and the tail of the plane (used for damping calculations)
-        self.com[0] *= 1 #* 0.6
-        self.com[2] *= 1
-        self.com[2] = 0
-        self.com = np.array([0.0134613, -7.8085e-09, 0.00436365])
+        # self.com[0] *= 1 #* 0.6
+        # self.com[2] *= 1
+        # self.com[2] = 0
+        # self.com = np.array([0.0134613, -7.8085e-09, 0.00436365])
         self.length = opts.aircraft_config.length
         self.opts = opts
 
