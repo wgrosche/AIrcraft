@@ -183,7 +183,7 @@ class TrajectoryConfiguration:
                                     [0,1,2]))
             if waypoint_dict.get('initial_state') is not None:
                 self.initial_state = np.array(waypoint_dict.get('initial_state'))
-                self.initial_position = np.array(self.initial_state[4:7])
+                self.initial_position = np.array(self.initial_state[:3])
                 self.waypoints = np.insert(self.waypoints, 0, self.initial_position, axis=0)
             else:
                 self.initial_position = self.waypoints[0, :]

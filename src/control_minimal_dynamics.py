@@ -236,13 +236,13 @@ class ControlProblem:
         
         opti.subject_to(opti.bounded(20, airspeed(node.state, node.control), 80))
 
-        opti.subject_to(opti.bounded(-np.deg2rad(10), beta(node.state, node.control), np.deg2rad(10)))
+        opti.subject_to(opti.bounded(-np.deg2rad(20), beta(node.state, node.control), np.deg2rad(20)))
 
-        opti.subject_to(opti.bounded(-np.deg2rad(10), alpha(node.state, node.control), np.deg2rad(10)))
+        opti.subject_to(opti.bounded(-np.deg2rad(20), alpha(node.state, node.control), np.deg2rad(20)))
         
         opti.subject_to(node.state_next == dynamics(node.state, node.control, dt))
 
-        opti.subject_to(node.state[2] > 0.5)
+        opti.subject_to(node.state[2] > 0.0)
 
 
 
@@ -624,8 +624,6 @@ class ControlProblem:
         """
         Initial guess for the state variables.
         """
-        
-
         state_dim = self.aircraft.num_states
         initial_pos = trajectory.waypoints.initial_position
         initial_orientation = trajectory.waypoints.initial_state[6:10]
@@ -637,7 +635,6 @@ class ControlProblem:
     
         self.r_glide = 10
         
-
         direction_guess = (waypoints[0, :] - initial_pos)
         vel_guess = velocity_guess *  direction_guess / np.linalg.norm(direction_guess)
 
@@ -651,13 +648,30 @@ class ControlProblem:
 
         x_guess[:3, 0] = initial_pos
         x_guess[3:6, 0] = vel_guess
-        x_guess[6:10, 0] = initial_orientation
 
-        z_flip = R.from_euler('x', 180, degrees=True)
+
+        rotation, _ = R.align_vectors(np.array(direction_guess).reshape(1, -1), [[1, 0, 0]])
+
+        # Check if the aircraft is moving in the opposite direction
+        if np.dot(direction_guess.T, [1, 0, 0]) < 0:
+            flip_y = R.from_euler('y', 180, degrees=True)
+            rotation = rotation * flip_y
+
+        # Get the euler angles
+        euler = rotation.as_euler('xyz')
+        print("Euler: ", euler)
+        # If roll is close to 180, apply correction
+        # if abs(euler[0]) >= np.pi/2: 
+            # Create rotation around x-axis by 180 degrees
+        roll_correction = R.from_euler('x', 180, degrees=True)
+        
+        x_guess[6:10, 0] = (rotation).as_quat()
+
+        # z_flip = R.from_euler('x', 180, degrees=True)
 
         for i, waypoint in enumerate(waypoints):
             if len(self.trajectory.waypoints.waypoint_indices) < 3:
-                    waypoint[2] += self.distances[i] / self.r_glide
+                    waypoint[2] = initial_pos[2] + self.distances[i] / self.r_glide
         i_wp = 0
         for i in range(self.num_nodes):
             # switch condition
@@ -694,7 +708,18 @@ class ControlProblem:
                 flip_y = R.from_euler('y', 180, degrees=True)
                 rotation = rotation * flip_y
 
-            x_guess[6:10, i + 1] = (rotation * z_flip).as_quat()
+            # Get the euler angles
+            euler = rotation.as_euler('xyz')
+            print("Euler: ", euler)
+            # If roll is close to 180, apply correction
+            # if abs(euler[0]) >= np.pi/2: 
+                # Create rotation around x-axis by 180 degrees
+            # roll_correction = R.from_euler('x', 180, degrees=True)
+                # Apply correction
+            # rotation = rotation * roll_correction
+
+
+            x_guess[6:10, i + 1] = (rotation).as_quat()
 
         # x_guess = self.smooth_trajectory(x_guess)
 
