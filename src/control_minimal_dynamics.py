@@ -234,15 +234,15 @@ class ControlProblem:
         # opti.subject_to(opti.bounded(state_envelope.airspeed.lb,
         #     airspeed(node.state, node.control), state_envelope.airspeed.ub))
         
-        opti.subject_to(opti.bounded(20, airspeed(node.state, node.control), 80))
+        # opti.subject_to(opti.bounded(20, airspeed(node.state, node.control), 80))
 
-        opti.subject_to(opti.bounded(-np.deg2rad(20), beta(node.state, node.control), np.deg2rad(20)))
+        # opti.subject_to(opti.bounded(-np.deg2rad(20), beta(node.state, node.control), np.deg2rad(20)))
 
-        opti.subject_to(opti.bounded(-np.deg2rad(20), alpha(node.state, node.control), np.deg2rad(20)))
+        # opti.subject_to(opti.bounded(-np.deg2rad(20), alpha(node.state, node.control), np.deg2rad(20)))
         
         opti.subject_to(node.state_next == dynamics(node.state, node.control, dt))
 
-        opti.subject_to(node.state[2] > 0.0)
+        # opti.subject_to(node.state[2] > 0.0)
 
 
 
@@ -414,7 +414,7 @@ class ControlProblem:
                 index=index,
                 state_next = ca.DM(scale_state) * opti.variable(self.state_dim),
                 state=previous_node.state,
-                control = ca.DM(scale_control) * opti.variable(self.control_dim) - ca.DM(5),
+                control = ca.DM(scale_control) * opti.variable(self.control_dim),
                 lam=previous_node.lam,
                 lam_next=opti.variable(self.num_waypoints),
                 mu=opti.variable(self.num_waypoints),
@@ -435,9 +435,9 @@ class ControlProblem:
             # waypoint_node = self.waypoint_constraint(node_data, waypoint_node)
 
         self.opti.subject_to(
-            previous_node.state[waypoint_indices] ==  final_waypoint)
+            current_node.state[waypoint_indices] ==  final_waypoint)
         
-        self.opti.subject_to(previous_node.mu[:] == [0] * self.num_waypoints)
+        self.opti.subject_to(current_node.mu[:] == [0] * self.num_waypoints)
 
         self.state = ca.hcat(self.state)
         self.control = ca.hcat(self.control)
@@ -769,7 +769,7 @@ def main():
 
     opti = ca.Opti()
 
-    num_control_nodes = 50
+    num_control_nodes = 100
     # aircraft = Aircraft(traj_dict['aircraft'], model)#, LINEAR=True)
     problem = ControlProblem(opti, aircraft, trajectory_config, num_control_nodes)
 
