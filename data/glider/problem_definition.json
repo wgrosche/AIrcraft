@@ -1,10 +1,10 @@
 {
     "waypoints": {
         "waypoints" : [[200, 200, 0]],
-        "initial_state" : [0, 0, -200, 60, 0, 0, 0, 0, 0, 1, 0, 0, 0],
-        "default_velocity" : 50,
+        "initial_state" : [0, 0, -200, 30, 0, 0, 0, 0, 0, 1, 0, 0, 0],
+        "default_velocity" : 30,
         "waypoint_indices" : [0, 1],
-        "waypoint_tolerance" : 1e0
+        "waypoint_tolerance" : 1e1
     },
     "aircraft" : {
         "mass"  : 2.0,
