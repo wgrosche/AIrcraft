@@ -1,14 +1,30 @@
 from casadi import MX, DM, vertcat, horzcat, veccat, norm_2, dot, mtimes, nlpsol, diag, repmat, sum1
 import numpy as np
 import inspect
+from scipy.spatial.transform import Rotation as R
+
+class Track:
+  def __init__(self, filename = ""):
+    self.init_pos = [0, 0, -200]
+    self.init_att = [0, 0, 0, 1]
+    self.init_vel = [35, 0, 0]
+    self.init_omega = [0, 0, 0]
+    self.end_pos = [200, 200, -100]
+    self.end_att = None
+    self.end_vel = None
+    self.end_omega = None
+    self.gates = [[100, 0, -150]]
+    self.waypoint_indices = [0, 1]
 
 
 
 class Planner:
-  def __init__(self, aircraft, track, options = {}):
+  def __init__(self, aircraft, track = None, options = {'tolerance': 1.0, 'nodes_per_gate': 30, 'vel_guess': 35.0}):
     # Essentials
     # self.quad = quad
-    self.track = track
+    self.track = Track()
+    track = self.track
+
     self.options = options
 
     # Track
@@ -28,11 +44,10 @@ class Planner:
     else:
       self.q_init = DM([1, 0, 0, 0]).T
 
+    self.aircraft = aircraft
+
     # Dynamics
-    # dynamics = quad.dynamics()
-    
-    self.dynamics = aircraft.state_update
-    # self.fdyn = Integrator(dynamics)
+    self.dynamics = aircraft.state_update.expand()
 
     # Sizes
     self.NX = self.dynamics.size1_in(0)
@@ -80,7 +95,8 @@ class Planner:
       ipopt_options = {}
       ipopt_options['max_iter'] = 10000
       self.solver_options['ipopt'] = ipopt_options
-      self.solver_options['ipopt']['hessian_approximation']= 'limited-memory'
+      # self.solver_options['ipopt']['hessian_approximation']= 'limited-memory'
+      # self.solver_options['expand'] = True
     if 'solver_type' in options:
       self.solver_type = options['solver_type']
     else:
@@ -183,14 +199,6 @@ class Planner:
     # For each node ...
     i_wp = 0
     for i in range(self.N):
-      # T_max = self.quad.T_max
-      # omega_max_xy = self.quad.omega_max_xy
-
-      # linearly interpolate max thrust and max omegas
-      # if self.quad.rampup_dist > 0:
-      #   T_max = max(min(self.interpolate(0, self.quad.T_ramp_start, self.quad.rampup_dist, self.quad.T_max, i * self.dpn), self.quad.T_max), self.quad.T_ramp_start)
-      #   omega_max_xy = max(min(self.interpolate(0, self.quad.omega_ramp_start, self.quad.rampup_dist, self.quad.omega_max_xy, i * self.dpn), self.quad.omega_max_xy), self.quad.omega_ramp_start)
-
       # ... add inputs
       uk = MX.sym('u'+str(i), self.NU)
       x += [uk]
@@ -200,9 +208,20 @@ class Planner:
       ub += [5]*self.NU
 
       # ... add next state
-      # Fnext = self.fdyn(x = xk, u = uk, dt = t/self.N)
       xn = self.dynamics(xk, uk, t/self.N)
-      # xn = Fnext['xn']
+
+      # angle of attack, side slip and speed constraints
+      g += [self.aircraft.alpha(xk, uk)]
+      lb += [np.deg2rad(-20)]
+      ub += [np.deg2rad(20)]
+
+      g += [self.aircraft.beta(xk, uk)]
+      lb += [np.deg2rad(-20)]
+      ub += [np.deg2rad(20)]
+
+      g += [self.aircraft.airspeed(xk, uk)]
+      lb += [20]
+      ub += [80]
 
       xk = MX.sym('x'+str(i), self.NX)
       x += [xk]
@@ -230,7 +249,15 @@ class Planner:
       # else:
       #   vel_guess = (1 - interp) * 4 * self.vel_guess * direction
       # pos_guess += self.t_guess / self.N * vel_guess
-      xg += [pos_guess, vel_guess, self.q_init, [0]*3]
+      direction = (wp_next - wp_last)/norm_2(wp_next - wp_last)
+      rotation, _ = R.align_vectors(np.array(direction).reshape(1, -1), [[1, 0, 0]])
+      if np.dot(direction.T, [1, 0, 0]) < 0:
+                flip_y = R.from_euler('y', 180, degrees=True)
+                rotation = rotation * flip_y
+
+      orientation_guess = (rotation).as_quat()
+
+      xg += [pos_guess, vel_guess, orientation_guess, [0]*3]
 
       # Progress Variables
       lam = MX.sym('lam'+str(i), self.NW)
@@ -254,7 +281,7 @@ class Planner:
 
       for j in range(self.NW):
         # diff = xk[0:3] - self.wp[:,j]
-        diff = xk[0:2] - self.wp[:2,j]
+        diff = xk[self.track.waypoint_indices] - self.wp[self.track.waypoint_indices,j]
         g += [lam[j] * (dot(diff, diff)-tau[j])]
       lb += [0]*self.NW
       ub += [0.01]*self.NW
@@ -280,8 +307,8 @@ class Planner:
 
       # z constraint
       g += [xk[2]]
-      lb += [0.5]
-      ub += [200.0]              # infinity
+      lb += [-200.0] 
+      ub += [-0.5]           # infinity
 
       for j in range(self.NW-1):
         g += [muk[j+1]-muk[j]]
@@ -342,6 +369,7 @@ class Planner:
       callback.set_size(self.x.shape[0], self.g.shape[0], self.NPW)
       callback.set_wp(self.wp)
       self.solver_options['iteration_callback'] = callback
+      # self.solver_options['expand'] = True
 
 
     self.solver = nlpsol('solver', self.solver_type, self.nlp, self.solver_options)
@@ -355,3 +383,4 @@ class Planner:
       return 0
 
     return y1 + (y2 - y1)/(x2 - x1) * (x - x1)
+

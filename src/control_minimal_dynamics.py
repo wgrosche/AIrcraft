@@ -83,9 +83,11 @@ default_solver_options = {'ipopt': {'max_iter': 10000,
                                     'tol': 1e-2,
                                     'acceptable_tol': 1e-2,
                                     'acceptable_obj_change_tol': 1e-2,
-                                    # 'hessian_approximation': 'limited-memory'
+                                    'hessian_approximation': 'limited-memory'
                                     },
-                        'print_time': 10
+                        'print_time': 10,
+                        'expand': True
+
                         }
 
 def cumulative_distances(waypoints:np.ndarray, VERBOSE:bool = False):
@@ -284,9 +286,9 @@ class ControlProblem:
             index=0,
             state=ca.DM(scale_state) * opti.variable(self.state_dim),
             control=ca.DM(scale_control) * opti.variable(self.control_dim),
-            lam=opti.variable(self.num_waypoints),
-            mu=opti.variable(self.num_waypoints),
-            nu=opti.variable(self.num_waypoints)
+            lam=None, #opti.variable(self.num_waypoints),
+            mu=None, #opti.variable(self.num_waypoints),
+            nu=None, #opti.variable(self.num_waypoints)
         )
 
         # if waypoint_info.initial_state is not None:
@@ -297,13 +299,13 @@ class ControlProblem:
 
         opti.subject_to(ca.dot(current_node.state[6:10], current_node.state[6:10]) == 1)
 
-        opti.subject_to(current_node.lam == [1] * num_waypoints)
+        # opti.subject_to(current_node.lam == [1] * num_waypoints)
 
         self.state = [current_node.state]
         self.control = [current_node.control]
-        self.lam = [current_node.lam]
-        self.mu = [current_node.mu]
-        self.nu = [current_node.nu]
+        # self.lam = [current_node.lam]
+        # self.mu = [current_node.mu]
+        # self.nu = [current_node.nu]
         
 
         for index in range(1, self.num_nodes + 1):
@@ -311,9 +313,9 @@ class ControlProblem:
                 index=index,
                 state = ca.DM(scale_state) * opti.variable(self.state_dim),
                 control = ca.DM(scale_control) * opti.variable(self.control_dim),
-                lam=opti.variable(self.num_waypoints),
-                mu=opti.variable(self.num_waypoints),
-                nu=opti.variable(self.num_waypoints)
+                lam=None,#opti.variable(self.num_waypoints),
+                mu=None,#opti.variable(self.num_waypoints),
+                nu=None,#opti.variable(self.num_waypoints)
             )
             
             self.state_constraint(current_node, next_node, self.dt)
@@ -326,32 +328,33 @@ class ControlProblem:
             opti.set_initial(current_node.control, np.zeros(self.control_dim))
 
             self.state.append(current_node.state)
-            self.lam.append(current_node.lam)
+            # self.lam.append(current_node.lam)
             if index < self.num_nodes:
                 self.control.append(current_node.control)
-                self.mu.append(current_node.mu)
-                self.nu.append(current_node.nu)
+                # self.mu.append(current_node.mu)
+                # self.nu.append(current_node.nu)
 
         self.opti.subject_to(current_node.state[waypoint_indices] == final_waypoint)
         
-        self.opti.subject_to(current_node.lam == [0] * self.num_waypoints)
+        # self.opti.subject_to(current_node.lam == [0] * self.num_waypoints)
 
         self.state = ca.hcat(self.state)
+        print("State Shape: ", self.state.shape)
         self.control = ca.hcat(self.control)
-        self.lam = ca.hcat(self.lam)
-        self.mu = ca.hcat(self.mu)
-        self.nu = ca.hcat(self.nu)
+        # self.lam = ca.hcat(self.lam)
+        # self.mu = ca.hcat(self.mu)
+        # self.nu = ca.hcat(self.nu)
         
-        if self.VERBOSE:
-            print("Initial State: ", initial_state)
-            print("Waypoints: ", waypoints)
-            print("Waypoint Indices: ", waypoint_indices)
-            print("Final Waypoint: ", final_waypoint)
-            print("Predicted Switching Nodes: ", self.switch_var)
+        # if self.VERBOSE:
+        #     print("Initial State: ", initial_state)
+        #     print("Waypoints: ", waypoints)
+        #     print("Waypoint Indices: ", waypoint_indices)
+        #     print("Final Waypoint: ", final_waypoint)
+        #     print("Predicted Switching Nodes: ", self.switch_var)
 
         print("State Shape: ", self.state.shape)
 
-        self.initialise()
+        # self.initialise()
 
         opti.minimize(self.loss(state = self.state, control = self.control, time = self.time))
 
@@ -360,14 +363,21 @@ class ControlProblem:
         if filepath is not None:
             # save the state, control and time to a file
             with h5py.File(filepath, "a") as h5file:
-                for i, (X, U, time, lam, mu, nu) in enumerate(zip(self.sol_state_list[-10:], self.sol_control_list[-10:], self.final_times[-10:], self.lam_list[-10:], self.mu_list[-10:], self.nu_list[-10:])):
+                for i, (X, U, time, lam, mu, nu) in enumerate(zip(
+                    self.sol_state_list[-10:], 
+                    self.sol_control_list[-10:], 
+                    self.final_times[-10:], 
+                    self.lam_list[-10:], 
+                    self.mu_list[-10:], 
+                    self.nu_list[-10:]
+                    )):
                     grp = h5file.create_group(f'iteration_{iteration - 10 + i}')
                     grp.create_dataset('state', data=X)
                     grp.create_dataset('control', data=U)
                     grp.create_dataset('time', data=time)
-                    grp.create_dataset('lam', data=lam)
-                    grp.create_dataset('mu', data=mu)
-                    grp.create_dataset('nu', data=nu)
+                    # grp.create_dataset('lam', data=lam)
+                    # grp.create_dataset('mu', data=mu)
+                    # grp.create_dataset('nu', data=nu)
 
     def plot_convergence(self, ax:plt.axes, sol:ca.OptiSol):
         ax.semilogy(sol.stats()['iterations']['inf_du'], label="Dual infeasibility")
@@ -387,9 +397,9 @@ class ControlProblem:
                 state = np.array(self.opti.debug.value(self.state))[:, 1:],
                 control = np.array(self.opti.debug.value(self.control)),
                 time = np.array(self.opti.debug.value(self.time)),
-                lam = np.array(self.opti.debug.value(self.lam)),
-                mu = np.array(self.opti.debug.value(self.mu)),
-                nu = np.array(self.opti.debug.value(self.nu))
+                lam = None,#np.array(self.opti.debug.value(self.lam)),
+                mu = None,#np.array(self.opti.debug.value(self.mu)),
+                nu = None,#np.array(self.opti.debug.value(self.nu))
             )
             
             plotter.plot(trajectory_data = trajectory_data)
@@ -405,9 +415,9 @@ class ControlProblem:
             self.sol_state_list.append(self.opti.debug.value(self.state))
             self.sol_control_list.append(self.opti.debug.value(self.control))
             self.final_times.append(self.opti.debug.value(self.time))
-            self.lam_list.append(self.opti.debug.value(self.lam))
-            self.mu_list.append(self.opti.debug.value(self.mu))
-            self.nu_list.append(self.opti.debug.value(self.nu))
+            # self.lam_list.append(self.opti.debug.value(self.lam))
+            # self.mu_list.append(self.opti.debug.value(self.mu))
+            # self.nu_list.append(self.opti.debug.value(self.nu))
             if iteration % 10 == 0:
                 self.save_progress(filepath, iteration)
 
@@ -428,12 +438,12 @@ class ControlProblem:
             if os.path.exists(filepath):
                 os.remove(filepath)
         # plt.ion()
-        plotter = TrajectoryPlotter(self.aircraft)
+        # plotter = TrajectoryPlotter(self.aircraft)
         # plt.show(block = False)
         # TODO: investigate fig.add_subfigure for better plotting
         self.opti.solver('ipopt', opts)
-        self.opti.callback(lambda i: self.callback(plotter, i, filepath))
-        plt.show()
+        # self.opti.callback(lambda i: self.callback(plotter, i, filepath))
+        # plt.show()
 
         if warm_start != (None, None):
             warm_sol, warm_opti = warm_start
@@ -441,8 +451,8 @@ class ControlProblem:
             # lam_g0 = warm_sol.value(warm_opti.lam_g)
             # self.opti.set_initial(self.opti.lam_g, lam_g0)
         sol = self.opti.solve()
-        plt.ioff()
-        plt.show(block=True)        
+        # plt.ioff()
+        # plt.show(block=True)        
         return (sol, self.opti)
 
 
@@ -663,6 +673,9 @@ def main():
     # opts = AircraftOpts(nn_model_path=model_path, aircraft_config=aircraft_config)
 
     aircraft = Aircraft(opts = opts)
+
+    # [0, 0, 0, 30, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 
+    aircraft.com = [0.0131991, -1.78875e-08, 0.00313384]
 
 
     opti = ca.Opti()
