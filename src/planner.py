@@ -9,11 +9,11 @@ class Track:
     self.init_att = [0, 0, 0, 1]
     self.init_vel = [35, 0, 0]
     self.init_omega = [0, 0, 0]
-    self.end_pos = [200, 200, -100]
+    self.end_pos = [200, 200, -180]
     self.end_att = None
     self.end_vel = None
     self.end_omega = None
-    self.gates = [[100, 0, -150]]
+    self.gates = [[100, 0, -190]]
     self.waypoint_indices = [0, 1]
 
 
@@ -42,7 +42,7 @@ class Planner:
     if track.init_att is not None:
       self.q_init = DM(track.init_att)
     else:
-      self.q_init = DM([1, 0, 0, 0]).T
+      self.q_init = DM([0, 0, 0, 1]).T
 
     self.aircraft = aircraft
 

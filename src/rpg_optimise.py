@@ -39,9 +39,9 @@ from pathlib import Path
 
 plt.ion()
 default_solver_options = {'ipopt': {'max_iter': 10000,
-                                    'tol': 1e-2,
-                                    'acceptable_tol': 1e-2,
-                                    'acceptable_obj_change_tol': 1e-2,
+                                    'tol': 1e-1,
+                                    'acceptable_tol': 1e-1,
+                                    'acceptable_obj_change_tol': 1e-1,
                                     # 'hessian_approximation': 'limited-memory'
                                     },
                         'print_time': 10

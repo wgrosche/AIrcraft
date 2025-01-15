@@ -89,7 +89,7 @@ class Trajectory:
     self.u = np.array([
       self.x[n_start+0::n_slice],
       self.x[n_start+1::n_slice],
-      # self.x[n_start+2::n_slice],
+      self.x[n_start+2::n_slice],
       # self.x[n_start+3::n_slice]
     ])
 
