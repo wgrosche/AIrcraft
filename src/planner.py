@@ -13,7 +13,7 @@ class Track:
     self.end_att = None
     self.end_vel = None
     self.end_omega = None
-    self.gates = [[100, 0, -190]]
+    self.gates = [[100, 0, -190], [150, 200, -170]]
     self.waypoint_indices = [0, 1]
 
 

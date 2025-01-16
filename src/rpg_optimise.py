@@ -72,7 +72,7 @@ if __name__ == '__main__':
     aircraft.com = [0.0131991, -1.78875e-08, 0.00313384]
     planner = Planner(
         aircraft,
-        options = {'tolerance': 10.0, 'nodes_per_gate': 30, 'vel_guess': 35.0}
+        options = {'tolerance': 20.0, 'nodes_per_gate': 20, 'vel_guess': 35.0}
         )
     
     cp = CallbackPlot(pos='xy', vel='xya', ori='xyzw', rate='xyz', inputs='u', prog='mn')
