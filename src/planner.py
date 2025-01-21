@@ -200,12 +200,18 @@ class Planner:
     i_wp = 0
     for i in range(self.N):
       # ... add inputs
-      uk = MX.sym('u'+str(i), self.NU)
-      x += [uk]
+
+      vk = MX.sym('v'+str(i), self.NU)  # Unconstrained control variable
+      x += [vk]
+      uk = -5 + 10 * (1 / (1 + MX.exp(-vk))) # Reparametrise to [-5, 5]
       xg += [0]*self.NU
-      g += [uk]
-      lb += [-5]*self.NU
-      ub += [5]*self.NU
+
+      # uk = MX.sym('u'+str(i), self.NU)
+      # x += [uk]
+      # xg += [0]*self.NU
+      # g += [uk]
+      # lb += [-5]*self.NU
+      # ub += [5]*self.NU
 
       # ... add next state
       xn = self.dynamics(xk, uk, t/self.N)
