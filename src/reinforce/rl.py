@@ -30,6 +30,9 @@ class RL(ABC):
 
         return self.state, reward, done, info
     
+    def check_termination(self):
+        pass
+    
     def reset(self):
         self.state = np.array([0, 0, 0, 50, 0, 0, 0, 0, 0, 1, 0, 0, 0])
         return self.state

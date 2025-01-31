@@ -326,6 +326,10 @@ class Planner:
     lb += [0]*self.NW
     ub += [0]*self.NW
 
+    g+= [xk[:2] - self.track.end_pos[:2]]
+    lb += [0,0]
+    ub += [0,0]
+
     # if self.track.ring:
     #   print('Using ring constraint')
     #   g += [xk[3:6] - x_init[3:6]]
