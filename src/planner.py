@@ -2,6 +2,7 @@ from casadi import MX, DM, vertcat, horzcat, veccat, norm_2, dot, mtimes, nlpsol
 import numpy as np
 import inspect
 from scipy.spatial.transform import Rotation as R
+import dubins
 
 class Track:
   def __init__(self, filename = ""):
@@ -15,6 +16,37 @@ class Track:
     self.end_omega = None
     self.gates = [[100, 0, -190], [150, 200, -170]]
     self.waypoint_indices = [0, 1]
+
+import numpy as np
+
+def generate_dubins_path(waypoints, r_min):
+    """
+    Generates a Dubins path for a given list of waypoints, ensuring the minimum turn radius is respected.
+
+    :param waypoints: List of waypoints [(x, y, theta), ...] where theta is in radians.
+    :param r_min: Minimum turn radius.
+    :return: List of (x, y, theta) points forming the Dubins path.
+    """
+    path_points = []
+
+    for i in range(len(waypoints) - 1):
+        start = waypoints[i]
+        end = waypoints[i + 1]
+
+        # Generate Dubins path between two waypoints
+        path, _ = dubins.shortest_path(start, end, r_min).sample_many(0.1)  # Sample every 0.1m
+        path_points.extend(path)
+
+    return path_points
+
+# Example usage:
+# waypoints = [(0, 0, 0), (10, 10, np.pi/4), (20, 5, np.pi/2)]  # (x, y, heading in radians)
+# r_min = 2.0  # Minimum turn radius
+# trajectory = generate_dubins_path(waypoints, r_min)
+
+# # Print or visualize trajectory
+# for point in trajectory:
+#     print(point)
 
 
 
