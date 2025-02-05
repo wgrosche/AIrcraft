@@ -92,84 +92,7 @@ def generate_3d_dubins_path(waypoints, r_min, sample_dist=0.01):
 
     return path_points
 
-
-# def generate_3d_dubins_path(waypoints, r_min, sample_dist=0.01):
-#     """
-#     Generates a 3D Dubins-like path by computing the shortest trajectory on a fitted plane.
-
-#     :param waypoints: List of waypoints [(x, y, z, theta)] where theta is heading in radians.
-#     :param r_min: Minimum turning radius.
-#     :param sample_dist: Sampling distance for the trajectory.
-#     :return: List of (x, y, z) points forming the 3D Dubins path.
-#     """
-#     path_points = []
-
-#     for i in range(len(waypoints) - 2):  # Use three consecutive waypoints to fit a plane
-#         (x1, y1, z1, theta1) = waypoints[i]
-#         (x2, y2, z2, theta2) = waypoints[i + 1]
-#         (x3, y3, z3, theta3) = waypoints[i + 2]
-
-#         # Fit a plane using three points
-#         normal, plane_point = fit_plane((x1, y1, z1), (x2, y2, z2), (x3, y3, z3))
-
-#         # Project start and end points onto the fitted plane
-#         p1_proj = project_to_plane((x1, y1, z1), normal, plane_point)
-#         p2_proj = project_to_plane((x2, y2, z2), normal, plane_point)
-
-#         print("P1: ", p2_proj)
-
-#         # Compute the shortest Dubins path on the plane
-#         start_2d = (p1_proj[0], p1_proj[1], theta1)
-#         end_2d = (p2_proj[0], p2_proj[1], theta2)
-#         # path_2d, _ = dubins.shortest_path(start_2d, end_2d, r_min).sample_many(sample_dist)
-
-#         # Convert 2D path points back to 3D by projecting them onto the plane
-#         path_segment = []
-#         for (x, y, theta) in path_2d:
-#             proj_point = project_to_plane((x, y, z1), normal, plane_point)
-#             path_segment.append(tuple(proj_point))  # Store (x, y, z)
-
-#         path_points.extend(path_segment)
-
-#     return path_points
-
-# def generate_3d_dubins_path(waypoints, r_min, sample_dist=0.01):
-#     """
-#     Generates a 3D Dubins-like path by computing the shortest trajectory on a fitted plane.
-
-#     :param waypoints: List of waypoints [(x, y, z, theta)] where theta is heading in radians.
-#     :param r_min: Minimum turning radius.
-#     :param sample_dist: Sampling distance for the trajectory.
-#     :return: List of (x, y, z) points forming the 3D Dubins path.
-#     """
-#     path_points = []
-
-#     for i in range(len(waypoints) - 2):  # Use three consecutive waypoints to fit a plane
-#         (x1, y1, z1, theta1) = waypoints[i]
-#         (x2, y2, z2, theta2) = waypoints[i + 1]
-#         (x3, y3, z3, theta3) = waypoints[i + 2]
-
-#         # Fit a plane using three points
-#         normal, plane_point = fit_plane((x1, y1, z1), (x2, y2, z2), (x3, y3, z3))
-
-#         # Project start and end points onto the fitted plane
-#         p1_proj = project_to_plane((x1, y1, z1), normal, plane_point)
-#         p2_proj = project_to_plane((x2, y2, z2), normal, plane_point)
-
-#         # Compute the shortest Dubins path on the plane (ignore z for now)
-#         start_2d = (p1_proj[0], p1_proj[1], theta1)
-#         end_2d = (p2_proj[0], p2_proj[1], theta2)
-#         path_2d, _ = dubins.shortest_path(start_2d, end_2d, r_min).sample_many(sample_dist)
-
-#         # Convert 2D path points back to 3D with a fixed z-coordinate
-#         z_fixed = (z1 + z2) / 2  # Average z-coordinate for a consistent altitude
-#         path_segment = [(x, y, z_fixed) for (x, y, _) in path_2d]
-
-#         path_points.extend(path_segment)
-
-#     return path_points
-
-def setup_waypoints(waypoints, theta_start, theta_end r_min):
+def setup_waypoints(x_initial, waypoints):
     """
     Sets up waypoints for the 3D Dubins path generation.
 
@@ -180,13 +103,22 @@ def setup_waypoints(waypoints, theta_start, theta_end r_min):
     waypoints_with_dubins: List of waypoints with Dubins-like headings [(x, y, z, theta)]
     where theta points to the next waypoint
     """
-    waypoints_with_dubins = []
+
+    p_initial, v_initial, _, _ = x_initial
+
+    initial_heading = np.arctan2(v_initial[1], v_initial[0])
+
+    # waypoints.insert(0, (p_initial[0], p_initial[1], p_initial[2]))
+
+    waypoints_with_dubins = [(p_initial[0], p_initial[1], p_initial[2], initial_heading)]
+
     for i in range(len(waypoints) - 1):
-        x1, y1, z1 = waypoints[i]
-        x2, y2, z2 = waypoints[i + 1]
+        x1, y1, z1 = waypoints_with_dubins[i]
+        x2, y2, z2 = waypoints[i]
+        x3, y3, z3 = waypoints[i + 1]
         theta = np.arctan2(y2 - y1, x2 - x1)
         waypoints_with_dubins.append((x1, y1, z1, theta))
-        waypoints_with_dubins.append((x2, y2, z2, theta))
+        # waypoints_with_dubins.append((x2, y2, z2, theta))
 
 
 # Example usage:
