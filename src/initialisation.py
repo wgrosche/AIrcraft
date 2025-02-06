@@ -1,5 +1,5 @@
 import numpy as np
-import dubins
+import dubins # https://github.com/AgRoboticsResearch/pydubins.git
 
 def normalize(v):
     """ Normalize a vector. """
@@ -281,26 +281,26 @@ def apply_roll_to_quaternion(base_quaternion, velocity_vector, roll_angle):
     new_orientation = roll_rotation * base_quaternion
     return new_orientation
 
-# Assume we have a list of positions and quaternions for a 3D Dubins path
-positions = np.array([...])  # List of (x, y, z) positions
-quaternions = [R.from_quat([...]) for _ in range(len(positions))]  # List of quaternions
-velocity = 15.0  # m/s
+# # Assume we have a list of positions and quaternions for a 3D Dubins path
+# positions = np.array([...])  # List of (x, y, z) positions
+# quaternions = [R.from_quat([...]) for _ in range(len(positions))]  # List of quaternions
+# velocity = 15.0  # m/s
 
-roll_angles = []
-new_orientations = []
+# roll_angles = []
+# new_orientations = []
 
-for i in range(1, len(positions) - 1):
-    # Approximate curvature using finite differences
-    r1 = positions[i - 1]
-    r2 = positions[i]
-    r3 = positions[i + 1]
-    curvature = np.linalg.norm(np.cross(r2 - r1, r3 - r2)) / np.linalg.norm(r2 - r1)**3
+# for i in range(1, len(positions) - 1):
+#     # Approximate curvature using finite differences
+#     r1 = positions[i - 1]
+#     r2 = positions[i]
+#     r3 = positions[i + 1]
+#     curvature = np.linalg.norm(np.cross(r2 - r1, r3 - r2)) / np.linalg.norm(r2 - r1)**3
 
-    # Compute roll angle for the current sample
-    roll_angle = compute_roll_angle(curvature, velocity)
-    roll_angles.append(roll_angle)
+#     # Compute roll angle for the current sample
+#     roll_angle = compute_roll_angle(curvature, velocity)
+#     roll_angles.append(roll_angle)
 
-    # Apply roll to the current quaternion
-    velocity_vector = (r3 - r1) / np.linalg.norm(r3 - r1)  # Approximate velocity direction
-    new_orientation = apply_roll_to_quaternion(quaternions[i], velocity_vector, roll_angle)
-    new_orientations.append(new_orientation)
+#     # Apply roll to the current quaternion
+#     velocity_vector = (r3 - r1) / np.linalg.norm(r3 - r1)  # Approximate velocity direction
+#     new_orientation = apply_roll_to_quaternion(quaternions[i], velocity_vector, roll_angle)
+#     new_orientations.append(new_orientation)

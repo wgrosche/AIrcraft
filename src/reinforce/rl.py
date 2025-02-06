@@ -6,6 +6,7 @@ from abc import abstractmethod, ABC
 from ..dynamics_minimal import Aircraft
 import numpy as np
 
+
 class RL(ABC):
     def __init__(self, aircraft:Aircraft):
         self.dynamics = aircraft.state_update
