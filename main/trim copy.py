@@ -170,7 +170,7 @@ def main():
             # 'tol': 1e-4,
             # 'acceptable_tol': 1e-8,
             # 'acceptable_obj_change_tol': 1e-8,
-            'hessian_approximation': 'limited-memory',  # Set Hessian approximation method here
+            'hessian_approximation': 'exact',  # Set Hessian approximation method here
         },
         'print_time': 10
     }

@@ -165,6 +165,8 @@ class Aircraft:
         self.length = opts.aircraft_config.length
         self.opts = opts
 
+        self.dt_sym = ca.MX.sym('dt')
+
         self.state
         self.control
 
@@ -704,6 +706,28 @@ class Aircraft:
         self._q_frd_ned_dot = (0.5 * q_frd_ecf * omega_frd_ned).coeffs()
         return ca.Function('q_frd_ecf_dot', 
             [self.state, self.control], [self._q_frd_ned_dot]).expand()
+    @property
+    def q_frd_ned_update(self):
+        dt = self.dt_sym
+        q_frd_ned = Quaternion(self._q_frd_ned)
+        omega_frd_ned = self._omega_frd_ned  # Assume this is a 3D vector
+        # dt = self.dt  # Time step
+
+        theta = ca.norm_2(omega_frd_ned)  # Angular velocity magnitude
+        half_theta = 0.5 * dt * theta
+
+        # Compute exponential map terms
+        exp_q = ca.vertcat(ca.if_else(theta > 1e-6,  # Avoid division by zero
+                                    ca.sin(half_theta) * omega_frd_ned / theta,
+                                    ca.MX.zeros(3, 1)),# Vector part, 
+                                    ca.cos(half_theta))   # Scalar part
+
+        # Compute the updated quaternion
+        q_next = Quaternion.product(exp_q, q_frd_ned.coeffs())
+
+        return ca.Function('q_frd_ned_update',
+                        [self.state, self.control, dt], [q_next]).expand()
+
 
     @property
     def p_ned_dot(self):
@@ -793,8 +817,10 @@ class Aircraft:
 
         state = state + dt_scaled / 6 * (k1 + 2 * k2 + 2 * k3 + k4)
         # Normalize the quaternion
-        quaternion = Quaternion(state[6:10])
-        state[6:10] = quaternion.normalize().coeffs()
+        # quaternion = Quaternion(state[6:10])
+
+        state[6:10] = self.q_frd_ned_update(state, control, dt_scaled)
+        # quaternion.normalize().coeffs()
 
         # self._state_step = ca.Function('step', [state, control, dt_scaled], [state])
 
@@ -806,18 +832,22 @@ class Aircraft:
         """
         Runge Kutta integration with quaternion update, for loop over self.STEPS
         """
-        dt = ca.MX.sym('dt')
+        dt = self.dt_sym
         state = self.state
         control_sym = self.control
         num_steps = self.STEPS
 
-        dt_scaled = dt / num_steps
-        input_to_fold = ca.vertcat(self.state, self.control, dt)
-        fold_output = ca.vertcat(self.state_step(state, control_sym, dt_scaled), control_sym, dt)
-        folded_update = ca.Function('folder', [input_to_fold], [fold_output])
-        
-        F = folded_update.fold(num_steps)
-        state = F(input_to_fold)[:self.num_states]
+        if num_steps == 1:
+            state = self.state_step(state, control_sym, dt)
+        else:
+
+            dt_scaled = dt / num_steps
+            input_to_fold = ca.vertcat(self.state, self.control, dt)
+            fold_output = ca.vertcat(self.state_step(state, control_sym, dt_scaled), control_sym, dt)
+            folded_update = ca.Function('folder', [input_to_fold], [fold_output])
+            
+            F = folded_update.fold(num_steps)
+            state = F(input_to_fold)[:self.num_states]
         # for i in range(num_steps):
         #     state = self.state_step(state, control_sym, dt_scaled)
         
@@ -850,7 +880,7 @@ if __name__ == '__main__':
     poly_path = Path(NETWORKPATH) / 'fitted_models_casadi.pkl'
 
     # opts = AircraftOpts(nn_model_path=model_path, aircraft_config=aircraft_config)
-    opts = AircraftOpts(poly_path=poly_path, aircraft_config=aircraft_config)
+    opts = AircraftOpts(poly_path=poly_path, aircraft_config=aircraft_config, physical_integration_substeps=1)
     # opts = AircraftOpts(linear_path=linear_path, aircraft_config=aircraft_config)
 
     aircraft = Aircraft(opts = opts)
@@ -861,8 +891,8 @@ if __name__ == '__main__':
     if trim_state_and_control is not None:
         state = ca.vertcat(trim_state_and_control[:aircraft.num_states])
         control = np.array(trim_state_and_control[aircraft.num_states:-3])
-        control[0] = +1
-        control[1] = -0.5
+        control[0] = 0
+        control[1] = 0
         aircraft.com = np.array(trim_state_and_control[-3:])
     else:
 
@@ -877,12 +907,14 @@ if __name__ == '__main__':
         state = ca.vertcat(x0, v0, q0, omega0)
         control = np.zeros(aircraft.num_controls)
         control[0] = +0
-        control[1] = 3
+        control[1] = 5
         # control[6:9] = traj_dict['aircraft']['aero_centre_offset']
 
     dyn = aircraft.state_update
+    # dt_sym = ca.MX.sym('dt')
+    # dyn = ca.Function('step', [aircraft.state, aircraft.control, dt_sym], [aircraft.state_step(aircraft.state, aircraft.control, dt_sym)]).expand()
     dt = .01
-    tf = 5
+    tf = 500
     state_list = np.zeros((aircraft.num_states, int(tf / dt)))
     # investigate stiffness:
 
