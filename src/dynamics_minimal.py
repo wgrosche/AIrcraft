@@ -7,9 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 plt.switch_backend('TkAgg')
 from mpl_toolkits.mplot3d import Axes3D
-from l4casadi import L4CasADi
-from l4casadi.naive import NaiveL4CasADiModule
-from l4casadi.realtime import RealTimeL4CasADi
+
 from liecasadi import Quaternion
 from scipy.spatial.transform import Rotation as R
 import torch
@@ -39,7 +37,7 @@ print(DEVICE)
 @dataclass
 class AircraftOpts:
     epsilon:float = 1e-6
-    physical_integration_substeps:int = 100
+    physical_integration_substeps:int = 1
     linear_path:Path = None
     poly_path:Path = None
     nn_model_path:Path = None
@@ -133,6 +131,12 @@ class Aircraft:
                 self.fitted_models = pickle.load(file)
 
         elif opts.nn_model_path:
+            try:
+                from l4casadi import L4CasADi
+                from l4casadi.naive import NaiveL4CasADiModule
+                from l4casadi.realtime import RealTimeL4CasADi
+            except:
+                print("L4CasADi not installed")
             self.LINEAR = False
             self.fitted_models = None
             model = load_model(filepath=opts.nn_model_path)

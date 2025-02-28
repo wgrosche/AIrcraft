@@ -38,14 +38,18 @@ sys.path.append(BASEPATH)
 from pathlib import Path
 
 plt.ion()
-default_solver_options = {'ipopt': {'max_iter': 10000,
-                                    'tol': 1e-1,
-                                    'acceptable_tol': 1e-1,
-                                    'acceptable_obj_change_tol': 1e-1,
-                                    # 'hessian_approximation': 'limited-memory'
-                                    },
+default_solver_options = {
                         'print_time': 10
                         }
+
+# default_solver_options = {'ipopt': {'max_iter': 10000,
+#                                     'tol': 1e-1,
+#                                     'acceptable_tol': 1e-1,
+#                                     'acceptable_obj_change_tol': 1e-1,
+#                                     # 'hessian_approximation': 'limited-memory'
+#                                     },
+#                         'print_time': 10
+#                         }
 
 
 if __name__ == '__main__':
@@ -72,7 +76,7 @@ if __name__ == '__main__':
     aircraft.com = [0.0131991, -1.78875e-08, 0.00313384]
     planner = Planner(
         aircraft,
-        options = {'tolerance': 20.0, 'nodes_per_gate': 40, 'vel_guess': 35.0}
+        options = {'tolerance': 20.0, 'nodes_per_gate': 40, 'vel_guess': 35.0, 'solver_type':'knitro', 'solver_options' : default_solver_options}
         )
     
     cp = CallbackPlot(pos='xy', vel='xya', ori='xyzw', rate='xyz', inputs='u', prog='mn')

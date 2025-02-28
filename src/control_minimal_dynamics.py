@@ -83,7 +83,7 @@ default_solver_options = {'ipopt': {'max_iter': 10000,
                                     'tol': 1e-2,
                                     'acceptable_tol': 1e-2,
                                     'acceptable_obj_change_tol': 1e-2,
-                                    'hessian_approximation': 'limited-memory'
+                                    'hessian_approximation': 'exact'
                                     },
                         'print_time': 10,
                         'expand': True
@@ -250,9 +250,16 @@ class ControlProblem:
         rate_penalty = 0
         for i in range(self.num_nodes - 1):
             rate_penalty += ca.sumsqr(self.control[:, i+1] - self.control[:, i])
-         
+        
+        final_waypoint = self.trajectory.waypoints.final_position[self.trajectory.waypoints.waypoint_indices]
 
-        return time ** 2 + lambda_rate * rate_penalty
+        print(final_waypoint.shape)
+        print(state[self.trajectory.waypoints.waypoint_indices, -1].shape)
+        final_waypoint_loss = (state[self.trajectory.waypoints.waypoint_indices, -1] - final_waypoint)
+
+        print(final_waypoint_loss.shape)
+
+        return time ** 2 + lambda_rate * rate_penalty + ca.dot(final_waypoint_loss, final_waypoint_loss)
 
     def setup(self):
         opti = self.opti
@@ -334,7 +341,7 @@ class ControlProblem:
                 # self.mu.append(current_node.mu)
                 # self.nu.append(current_node.nu)
 
-        self.opti.subject_to(current_node.state[waypoint_indices] == final_waypoint)
+        # self.opti.subject_to(current_node.state[waypoint_indices] == final_waypoint)
         
         # self.opti.subject_to(current_node.lam == [0] * self.num_waypoints)
 
@@ -680,7 +687,7 @@ def main():
 
     opti = ca.Opti()
 
-    num_control_nodes = 100
+    num_control_nodes = 1000
     # aircraft = Aircraft(traj_dict['aircraft'], model)#, LINEAR=True)
     problem = ControlProblem(opti, aircraft, trajectory_config, num_control_nodes)
 

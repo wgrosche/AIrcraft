@@ -84,32 +84,6 @@ class Planner:
     # Sizes
     self.NX = self.dynamics.size1_in(0)
     self.NU = self.dynamics.size1_in(1)
-    self.NW = self.wp.shape[1]
-
-    dist = [np.linalg.norm(self.wp[:,0] - self.p_init)]
-    for i in range(self.NW-1):
-      dist += [dist[i] + np.linalg.norm(self.wp[:,i+1] - self.wp[:,i])]
-
-    if 'nodes_per_gate' in options:
-      self.NPW = options['nodes_per_gate']
-    else:
-      self.NPW = 30
-
-    if 'tolerance' in options:
-      self.tol = options['tolerance']
-    else:
-      self.tol = 0.3
-
-    self.N = self.NPW * self.NW
-    self.dpn = dist[-1] / self.N
-    if self.dpn < self.tol:
-      suff_str = "sufficient"
-    else:
-      suff_str = "insufficient"
-    print("Discretization over %d nodes and %1.1fm" % (self.N, dist[-1]))
-    print("results in %1.3fm per node, %s for tolerance of %1.3fm." % (self.dpn, suff_str, self.tol))
-
-    self.i_switch = np.array(self.N * np.array(dist) / dist[-1], dtype=int)
 
     # Problem variables
     self.x = []
