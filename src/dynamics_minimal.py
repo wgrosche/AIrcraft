@@ -865,7 +865,21 @@ class Aircraft:
             [self.state, self.control, dt], 
             [state]
             ).expand() #, {'jit':True}
+
+
+def perturb_quaternion(q, delta_theta=0.01):
+    """ Perturbs a quaternion by a small rotation. """
+    # Generate a small random rotation axis
+    axis = np.random.randn(3)
+    axis /= np.linalg.norm(axis)  # Normalize to unit vector
     
+    # Create small rotation quaternion
+    delta_q = R.from_rotvec(delta_theta * axis).as_quat()  # [x, y, z, w]
+    
+    # Apply rotation (Hamilton product)
+    q_perturbed = R.from_quat(q) * R.from_quat(delta_q)
+    
+    return q_perturbed.as_quat()  # Return perturbed quaternion
 
 if __name__ == '__main__':
     model = load_model()
@@ -919,56 +933,130 @@ if __name__ == '__main__':
     # investigate stiffness:
 
     # Define f(state, control) (e.g., the dynamics function)
-    f = aircraft.state_derivative(aircraft.state, aircraft.control)
+    f = aircraft.state_update(aircraft.state, aircraft.control, aircraft.dt_sym)
 
     # Compute the Jacobian of f w.r.t state
     J = ca.jacobian(f, aircraft.state)
 
     # Create a CasADi function for numerical evaluation
-    J_func = ca.Function('J', [aircraft.state, aircraft.control], [J])
+    J_func = ca.Function('J', [aircraft.state, aircraft.control, aircraft.dt_sym], [J])
 
     # Evaluate J numerically for a specific state and control
-    J_val = J_func(state, control)
+    J_val = J_func(state, control, .01)
 
     # Compute eigenvalues using numpy
     eigvals = np.linalg.eigvals(np.array(J_val))
 
     print(eigvals)
-    
 
+    import numpy as np
 
+    # Define perturbations (adjust as needed)
+    state_perturbations = np.linspace(-0.1, 0.1, num=5)  # Small deviations
+    control_perturbations = np.linspace(-0.0, 0.0, num=5)
 
-    # dt_sym = ca.MX.sym('dt', 1)
-    t = 0
-    ele_pos = True
-    ail_pos = True
-    control_list = np.zeros((aircraft.num_controls, int(tf / dt)))
-    for i in tqdm(range(int(tf / dt)), desc = 'Simulating Trajectory:'):
-        if np.isnan(state[0]):
-            print('Aircraft crashed')
-            break
-        else:
-            state_list[:, i] = state.full().flatten()
-            control_list[:, i] = control
-            state = dyn(state, control, dt)
-                    
-            t += 1
-    print(state)
+    # Storage for eigenvalues
+    eigenvalues_list = []
 
-    first = None
-    # t -=10
-    def save(filepath):
-        with h5py.File(filepath, "a") as h5file:
-            grp = h5file.create_group(f'iteration_0')
-            grp.create_dataset('state', data=state_list[:, :t])
-            grp.create_dataset('control', data=control_list[:, :t])
-    
-    
-    filepath = os.path.join("data", "trajectories", "simulation.h5")
-    if os.path.exists(filepath):
-        os.remove(filepath)
-    save(filepath)
+    for dx in state_perturbations:
+        for du in control_perturbations:
+            perturbed_state = state + dx
+            perturbed_quaternion = perturb_quaternion(state[6:10].toarray().flatten())
+            perturbed_state[6:10] = perturbed_quaternion
+            perturbed_control = control + du
+            
+            # Evaluate the discrete-time Jacobian at perturbed states
+            J_val = J_func(perturbed_state, perturbed_control, 0.01)
+            
+            # Compute eigenvalues
+            eigenvalues = np.linalg.eigvals(J_val)
+            eigenvalues_list.append(eigenvalues)
 
-    plotter = TrajectoryPlotter(aircraft)
-    plotter.plot(filepath=filepath)
+    # Convert to NumPy array for easier analysis
+    eigenvalues_array = np.array(eigenvalues_list)
+
+    import matplotlib.pyplot as plt
+
+    plt.figure(figsize=(6,6))
+    unit_circle = plt.Circle((0, 0), 1, color='gray', fill=False, linestyle='dashed')
+    plt.gca().add_patch(unit_circle)
+
+    for eigvals in eigenvalues_array:
+        plt.scatter(eigvals.real, eigvals.imag, color='blue', alpha=0.5)
+
+    plt.axhline(0, color='black', linewidth=0.5)
+    plt.axvline(0, color='black', linewidth=0.5)
+    plt.xlabel("Real")
+    plt.ylabel("Imaginary")
+    plt.title("Eigenvalues Under Perturbed States & Controls")
+    plt.grid()
     plt.show(block = True)
+
+    # Define timestep range (log scale for better resolution)
+    timesteps = np.logspace(-4, 0, num=20)  # From very small to larger dt values
+    max_eigenvalues = []
+
+    for dt in timesteps:
+        # Compute discrete-time Jacobian at this timestep
+        J_val = J_func(state, control, dt)  # Get continuous Jacobian
+        # J_d = np.eye(J_val.shape[0]) + dt * J_val  # First-order discretization (Euler)
+
+        # Compute eigenvalues and store the largest norm
+        eigvals = np.linalg.eigvals(J_val)
+        max_eigenvalues.append(max(np.abs(eigvals)))
+
+    # Plot results
+    plt.figure(figsize=(7, 5))
+    plt.plot(timesteps, max_eigenvalues, marker='o', linestyle='-')
+    plt.xscale("log")  # Log scale for better visualization
+    plt.yscale("log")
+    plt.axhline(1, color='r', linestyle='--', label="Unit Circle Bound")
+    plt.xlabel("Timestep (Δt)")
+    plt.ylabel("Max Eigenvalue Norm")
+    plt.title("Max Eigenvalue Norm vs. Timestep")
+    plt.legend()
+    plt.grid()
+    plt.show(block = True)
+
+
+    
+
+
+
+    # # dt_sym = ca.MX.sym('dt', 1)
+    # t = 0
+    # ele_pos = True
+    # ail_pos = True
+    # control_list = np.zeros((aircraft.num_controls, int(tf / dt)))
+    # for i in tqdm(range(int(tf / dt)), desc = 'Simulating Trajectory:'):
+    #     if np.isnan(state[0]):
+    #         print('Aircraft crashed')
+    #         break
+    #     else:
+    #         state_list[:, i] = state.full().flatten()
+    #         control_list[:, i] = control
+    #         state = dyn(state, control, dt)
+                    
+    #         t += 1
+    # # print(state)
+    # # J_val = J_func(state, control)
+    # # eigvals = np.linalg.eigvals(np.array(J_val))
+
+    # # print(eigvals)
+    # first = None
+    # # t -=10
+    # def save(filepath):
+    #     with h5py.File(filepath, "a") as h5file:
+    #         grp = h5file.create_group(f'iteration_0')
+    #         grp.create_dataset('state', data=state_list[:, :t])
+    #         grp.create_dataset('control', data=control_list[:, :t])
+    
+    
+    # filepath = os.path.join("data", "trajectories", "simulation.h5")
+    # if os.path.exists(filepath):
+    #     os.remove(filepath)
+    # save(filepath)
+
+    # plotter = TrajectoryPlotter(aircraft)
+    # plotter.plot(filepath=filepath)
+    # plt.show(block = True)

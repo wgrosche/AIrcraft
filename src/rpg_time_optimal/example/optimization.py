@@ -35,7 +35,7 @@ quad = Quad(BASEPATH2 + "/quads/quad.yaml")
 
 cp = CallbackPlot(pos='xy', vel='xya', ori='xyzw', rate='xyz', inputs='u', prog='mn')
 
-planner = Planner(aircraft, quad, track, RungeKutta4, {'tolerance': 1.0, 'nodes_per_gate': 30, 'vel_guess': 80.0})
+planner = Planner(aircraft, quad, track, RungeKutta4, {'tolerance': 1.0, 'nodes_per_gate': 30, 'vel_guess': 30.0})
 planner.setup()
 planner.set_iteration_callback(cp)
 x = planner.solve()
