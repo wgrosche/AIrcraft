@@ -304,3 +304,17 @@ def apply_roll_to_quaternion(base_quaternion, velocity_vector, roll_angle):
 #     velocity_vector = (r3 - r1) / np.linalg.norm(r3 - r1)  # Approximate velocity direction
 #     new_orientation = apply_roll_to_quaternion(quaternions[i], velocity_vector, roll_angle)
 #     new_orientations.append(new_orientation)
+
+
+class DubinsInitialiser:
+    def __init__(self, track, dt, max_velocity, max_acceleration, max_angular_velocity, max_angular_acceleration):
+        self.track = track
+        self.dt = dt
+        self.max_velocity = max_velocity
+        self.max_acceleration = max_acceleration
+        self.max_angular_velocity = max_angular_velocity
+        self.max_angular_acceleration = max_angular_acceleration
+
+    def initialise(self):
+        initial_position = track.initial_position
+        waypoints = track.waypoints
