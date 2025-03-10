@@ -83,7 +83,13 @@ default_solver_options = {'ipopt': {'max_iter': 10000,
                                     'tol': 1e-2,
                                     'acceptable_tol': 1e-2,
                                     'acceptable_obj_change_tol': 1e-2,
-                                    'hessian_approximation': 'exact'
+                                    'hessian_approximation': 'exact',
+                                    'linear_solver': 'mumps',
+                                    'mumps_mem_percent': 10000,      # Increase memory allocation percentage
+                                    'mumps_pivtol': 1e-6,           # Pivot tolerance (can help with numerical stability)
+                                    'mumps_pivtolmax': 1e-2,        # Maximum pivot tolerance
+                                    'mumps_permuting_scaling': 7,   # Use a more robust scaling strategy
+                                    'max_cpu_time': 1e4             # Increase the maximum CPU time
                                     },
                         'print_time': 10,
                         'expand': True

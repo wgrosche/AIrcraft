@@ -28,7 +28,7 @@ DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else
 sys.path.append(BASEPATH)
 
 from src.models import ScaledModel
-from src.utils import load_model, TrajectoryConfiguration
+from src.utils import load_model, TrajectoryConfiguration, AircraftConfiguration
 from src.plotting_minimal import TrajectoryPlotter
 from dataclasses import dataclass
 
@@ -41,7 +41,7 @@ class AircraftOpts:
     linear_path:Path = None
     poly_path:Path = None
     nn_model_path:Path = None
-    aircraft_config:TrajectoryConfiguration.AircraftConfiguration = None
+    aircraft_config:AircraftConfiguration = None
     realtime:bool = False # Work in progress implementation of faster nn eval
 
 class Aircraft:

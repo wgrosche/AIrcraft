@@ -114,90 +114,93 @@ class Control:
 
 Bound = namedtuple('Bound', ['lb', 'ub'])
 
+
+class StateEnvelopeConfiguration:
+    def __init__(self, state_dict:dict):
+        self.alpha = Bound(np.array(state_dict.get("alpha", 
+                            np.array([-15, 15])))[0],
+                            np.array(state_dict.get("alpha", 
+                            np.array([-15, 15])))[1])
+        self.beta = Bound(np.array(state_dict.get("beta", 
+                            np.array([-15, 15])))[0],
+                            np.array(state_dict.get("beta", 
+                            np.array([-15, 15])))[1])
+        
+        self.airspeed = Bound(np.array(state_dict.get("airspeed", 
+                                        np.array([30, 100])))[0],
+                            np.array(state_dict.get("airspeed", 
+                                        np.array([30, 100])))[1])
+    
+class ControlEnvelopeConfiguration:
+    def __init__(self, control_dict:dict):
+        self.aileron = np.array(control_dict.get("aileron_limit", 
+                            np.array([-5, 5])))
+        self.elevator = np.array(control_dict.get("elevator_limit", 
+                                np.array([-5, 5])))
+        self.rudder = np.array(control_dict.get("rudder_limit", 
+                                np.array([-5, 5])))
+        self.throttle = np.array(control_dict.get("throttle_limit", 
+                                np.array([[0,0,0], [0,0,0]])))
+        self.centre_of_mass = np.array(control_dict.get("centre_of_mass_limit", 
+                                np.array([[-0.5, -0.1, -0.1], [0.5, 0.1, 0.1]])))
+        self.lb = np.array([
+            self.aileron[0],
+            self.elevator[0],
+            self.rudder[0],
+            *self.throttle[0],
+            *self.centre_of_mass[0]])
+        
+        self.ub = np.array([
+            self.aileron[1],
+            self.elevator[1],
+            self.rudder[1],
+            *self.throttle[1],
+            *self.centre_of_mass[1]])
+
+class AircraftConfiguration:
+    def __init__(self, aircraft_dict:dict):
+        self.mass = aircraft_dict.get('mass', 1.0)
+        self.span = aircraft_dict.get('span', 1.0)
+        self.length = aircraft_dict.get('length', 1.2)
+        self.chord = aircraft_dict.get('chord', 1.0)
+        self.reference_area = aircraft_dict.get('reference_area', 0.238)
+        self.aero_centre_offset = aircraft_dict.get('aero_centre_offset', [0.133, 0, 0.003])
+        self.Ixx = aircraft_dict.get('Ixx', 0.155)
+        self.Iyy = aircraft_dict.get('Iyy', 0.114)
+        self.Izz = aircraft_dict.get('Izz', 0.262)
+        self.Ixz = aircraft_dict.get('Ixz', 0.01) 
+        self.r_min = aircraft_dict.get('r_min', 10.0)
+        self.glide_ratio = aircraft_dict.get('glide_ratio', 10.0)
+
+        
+
+
+class WaypointsConfiguration:
+    def __init__(self, waypoint_dict:dict):
+        self.waypoints = np.array(waypoint_dict.get("waypoints", 
+                                np.array([[0,0,0], [0,0,0], [0,0,0]])))
+        
+        self.waypoint_indices = (waypoint_dict.get("waypoint_indices", 
+                                [0,1,2]))
+        if waypoint_dict.get('initial_state') is not None:
+            self.initial_state = np.array(waypoint_dict.get('initial_state'))
+            self.initial_position = np.array(self.initial_state[:3])
+            self.waypoints = np.insert(self.waypoints, 0, self.initial_position, axis=0)
+        else:
+            self.initial_position = self.waypoints[0, :]
+
+        self.final_position = self.waypoints[-1, :]
+        self.default_velocity = waypoint_dict.get("default_velocity", 50)
+        self.objective_dimension = self.final_position.shape[0]
+        self.tolerance = waypoint_dict.get("waypoint_tolerance", 
+                                1e-2)
+
+    def __call__(self):
+        return self.waypoints
+
 class TrajectoryConfiguration:
     """ 
     """
-    class StateEnvelopeConfiguration:
-        def __init__(self, state_dict:dict):
-            self.alpha = Bound(np.array(state_dict.get("alpha", 
-                                np.array([-15, 15])))[0],
-                                np.array(state_dict.get("alpha", 
-                                np.array([-15, 15])))[1])
-            self.beta = Bound(np.array(state_dict.get("beta", 
-                                np.array([-15, 15])))[0],
-                                np.array(state_dict.get("beta", 
-                                np.array([-15, 15])))[1])
-            
-            self.airspeed = Bound(np.array(state_dict.get("airspeed", 
-                                            np.array([30, 100])))[0],
-                                np.array(state_dict.get("airspeed", 
-                                            np.array([30, 100])))[1])
-        
-    class ControlEnvelopeConfiguration:
-        def __init__(self, control_dict:dict):
-            self.aileron = np.array(control_dict.get("aileron_limit", 
-                                np.array([-5, 5])))
-            self.elevator = np.array(control_dict.get("elevator_limit", 
-                                    np.array([-5, 5])))
-            self.rudder = np.array(control_dict.get("rudder_limit", 
-                                    np.array([-5, 5])))
-            self.throttle = np.array(control_dict.get("throttle_limit", 
-                                    np.array([[0,0,0], [0,0,0]])))
-            self.centre_of_mass = np.array(control_dict.get("centre_of_mass_limit", 
-                                    np.array([[-0.5, -0.1, -0.1], [0.5, 0.1, 0.1]])))
-            self.lb = np.array([
-                self.aileron[0],
-                self.elevator[0],
-                self.rudder[0],
-                *self.throttle[0],
-                *self.centre_of_mass[0]])
-            
-            self.ub = np.array([
-                self.aileron[1],
-                self.elevator[1],
-                self.rudder[1],
-                *self.throttle[1],
-                *self.centre_of_mass[1]])
-
-    class AircraftConfiguration:
-        def __init__(self, aircraft_dict:dict):
-            self.mass = aircraft_dict.get('mass', 1.0)
-            self.span = aircraft_dict.get('span', 1.0)
-            self.length = aircraft_dict.get('length', 1.2)
-            self.chord = aircraft_dict.get('chord', 1.0)
-            self.reference_area = aircraft_dict.get('reference_area', 0.238)
-            self.aero_centre_offset = aircraft_dict.get('aero_centre_offset', [0.133, 0, 0.003])
-            self.Ixx = aircraft_dict.get('Ixx', 0.155)
-            self.Iyy = aircraft_dict.get('Iyy', 0.114)
-            self.Izz = aircraft_dict.get('Izz', 0.262)
-            self.Ixz = aircraft_dict.get('Ixz', 0.01) 
-            
-
-
-    class WaypointsConfiguration:
-        def __init__(self, waypoint_dict:dict):
-            self.waypoints = np.array(waypoint_dict.get("waypoints", 
-                                    np.array([[0,0,0], [0,0,0], [0,0,0]])))
-            
-            self.waypoint_indices = (waypoint_dict.get("waypoint_indices", 
-                                    [0,1,2]))
-            if waypoint_dict.get('initial_state') is not None:
-                self.initial_state = np.array(waypoint_dict.get('initial_state'))
-                self.initial_position = np.array(self.initial_state[:3])
-                self.waypoints = np.insert(self.waypoints, 0, self.initial_position, axis=0)
-            else:
-                self.initial_position = self.waypoints[0, :]
-
-            self.final_position = self.waypoints[-1, :]
-            self.default_velocity = waypoint_dict.get("default_velocity", 50)
-            self.objective_dimension = self.final_position.shape[0]
-            self.tolerance = waypoint_dict.get("waypoint_tolerance", 
-                                    1e-2)
-
-        def __call__(self):
-            return self.waypoints
-
-    
     def __init__(self, trajectory_dict:dict):
         """ Example Trajectory Dict:
          {
@@ -236,10 +239,10 @@ class TrajectoryConfiguration:
         state_dict = trajectory_dict['state']
         control_dict = trajectory_dict['control']
 
-        self._state = self.StateEnvelopeConfiguration(state_dict)
-        self._control = self.ControlEnvelopeConfiguration(control_dict)
-        self._waypoints = self.WaypointsConfiguration(waypoint_dict)
-        self._aircraft = self.AircraftConfiguration(aircraft_dict)
+        self._state = StateEnvelopeConfiguration(state_dict)
+        self._control = ControlEnvelopeConfiguration(control_dict)
+        self._waypoints = WaypointsConfiguration(waypoint_dict)
+        self._aircraft = AircraftConfiguration(aircraft_dict)
         self.trajectory_dict = trajectory_dict
         
     @property
