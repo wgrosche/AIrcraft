@@ -40,10 +40,10 @@ def setup_progress_vars(
         state:ca.MX, 
         initial_pos:np.ndarray, 
         tolerance:float = 1e-2,
-        VERBOSE:bool = False
+        verbose:bool = False
         ):
     
-    if VERBOSE:
+    if verbose:
         print('Setting up progress variables...')
 
     num_waypoints = waypoints.shape[0] - 1
@@ -55,7 +55,7 @@ def setup_progress_vars(
     # switching variable (nodes at which we anticipate a change in objective (targeted waypoint))
     i_switch = np.array(num_nodes * np.array(distance) / distance[-1], dtype=int)
 
-    if VERBOSE:
+    if verbose:
         print('Switching nodes: ', i_switch)
 
     # Progress variables
