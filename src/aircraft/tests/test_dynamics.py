@@ -6,6 +6,7 @@ from aircraft.utils.utils import load_model
 from liecasadi import Quaternion
 import torch
 import os
+from aircraft.config import DEVICE, BASEPATH, NETWORKPATH
 
 
 class TestAircraftInitialization(unittest.TestCase):
@@ -18,10 +19,6 @@ class TestAircraftInitialization(unittest.TestCase):
             'mass': 1500.0
         }
 
-        BASEPATH = os.path.dirname(os.path.abspath(__file__)).split('src')[0]
-        NETWORKPATH = os.path.join(BASEPATH, 'data', 'networks')
-        DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else 
-                            ("mps" if torch.backends.mps.is_available() else "cpu"))
         model = load_model(filepath = os.path.join(NETWORKPATH,'model-dynamics.pth'), device = DEVICE)  # Placeholder for NN model
         self.aircraft = Aircraft(params, model)
 
@@ -41,11 +38,6 @@ class TestQuaternionIntegration(unittest.TestCase):
             'reference_area': 20.0, 'span': 10.0, 'chord': 2.0,
             'mass': 1500.0
         }
-
-        BASEPATH = os.path.dirname(os.path.abspath(__file__)).split('src')[0]
-        NETWORKPATH = os.path.join(BASEPATH, 'data', 'networks')
-        DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else 
-                            ("mps" if torch.backends.mps.is_available() else "cpu"))
         model = load_model(filepath = os.path.join(NETWORKPATH,'model-dynamics.pth'), device = DEVICE)  # Placeholder for NN model
         self.aircraft = Aircraft(params, model)
 
@@ -73,11 +65,6 @@ class TestRelativeVelocity(unittest.TestCase):
             'reference_area': 20.0, 'span': 10.0, 'chord': 2.0,
             'mass': 1500.0
         }
-
-        BASEPATH = os.path.dirname(os.path.abspath(__file__)).split('src')[0]
-        NETWORKPATH = os.path.join(BASEPATH, 'data', 'networks')
-        DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else 
-                            ("mps" if torch.backends.mps.is_available() else "cpu"))
         model = load_model(filepath = os.path.join(NETWORKPATH,'model-dynamics.pth'), device = DEVICE)  # Placeholder for NN model
         self.aircraft = Aircraft(params, model)
 
@@ -106,10 +93,6 @@ class TestForcesAndMoments(unittest.TestCase):
             'mass': 1500.0
         }
 
-        BASEPATH = os.path.dirname(os.path.abspath(__file__)).split('src')[0]
-        NETWORKPATH = os.path.join(BASEPATH, 'data', 'networks')
-        DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else 
-                            ("mps" if torch.backends.mps.is_available() else "cpu"))
         model = load_model(filepath = os.path.join(NETWORKPATH,'model-dynamics.pth'), device = DEVICE)  # Placeholder for NN model
         self.aircraft = Aircraft(params, model)
 

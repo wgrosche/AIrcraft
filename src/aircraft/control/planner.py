@@ -1,7 +1,9 @@
 from casadi import MX, DM, vertcat, horzcat, veccat, norm_2, dot, mtimes, nlpsol, diag, repmat, sum1
 import numpy as np
 import inspect
+from typing import Union
 from scipy.spatial.transform import Rotation as R
+from aircraft.dynamics.dynamics import Aircraft
 # import dubins
 
 class Track:
@@ -51,9 +53,9 @@ def generate_dubins_path(waypoints, r_min):
 
 
 class Planner:
-  def __init__(self, aircraft, track = None, options = {'tolerance': 1.0, 'nodes_per_gate': 30, 'vel_guess': 35.0}):
-    # Essentials
-    # self.quad = quad
+  def __init__(self, aircraft:Aircraft, options:Union[dict, None] = None):
+    if options == None:
+      options = {'tolerance': 1.0, 'nodes_per_gate': 30, 'vel_guess': 35.0}
     self.track = Track()
     track = self.track
 

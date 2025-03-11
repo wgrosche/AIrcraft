@@ -51,7 +51,6 @@ class AeroDataset(Dataset):
         row = self.data.iloc[idx]
         inputs = row[self.input_features].to_numpy(dtype=np.float32)
         targets = row[self.output_features].to_numpy(dtype=np.float32)
-        # targets = np.round(targets, 2)
 
         if self.transform:
             inputs = self.transform(inputs)
@@ -61,7 +60,7 @@ class AeroDataset(Dataset):
         return torch.from_numpy(inputs), torch.from_numpy(targets)
 
 def create_dataloader(dataset: Dataset, batch_size: int = 16, shuffle: bool = True) -> DataLoader:
-    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
+    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=0)
 
 
 def main():#
@@ -80,7 +79,7 @@ def main():#
     print(inputs.shape, targets.shape)
 
     # plot some data
-    fig, ax = plt.subplots(2, 3, figsize=(15, 10))
+    _, ax = plt.subplots(2, 3, figsize=(15, 10))
     for i in range(6):
         ax[i//3, i%3].scatter(inputs[:,1], targets[:, i])
         ax[i//3, i%3].set_xlabel(input_features[1])

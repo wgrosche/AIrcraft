@@ -5,16 +5,18 @@ import sys
 import numpy as np
 from collections import namedtuple
 import json
-from aircraft.config import NETWORKPATH
+from aircraft.config import NETWORKPATH, DEVICE, rng
 from aircraft.surrogates.models import ScaledModel
-
+from scipy.spatial.transform import Rotation as R
 
 def load_model(
         filepath:str = os.path.join(NETWORKPATH,'model-dynamics.pth'), 
-        device:torch.device = torch.device("cuda:0" if torch.cuda.is_available() 
-                                           else ("mps" if torch.backends.mps.is_available() 
-                                                 else "cpu"))
+        device:torch.device = None
         ) -> ScaledModel:
+    
+    if device == None:
+        device = DEVICE
+            
     checkpoint = torch.load(filepath, map_location=device, weights_only=True)
 
     scaler = (checkpoint['input_mean'], 
@@ -258,6 +260,21 @@ class TrajectoryConfiguration:
     
     def __repr__(self):
         return str(self.trajectory_dict)
+    
+def perturb_quaternion(q, delta_theta=0.01):
+    """ Perturbs a quaternion by a small rotation. """
+    # Generate a small random rotation axis
+    
+    axis = rng.standard_normal(3)
+    axis /= np.linalg.norm(axis)  # Normalize to unit vector
+    
+    # Create small rotation quaternion
+    delta_q = R.from_rotvec(delta_theta * axis).as_quat()  # [x, y, z, w]
+    
+    # Apply rotation (Hamilton product)
+    q_perturbed = R.from_quat(q) * R.from_quat(delta_q)
+    
+    return q_perturbed.as_quat()  # Return perturbed quaternion
 
 def main():
     traj_dict = json.load(open('data/glider/problem_definition.json'),)
@@ -267,3 +284,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+

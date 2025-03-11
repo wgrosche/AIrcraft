@@ -10,21 +10,19 @@ from mpl_toolkits.mplot3d import Axes3D
 
 from liecasadi import Quaternion
 from scipy.spatial.transform import Rotation as R
-import torch
 import json
 import os
 from pathlib import Path
-import sys
 import pandas as pd
 from tqdm import tqdm
-# from numba import jit
 import h5py
 
 from aircraft.config import BASEPATH, NETWORKPATH, DATAPATH, DEVICE
 from aircraft.surrogates.models import ScaledModel
-from aircraft.utils.utils import load_model, TrajectoryConfiguration, AircraftConfiguration
-from aircraft.plotting.plotting_minimal import TrajectoryPlotter
+from aircraft.utils.utils import load_model, TrajectoryConfiguration, AircraftConfiguration, perturb_quaternion
+
 from dataclasses import dataclass
+
 
 print(DEVICE)
 
@@ -32,10 +30,10 @@ print(DEVICE)
 class AircraftOpts:
     epsilon:float = 1e-6
     physical_integration_substeps:int = 1
-    linear_path:Path = None
-    poly_path:Path = None
-    nn_model_path:Path = None
-    aircraft_config:AircraftConfiguration = None
+    linear_path:Optional[Path] = None
+    poly_path:Optional[Path] = None
+    nn_model_path:Optional[Path] = None
+    aircraft_config:Optional[AircraftConfiguration] = None
     realtime:bool = False # Work in progress implementation of faster nn eval
 
 class Aircraft:
@@ -129,7 +127,7 @@ class Aircraft:
                 from l4casadi import L4CasADi
                 from l4casadi.naive import NaiveL4CasADiModule
                 from l4casadi.realtime import RealTimeL4CasADi
-            except:
+            except ImportError:
                 print("L4CasADi not installed")
             self.LINEAR = False
             self.fitted_models = None
@@ -150,12 +148,7 @@ class Aircraft:
         self.c = opts.aircraft_config.chord
         self.mass = opts.aircraft_config.mass
         self.com = opts.aircraft_config.aero_centre_offset # position of aerodynamic centre relative to the centre of mass
-        # self.com[0] = 0.028
         self.rudder_moment_arm = 0.5 # distance between centre of mass and the tail of the plane (used for damping calculations)
-        # self.com[0] *= 1 #* 0.6
-        # self.com[2] *= 1
-        # self.com[2] = 0
-        # self.com = np.array([0.0134613, -7.8085e-09, 0.00436365])
         self.length = opts.aircraft_config.length
         self.opts = opts
 
@@ -194,7 +187,7 @@ class Aircraft:
         if not hasattr(self, '_control_initialized') or not self._control_initialized:
             self._aileron = ca.MX.sym('aileron')
             self._elevator = ca.MX.sym('elevator')
-            self._thrust = ca.MX.sym('thrust')
+            self._thrust = ca.MX.sym('thrust', 3)
 
             self._control = ca.vertcat(
             self._aileron, 
@@ -213,17 +206,16 @@ class Aircraft:
         Inertia Tensor around the Centre of Mass
         """
 
-        Ixx = self.opts.aircraft_config.Ixx
-        Iyy = self.opts.aircraft_config.Iyy
-        Ixz = self.opts.aircraft_config.Ixz
-        Izz = self.opts.aircraft_config.Izz
+        i_xx = self.opts.aircraft_config.Ixx
+        i_yy = self.opts.aircraft_config.Iyy
+        i_xz = self.opts.aircraft_config.Ixz
+        i_zz = self.opts.aircraft_config.Izz
 
         aero_inertia_tensor = ca.vertcat(
-            ca.horzcat(Ixx, 0  , Ixz),
-            ca.horzcat(0  , Iyy, 0  ),
-            ca.horzcat(Ixz, 0  , Izz)
+            ca.horzcat(i_xx, 0  , i_xz),
+            ca.horzcat(0  , i_yy, 0  ),
+            ca.horzcat(i_xz, 0  , i_zz)
         )
-
         mass = self.mass
 
         com = self.com
@@ -273,18 +265,7 @@ class Aircraft:
             self.v_frd_rel
         v_frd_rel = self._v_frd_rel
         self._alpha = ca.atan2(v_frd_rel[2], v_frd_rel[0] + self.EPSILON)
-        return ca.Function('alpha', [self.state, self.control], [self._alpha])
-    
-
-    
-    # @property
-    # def elevator_alpha(self):
-    #     if not hasattr(self, '_v_frd_rel'):
-    #         self.v_frd_rel
-    #     v_frd_rel = self._v_frd_rel
-    #     self._elevator_alpha = ca.atan2(v_frd_rel[2] + self.length * self._omega_frd_ned[1], v_frd_rel[0] + self.EPSILON)
-        # return ca.Function('elevator_alpha', [self.state, self.control], [self._elevator_alpha])
-    
+        return ca.Function('alpha', [self.state, self.control], [self._alpha])    
 
     @property
     def elevator_alpha(self):
@@ -488,8 +469,6 @@ class Aircraft:
             aileron, 
             elevator
             )
-
-        # TODO: adapt reference areas for the relevant lifting surfaces. currently they are contributing too much (probably, especially the wings with the roll moment)
         
         if self.LINEAR:
             outputs = ca.mtimes(self.linear_coeffs, ca.vertcat(inputs, 1))
@@ -501,7 +480,7 @@ class Aircraft:
 
             # # roll rate contribution with terms due to changed angle of attack and airspeed
             left_wing_inputs = ca.vertcat(
-                qbar,
+                left_wing_qbar, # may want to use qbar here instead
                 left_wing_alpha,
                 0,
                 0,
@@ -509,7 +488,7 @@ class Aircraft:
             )
             left_wing_lift_coeff = ca.vertcat(*[self.fitted_models['casadi_functions'][i](left_wing_inputs) for i in self.fitted_models['casadi_functions'].keys()])
             right_wing_inputs = ca.vertcat(
-                qbar,
+                right_wing_qbar, # may want to use qbar here instead
                 right_wing_alpha,
                 0,
                 0,
@@ -545,14 +524,6 @@ class Aircraft:
             outputs = ca.vertcat(outputs.T)
 
 
-        # # outputs[0] = 0
-        # outputs[1] = 0
-        # # outputs[2] = 0
-        # outputs[3] = 0
-        # # outputs[4] = 0
-        # outputs[5] = 0
-
-
         # stall scaling
         stall_angle_alpha = np.deg2rad(10)
         stall_angle_beta = np.deg2rad(10)
@@ -562,59 +533,12 @@ class Aircraft:
         alpha_scaling = 1 / (1 + ca.exp(steepness * (ca.fabs(alpha) - stall_angle_alpha)))
         beta_scaling = 1 / (1 + ca.exp(steepness * (ca.fabs(beta) - stall_angle_beta)))
         
-        # outputs[2] *= -1
         outputs[2] *= alpha_scaling
         outputs[2] *= beta_scaling
 
         outputs[4] *= alpha_scaling
         outputs[4] *= beta_scaling
 
-        # p, q, r = self._omega_frd_ned[0], self._omega_frd_ned[1], self._omega_frd_ned[2]
-
-        # # angular rate contributions
-        # # outputs[0] += 0.05 * self.omega_b_i_frd[0]
-        # # outputs[1] += -0.05 * self.omega_frd_ned[2]
-        # # outputs[2] += -0.1 * self.omega_frd_ned[0]
-        # outputs[1] += -0.05 * r
-        # outputs[2] += -0.1 * p
-
-        """
-        The relative amplitudes of the damping factors are taken from the cessna
-        model which has:
-
-        Roll:
-        Clp ~ -0.5
-        Clr ~ 0.1
-
-        Pitch:
-        Cmq ~ -12
-
-        Yaw:
-        Cnp ~ -0.03
-        Cnr ~ -0.1
-
-        We scale this down by a factor of 100
-
-        NOTE:
-
-        We flip the yaw moment, TODO: investigate
-        We scale the roll moment down by a factor of 4 meaning we use the 
-        windtunnel scale rather than the sim scale.
-        """
-        # scale = 1
-        # # roll moment rates
-        
-        # outputs[3] /= 16
-        # outputs[3] += -0.005 * p * scale
-        # outputs[3] += 0.001 * r * scale
-
-        # # pitching moment rates
-        # outputs[4] += -0.2 * q * scale
-
-        # # yaw moment rates
-        # outputs[5] *= -1
-        # # outputs[5] += -0.0003 * p * scale
-        # outputs[5] += -0.001 * r * scale
 
         self._coefficients = outputs
 
@@ -631,10 +555,13 @@ class Aircraft:
         if not hasattr(self, '_qbar'):
             self.qbar
 
-        forces = self._coefficients[:3] * self._qbar * self.S# + self._thrust
+        forces = self._coefficients[:3] * self._qbar * self.S
+
         # antialign drag and velocity
         forces[0] = ca.sign(self._v_frd_rel[0])*forces[0]
-        # forces += self._throttle
+
+        forces += self._thrust
+
         speed_threshold = 80.0  # m/s
         penalty_factor = 10.0  # Scale factor for additional drag
 
@@ -705,7 +632,6 @@ class Aircraft:
         dt = self.dt_sym
         q_frd_ned = Quaternion(self._q_frd_ned)
         omega_frd_ned = self._omega_frd_ned  # Assume this is a 3D vector
-        # dt = self.dt  # Time step
 
         theta = ca.norm_2(omega_frd_ned)  # Angular velocity magnitude
         half_theta = 0.5 * dt * theta
@@ -750,15 +676,13 @@ class Aircraft:
     def omega_frd_ned_dot(self):
         if not hasattr(self, '_moments_frd'):
             self.moments_frd
-        J_frd = self.inertia_tensor
-        J_frd_inv = self.inverse_inertia_tensor
         
         omega_frd_ned = self._omega_frd_ned
         moments = self._moments_frd
 
 
-        self._omega_frd_ned_dot = ca.mtimes(J_frd_inv, (moments 
-             - ca.cross(omega_frd_ned, ca.mtimes(J_frd, omega_frd_ned))))
+        self._omega_frd_ned_dot = ca.mtimes(self.inverse_inertia_tensor, (moments 
+             - ca.cross(omega_frd_ned, ca.mtimes(self.inertia_tensor, omega_frd_ned))))
         
         return ca.Function(
             'omega_frd_ned_dot', 
@@ -789,7 +713,6 @@ class Aircraft:
             [self._state_derivative], ['x', 'u'], ['x_dot']
             )
     
-    # @jit
     def state_step(self, state, control, dt_scaled):
         """ 
         Runge kutta step for state update. Due to the multiplicative nature
@@ -810,13 +733,9 @@ class Aircraft:
         k4 = state_derivative(state_k3, control)
 
         state = state + dt_scaled / 6 * (k1 + 2 * k2 + 2 * k3 + k4)
-        # Normalize the quaternion
-        # quaternion = Quaternion(state[6:10])
 
         state[6:10] = self.q_frd_ned_update(state, control, dt_scaled)
-        # quaternion.normalize().coeffs()
 
-        # self._state_step = ca.Function('step', [state, control, dt_scaled], [state])
 
         return state
 
@@ -842,18 +761,7 @@ class Aircraft:
             
             F = folded_update.fold(num_steps)
             state = F(input_to_fold)[:self.num_states]
-        # for i in range(num_steps):
-        #     state = self.state_step(state, control_sym, dt_scaled)
-        
-        #     if i % normalisation_interval == 0:
-        #         state[:4] = Quaternion(state[:4]).normalize().coeffs()
-        
-        # state[:4] = Quaternion(state[:4]).normalize().coeffs()
-        # if self.LINEAR:
-        #     return ca.Function(
-        #     'state_update', 
-        #     [self.state, self.control, dt], 
-        #     [state])
+
         return ca.Function(
             'state_update', 
             [self.state, self.control, dt], 
@@ -867,8 +775,6 @@ class AircraftTrim(Aircraft):
             ):
         
         super().__init__(opts)
-        
-
     
     @property
     def control(self):
@@ -896,15 +802,15 @@ class AircraftTrim(Aircraft):
         Inertia Tensor around the Centre of Mass
         """
 
-        Ixx = self.opts.aircraft_config.Ixx
-        Iyy = self.opts.aircraft_config.Iyy
-        Ixz = self.opts.aircraft_config.Ixz
-        Izz = self.opts.aircraft_config.Izz
+        i_xx = self.opts.aircraft_config.Ixx
+        i_yy = self.opts.aircraft_config.Iyy
+        i_xz = self.opts.aircraft_config.Ixz
+        i_zz = self.opts.aircraft_config.Izz
 
         aero_inertia_tensor = ca.vertcat(
-            ca.horzcat(Ixx, 0  , Ixz),
-            ca.horzcat(0  , Iyy, 0  ),
-            ca.horzcat(Ixz, 0  , Izz)
+            ca.horzcat(i_xx, 0  , i_xz),
+            ca.horzcat(0  , i_yy, 0  ),
+            ca.horzcat(i_xz, 0  , i_zz)
         )
 
         mass = self.mass
@@ -923,21 +829,12 @@ class AircraftTrim(Aircraft):
 
         return inertia_tensor
 
-def perturb_quaternion(q, delta_theta=0.01):
-    """ Perturbs a quaternion by a small rotation. """
-    # Generate a small random rotation axis
-    axis = np.random.randn(3)
-    axis /= np.linalg.norm(axis)  # Normalize to unit vector
-    
-    # Create small rotation quaternion
-    delta_q = R.from_rotvec(delta_theta * axis).as_quat()  # [x, y, z, w]
-    
-    # Apply rotation (Hamilton product)
-    q_perturbed = R.from_quat(q) * R.from_quat(delta_q)
-    
-    return q_perturbed.as_quat()  # Return perturbed quaternion
+
 
 if __name__ == '__main__':
+    from aircraft.plotting.plotting import TrajectoryPlotter
+
+    mode = 1
     model = load_model()
     traj_dict = json.load(open('data/glider/problem_definition.json'))
 
@@ -945,174 +842,73 @@ if __name__ == '__main__':
 
     aircraft_config = trajectory_config.aircraft
 
-    linear_path = Path(DATAPATH) / 'glider' / 'linearised.csv'
-    model_path = Path(NETWORKPATH) / 'model-dynamics.pth'
-    poly_path = Path(NETWORKPATH) / 'fitted_models_casadi.pkl'
-
-    # opts = AircraftOpts(nn_model_path=model_path, aircraft_config=aircraft_config)
-    opts = AircraftOpts(poly_path=poly_path, aircraft_config=aircraft_config, physical_integration_substeps=1)
-    # opts = AircraftOpts(linear_path=linear_path, aircraft_config=aircraft_config)
+    if mode == 0:
+        model_path = Path(NETWORKPATH) / 'model-dynamics.pth'
+        opts = AircraftOpts(nn_model_path=model_path, aircraft_config=aircraft_config)
+    elif mode == 1:
+        poly_path = Path(NETWORKPATH) / 'fitted_models_casadi.pkl'
+        opts = AircraftOpts(poly_path=poly_path, aircraft_config=aircraft_config, physical_integration_substeps=1)
+    elif mode == 2:
+        linear_path = Path(DATAPATH) / 'glider' / 'linearised.csv'
+        opts = AircraftOpts(linear_path=linear_path, aircraft_config=aircraft_config)
 
     aircraft = Aircraft(opts = opts)
 
     perturbation = False
     
-    trim_state_and_control = [0, 0, 0, 30, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]# [0, 0, 0, 60, 2.29589e-41, 0, 0, 9.40395e-38, -2.93874e-39, 1, 0, 1.46937e-39, 0, -5.73657e-45, 0, 0, 0.0134613, -7.8085e-09, 0.00436365]
+    trim_state_and_control = [0, 0, 0, 30, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
+
     if trim_state_and_control is not None:
         state = ca.vertcat(trim_state_and_control[:aircraft.num_states])
-        control = np.array(trim_state_and_control[aircraft.num_states:-3])
+        control = np.zeros(aircraft.num_controls)
+        control[:3] = trim_state_and_control[aircraft.num_states:-3]
         control[0] = 0
         control[1] = 0
         aircraft.com = np.array(trim_state_and_control[-3:])
     else:
-
         x0 = np.zeros(3)
         v0 = ca.vertcat([60, 0, 0])
         # would be helpful to have a conversion here between actual pitch, roll and yaw angles and the Quaternion q0, so we can enter the angles in a sensible way.
         q0 = Quaternion(ca.vertcat(0, 0, 0, 1))
-        # q0 = Quaternion(ca.vertcat(.259, 0, 0, 0.966))
-        # q0 = ca.vertcat([0.215566, -0.568766, 0.255647, 0.751452])#q0.inverse()
         omega0 = np.array([0, 0, 0])
-
         state = ca.vertcat(x0, v0, q0, omega0)
         control = np.zeros(aircraft.num_controls)
         control[0] = +0
         control[1] = 5
-        # control[6:9] = traj_dict['aircraft']['aero_centre_offset']
 
     dyn = aircraft.state_update
-    # dt_sym = ca.MX.sym('dt')
-    # dyn = ca.Function('step', [aircraft.state, aircraft.control, dt_sym], [aircraft.state_step(aircraft.state, aircraft.control, dt_sym)]).expand()
     dt = .01
-    tf = 500
+    tf = 5
     state_list = np.zeros((aircraft.num_states, int(tf / dt)))
-    # investigate stiffness:
-
-    # Define f(state, control) (e.g., the dynamics function)
-    f = aircraft.state_update(aircraft.state, aircraft.control, aircraft.dt_sym)
-
-    # Compute the Jacobian of f w.r.t state
-    J = ca.jacobian(f, aircraft.state)
-
-    # Create a CasADi function for numerical evaluation
-    J_func = ca.Function('J', [aircraft.state, aircraft.control, aircraft.dt_sym], [J])
-
-    # Evaluate J numerically for a specific state and control
-    J_val = J_func(state, control, .01)
-
-    # Compute eigenvalues using numpy
-    eigvals = np.linalg.eigvals(np.array(J_val))
-
-    print(eigvals)
-
-    import numpy as np
-
-    # Define perturbations (adjust as needed)
-    state_perturbations = np.linspace(-0.1, 0.1, num=5)  # Small deviations
-    control_perturbations = np.linspace(-0.0, 0.0, num=5)
-
-    # Storage for eigenvalues
-    eigenvalues_list = []
-
-    for dx in state_perturbations:
-        for du in control_perturbations:
-            perturbed_state = state + dx
-            perturbed_quaternion = perturb_quaternion(state[6:10].toarray().flatten())
-            perturbed_state[6:10] = perturbed_quaternion
-            perturbed_control = control + du
-            
-            # Evaluate the discrete-time Jacobian at perturbed states
-            J_val = J_func(perturbed_state, perturbed_control, 0.01)
-            
-            # Compute eigenvalues
-            eigenvalues = np.linalg.eigvals(J_val)
-            eigenvalues_list.append(eigenvalues)
-
-    # Convert to NumPy array for easier analysis
-    eigenvalues_array = np.array(eigenvalues_list)
-
-    import matplotlib.pyplot as plt
-
-    plt.figure(figsize=(6,6))
-    unit_circle = plt.Circle((0, 0), 1, color='gray', fill=False, linestyle='dashed')
-    plt.gca().add_patch(unit_circle)
-
-    for eigvals in eigenvalues_array:
-        plt.scatter(eigvals.real, eigvals.imag, color='blue', alpha=0.5)
-
-    plt.axhline(0, color='black', linewidth=0.5)
-    plt.axvline(0, color='black', linewidth=0.5)
-    plt.xlabel("Real")
-    plt.ylabel("Imaginary")
-    plt.title("Eigenvalues Under Perturbed States & Controls")
-    plt.grid()
-    plt.show(block = True)
-
-    # Define timestep range (log scale for better resolution)
-    timesteps = np.logspace(-4, 0, num=20)  # From very small to larger dt values
-    max_eigenvalues = []
-
-    for dt in timesteps:
-        # Compute discrete-time Jacobian at this timestep
-        J_val = J_func(state, control, dt)  # Get continuous Jacobian
-        # J_d = np.eye(J_val.shape[0]) + dt * J_val  # First-order discretization (Euler)
-
-        # Compute eigenvalues and store the largest norm
-        eigvals = np.linalg.eigvals(J_val)
-        max_eigenvalues.append(max(np.abs(eigvals)))
-
-    # Plot results
-    plt.figure(figsize=(7, 5))
-    plt.plot(timesteps, max_eigenvalues, marker='o', linestyle='-')
-    plt.xscale("log")  # Log scale for better visualization
-    plt.yscale("log")
-    plt.axhline(1, color='r', linestyle='--', label="Unit Circle Bound")
-    plt.xlabel("Timestep (Δt)")
-    plt.ylabel("Max Eigenvalue Norm")
-    plt.title("Max Eigenvalue Norm vs. Timestep")
-    plt.legend()
-    plt.grid()
-    plt.show(block = True)
-
-
-    
-
-
-
-    # # dt_sym = ca.MX.sym('dt', 1)
-    # t = 0
-    # ele_pos = True
-    # ail_pos = True
-    # control_list = np.zeros((aircraft.num_controls, int(tf / dt)))
-    # for i in tqdm(range(int(tf / dt)), desc = 'Simulating Trajectory:'):
-    #     if np.isnan(state[0]):
-    #         print('Aircraft crashed')
-    #         break
-    #     else:
-    #         state_list[:, i] = state.full().flatten()
-    #         control_list[:, i] = control
-    #         state = dyn(state, control, dt)
+    t = 0
+    ele_pos = True
+    ail_pos = True
+    control_list = np.zeros((aircraft.num_controls, int(tf / dt)))
+    for i in tqdm(range(int(tf / dt)), desc = 'Simulating Trajectory:'):
+        if np.isnan(state[0]):
+            print('Aircraft crashed')
+            break
+        else:
+            state_list[:, i] = state.full().flatten()
+            control_list[:, i] = control
+            state = dyn(state, control, dt)
                     
-    #         t += 1
-    # # print(state)
-    # # J_val = J_func(state, control)
-    # # eigvals = np.linalg.eigvals(np.array(J_val))
+            t += 1
 
-    # # print(eigvals)
-    # first = None
-    # # t -=10
-    # def save(filepath):
-    #     with h5py.File(filepath, "a") as h5file:
-    #         grp = h5file.create_group(f'iteration_0')
-    #         grp.create_dataset('state', data=state_list[:, :t])
-    #         grp.create_dataset('control', data=control_list[:, :t])
+    first = None
+    t -=10
+    def save(filepath):
+        with h5py.File(filepath, "a") as h5file:
+            grp = h5file.create_group('iteration_0')
+            grp.create_dataset('state', data=state_list[:, :t])
+            grp.create_dataset('control', data=control_list[:, :t])
     
     
-    # filepath = os.path.join("data", "trajectories", "simulation.h5")
-    # if os.path.exists(filepath):
-    #     os.remove(filepath)
-    # save(filepath)
+    filepath = os.path.join("data", "trajectories", "simulation.h5")
+    if os.path.exists(filepath):
+        os.remove(filepath)
+    save(filepath)
 
-    # plotter = TrajectoryPlotter(aircraft)
-    # plotter.plot(filepath=filepath)
-    # plt.show(block = True)
+    plotter = TrajectoryPlotter(aircraft)
+    plotter.plot(filepath=filepath)
+    plt.show(block = True)

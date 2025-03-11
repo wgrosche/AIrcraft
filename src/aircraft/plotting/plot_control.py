@@ -14,9 +14,6 @@ import numpy as np
 from scipy.spatial.transform import Rotation as R
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
-BASEPATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-print(BASEPATH)
-sys.path.append(BASEPATH)
 
 from aircraft.plotting.plotting import plot_trajectory
 from aircraft.dynamics.dynamics import Aircraft

@@ -98,10 +98,6 @@ class MiniModel(nn.Module):
         
         return core_output
 
-class L4CasadiModel():
-    def __init__(self):
-        pass
-
 class ScaledModel(nn.Module):
     """
     Network that automatically scales the input and output data
@@ -195,8 +191,8 @@ class WeightedMSELossConstraint(nn.Module):
         # Conditionally apply zero-output constraint
         zero_output = torch.zeros_like(model_output)
         zero_output[:, 1] = model_output[:, 1] 
-        zero_output[:, 1] = model_output[:, 3]
-        zero_output[:, 1] = model_output[:, 5]
+        zero_output[:, 3] = model_output[:, 3]
+        zero_output[:, 5] = model_output[:, 5]
         zero_loss = torch.where(zero_condition, 100 * model_output, torch.zeros_like(model_output))
         zero_loss = torch.mean(zero_loss)  # Mean over all samples
 

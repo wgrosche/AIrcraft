@@ -18,9 +18,8 @@ BASEPATH = os.path.dirname(os.path.abspath(__file__)).split('main')[0]
 sys.path.append(BASEPATH)
 
 from aircraft.utils.utils import load_model
-DATAPATH = os.path.join(BASEPATH, 'data')
-NETWORKPATH = os.path.join(DATAPATH, 'networks')
-VISUPATH = os.path.join(DATAPATH, 'visualisation')
+from aircraft.config import DEVICE, NETWORKPATH, DATAPATH, VISUPATH
+from aircraft.dynamics.dynamics import Aircraft, AircraftOpts
 
 __all__ = ['create_grid', 'TrajectoryPlotter']
 
@@ -118,21 +117,13 @@ class PlotAxes:
 
 
 class TrajectoryPlotter:
-    def __init__(self, aircraft):
+    def __init__(self, aircraft, figsize=(15, 15)):
         self.aircraft = aircraft
-        # if isinstance(data_source, str):
-        #     self.filepath = data_source
-        #     self.data = None
-        # else:
-        #     self.filepath = None
-        #     self.data = data_source
-        
-        self.figure = plt.figure(figsize=(15, 15))
+        self.figure = plt.figure(figsize=figsize)
         self.axes = PlotAxes(self.figure)
-        # self.figure.tight_layout()
         self.lines = {}
 
-    def load_last_iteration(self, filepath:str) -> TrajectoryData:
+    def load_last_iteration(self, filepath:str) -> Union[TrajectoryData, None]:
         """
         Load state, control, time, lam, mu, nu from the last iteration in the HDF5 file.
         Return None for datasets that do not exist.
@@ -186,8 +177,11 @@ class TrajectoryPlotter:
         """
         Plots the trajectory position and orientation axes in a 3D NED frame.
         """
-        position = trajectory_data.state[4:7, :]
-        quaternion = trajectory_data.state[:4, :]
+        # I think these are wrong (inherited); corrected lines below
+        # position = trajectory_data.state[4:7, :]
+        # quaternion = trajectory_data.state[:4, :]
+        position = trajectory_data.state[0:3, :]
+        quaternion = trajectory_data.state[6:10, :]
         ax = self.axes.position
         
         # Negate Z-axis for NED convention
@@ -219,22 +213,26 @@ class TrajectoryPlotter:
             self._quivers = {
                 'x': ax.quiver(position[0, ::step], position[1, ::step], position[2, ::step],
                             x_axis[::step, 0], x_axis[::step, 1], x_axis[::step, 2],
-                            color='r', length=10, label='Forward', normalize=True),
+                            color='r', length=1, label='Forward', normalize=True),
                 'y': ax.quiver(position[0, ::step], position[1, ::step], position[2, ::step],
                             y_axis[::step, 0], y_axis[::step, 1], y_axis[::step, 2],
-                            color='g', length=10, label='Right', normalize=True),
+                            color='g', length=1, label='Right', normalize=True),
                 'z': ax.quiver(position[0, ::step], position[1, ::step], position[2, ::step],
                             z_axis[::step, 0], z_axis[::step, 1], z_axis[::step, 2],
-                            color='b', length=10, label='Down', normalize=True),
+                            color='b', length=1, label='Down', normalize=True),
             }
+        # In your plot_position method, modify the else block for quivers:
         else:
-            self._quivers['x'].set_segments(
-                np.array([position[0, ::step], position[1, ::step], position[2, ::step]]).T)
-            self._quivers['y'].set_segments(
-                np.array([y_axis[::step, 0], y_axis[::step, 1], y_axis[::step, 2]]).T)
-            self._quivers['z'].set_segments(
-                np.array([z_axis[::step, 0], z_axis[::step, 1], z_axis[::step, 2]]).T)
+            for axis, data in zip(['x', 'y', 'z'], [x_axis, y_axis, z_axis]):
+                starts = np.array([position[0, ::step], position[1, ::step], position[2, ::step]]).T
+                ends = starts + data[::step] * 10  # Scale factor of 10 matches your original length
+                segments = np.stack([starts, ends], axis=1)
+                self._quivers[axis].set_segments(segments)
 
+        # update axis limits
+        ax.set_xlim(np.min(position[0, :]), np.max(position[0, :]))
+        ax.set_ylim(np.min(position[1, :]), np.max(position[1, :]))
+        ax.set_zlim(np.min(position[2, :]), np.max(position[2, :]))
         # Customize plot appearance
         ax.set_xlabel('North')
         ax.set_ylabel('East')
@@ -242,49 +240,6 @@ class TrajectoryPlotter:
         ax.set_aspect('equal')
         ax.grid(True)
         ax.set_title('Trajectory (NED)')
-
-
-
-    
-    # def plot_position(self, trajectory_data:TrajectoryData,
-    #                   waypoints:Optional[Union[np.ndarray, np.ndarray]] = None):
-
-    #     position = trajectory_data.state[4:7,:]
-    #     quaternion = trajectory_data.state[:4, :]
-
-    #     ax = self.axes.position
-        
-    #     step = position.shape[1] // 15
-
-    #     position[2, :] *= -1
-    #     (x_axis, y_axis, z_axis) = self.orientation(quaternion)
-
-    #     if isinstance(waypoints, np.ndarray):
-    #         ax.plot(waypoints[0, :], waypoints[1, :], waypoints[2, :], )
-
-    #     # plot trajectory
-    #     ax.plot(position[0, :], position[1, :], position[2, :])
-
-    #     if step != 0:
-
-    #         ax.quiver(position[0, ::step], position[1, ::step], position[2, ::step], 
-    #                 x_axis[::step, 0], x_axis[::step, 1], x_axis[::step, 2], 
-    #                 color='r', length=10, label = 'forward', normalize =True)
-    #         ax.quiver(position[0, ::step], position[1, ::step], position[2, ::step], 
-    #                 y_axis[::step, 0], y_axis[::step, 1], y_axis[::step, 2], 
-    #                 color='g', length=10, label = 'right', normalize =True)
-    #         ax.quiver(position[0, ::step], position[1, ::step], position[2, ::step], 
-    #                 z_axis[::step, 0], z_axis[::step, 1], z_axis[::step, 2], 
-    #                 color='b', length=10, label = 'down', normalize =True)
-        
-    #     ax.set_xlabel('North')
-    #     ax.set_ylabel('East')
-    #     ax.set_zlabel('Up')
-    #     # ax.set_xlim(position[0, :].min(), position[0, :].max())
-    #     # ax.set_zlim(position[2, :].max(), position[2, :].min())
-    #     ax.set_aspect('equal')
-    #     ax.grid(True)
-    #     ax.set_title('Trajectory (NED)')
 
     def _update_or_create_line(self, ax, attr_name, y_data, label):
         """
@@ -352,7 +307,7 @@ class TrajectoryPlotter:
 
         self._update_or_create_line(ax, '_phi_dot_line', phi_dot, r'$\dot{\phi}$')
         self._update_or_create_line(ax, '_theta_dot_line', theta_dot, r'$\dot{\theta}$')
-        # self._update_or_create_line(ax, '_psi_dot_line', psi_dot, r'$\dot{\psi}$')
+        self._update_or_create_line(ax, '_psi_dot_line', psi_dot, r'$\dot{\psi}$')
 
         ax.legend()
         ax.grid(True)
@@ -377,9 +332,15 @@ class TrajectoryPlotter:
         control = trajectory_data.control
         moments_frd = self.aircraft.moments_frd(state, control).full()
 
+        moments_aero_frd = self.aircraft.moments_aero_frd(state, control).full()
+
         self._update_or_create_line(ax, '_Mx_line', moments_frd[0, :], 'Mx')
         self._update_or_create_line(ax, '_My_line', moments_frd[1, :], 'My')
         self._update_or_create_line(ax, '_Mz_line', moments_frd[2, :], 'Mz')
+
+        self._update_or_create_line(ax, '_Mx_aero_line', moments_aero_frd[0, :], 'Mx_aero')
+        self._update_or_create_line(ax, '_My_aero_line', moments_aero_frd[1, :], 'My_aero')
+        self._update_or_create_line(ax, '_Mz_aero_line', moments_aero_frd[2, :], 'Mz_aero')
         ax.legend()
         ax.grid(True)
         ax.set_title('Aero Moments (FRD)')
@@ -388,16 +349,21 @@ class TrajectoryPlotter:
         state = trajectory_data.state
         control = trajectory_data.control
 
-        if state is not None and control is not None:
+        if state is not None:
+            if control is not None:
+                self.plot_moments(trajectory_data)
+
+                self.plot_forces(trajectory_data)
+            else:
+                trajectory_data.control = np.zeros((3, state.shape[1]))
             
             self.plot_position(trajectory_data)
 
             self.plot_angles(trajectory_data)
             self.plot_velocity(trajectory_data)
-            self.plot_moments(trajectory_data)
-
             self.plot_rates(trajectory_data)
-            self.plot_forces(trajectory_data)
+
+            
         
     def plot_deflections(self, trajectory_data:TrajectoryData):
         ax = self.axes.controls
@@ -410,32 +376,17 @@ class TrajectoryPlotter:
         ax.set_title('Control Surface Deflctions')
 
     def plot_thrust(self, trajectory_data:TrajectoryData):
-        state = trajectory_data.state
-        x_data = state[4, :]
-        y_data = state[5, :]
-        ax = self.axes.thrust
-
-        if not hasattr(self, '_waypoint_line'):
-            line, = ax.plot(x_data, y_data, label= 'Trajectory')
-            setattr(self, '_waypoint_line', line)
-        else:
-            line = getattr(self, '_waypoint_line')
-            line.set_ydata(y_data)
-            line.set_xdata(x_data)
-        ax.legend()
-        ax.grid(True)
-        ax.set_title('Waypoints')
-
+        state= trajectory_data.state
         # control = trajectory_data.control
         # if control.shape[0] < 6:
         #     return
-        # ax = self.axes.thrust
-        # self._update_or_create_line(ax, '_T_x_line', control[3, :], r'$T_x$')
-        # self._update_or_create_line(ax, '_T_y_line', control[4, :], r'$T_y$')
-        # self._update_or_create_line(ax, '_T_z_line', control[5, :], r'$T_z$')
-        # ax.legend()
-        # ax.grid(True)
-        # ax.set_title('Thrust (N)')
+        ax = self.axes.thrust
+        self._update_or_create_line(ax, '_T_x_line', state[0, :], r'$T_x$')
+        self._update_or_create_line(ax, '_T_y_line', state[1, :], r'$T_y$')
+        self._update_or_create_line(ax, '_T_z_line', state[2, :], r'$T_z$')
+        ax.legend()
+        ax.grid(True)
+        ax.set_title('Thrust (N)')
 
     def plot_progress_variables(self, trajectory_data:TrajectoryData):
         ax = self.axes.progress
@@ -481,11 +432,9 @@ class TrajectoryPlotter:
         self.plot_control(trajectory_data)
         self.plot_progress_variables(trajectory_data)
 
-        self.figure.suptitle(f"Final Time: {trajectory_data.time}")
-
     def save(self, iteration:Optional[int] = None, save_path = os.path.join(VISUPATH, 'trajectory_image.png')):
         if iteration is not None:
-            str(save_path).replace(".png", f"iter_{iteration}.png")
+            save_path = str(save_path).replace(".png", f"iter_{iteration}.png")
         self.figure.savefig(save_path)
 
     def animation(self, iterations:List[int], save:bool = False, save_path:Optional[str] = os.path.join(VISUPATH, 'trajectory_animation.gif')):
@@ -498,7 +447,6 @@ class TrajectoryPlotter:
             ani.save(save_path, writer='imagemagick')
         return ani
 
-    @property
     def show(self):
         self.figure.show()
 
@@ -508,13 +456,13 @@ def main():
     model = load_model()
     
     aircraft = Aircraft(aircraft_params, model, STEPS=100, LINEAR=True)
-    plotter = TrajectoryPlotter('data/trajectories/traj_control.hdf5')
+    plotter = TrajectoryPlotter(aircraft)
 
-    plotter.plot(-1)
-    plotter.show
+    plotter.plot(iteration = -1)
+    plotter.show()
     plotter.save(iteration = -1)
 
-    animation = plotter.animation([i for i in range(50)], save = True)
+    plotter.animation([i for i in range(50)], save = True)
 
 if __name__ == '__main__':
     main()

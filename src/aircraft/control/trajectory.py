@@ -146,7 +146,7 @@ class Trajectory:
     self.x[n_start+3::n_slice] = self.u[3,:]
 
 
-  def getAxesHandle(self, fig, plot3d=False):
+  def get_axes_handle(self, fig, plot3d=False):
     kwargs = {}
     if plot3d:
       kwargs = {'projection': '3d'}
@@ -161,7 +161,7 @@ class Trajectory:
     else:
       raise Exception('Provided figure or axis handle is invalid')
 
-  def getDataAxes(self, axes_str, cset="xyz"):
+  def get_data_axes(self, axes_str, cset="xyz"):
     assert type(cset) == str
     assert type(axes_str) == str
     axes_str = axes_str.lower()

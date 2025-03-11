@@ -5,7 +5,7 @@ from typing import List
 
 def waypoint_distances(waypoints:np.ndarray, 
                        p_initial:np.ndarray, 
-                       VERBOSE:bool = False):
+                       verbose:bool = False):
     """
     Given a set of waypoints, calculate the distance between each waypoint.
 
@@ -27,7 +27,7 @@ def waypoint_distances(waypoints:np.ndarray,
     distances = np.linalg.norm(differences, axis=0)
     distance = np.cumsum(distances)
 
-    if VERBOSE: 
+    if verbose: 
         print("Cumulative waypoint distances: ", distance)
     return distance
 

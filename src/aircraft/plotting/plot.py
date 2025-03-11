@@ -25,13 +25,13 @@ class CallbackPlot(ca.Callback):
     self.i = 0
     self.opts = opts
 
-    if pos is not None: assert type(pos) == str
-    if vel is not None: assert type(vel) == str
-    if ori is not None: assert type(ori) == str
-    if rate is not None: assert type(rate) == str
-    if inputs is not None: assert type(inputs) == str
-    if prog is not None: assert type(prog) == str
-    if save is not None: assert type(save) == str
+    if pos is not None: assert isinstance(pos, str)
+    if vel is not None: assert isinstance(vel, str)
+    if ori is not None: assert isinstance(ori, str)
+    if rate is not None: assert isinstance(rate, str)
+    if inputs is not None: assert isinstance(inputs, str)
+    if prog is not None: assert isinstance(prog, str)
+    if save is not None: assert isinstance(save, str)
 
     self.pos = pos
     self.vel = vel
