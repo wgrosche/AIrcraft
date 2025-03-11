@@ -243,9 +243,9 @@ from sklearn.linear_model import LinearRegression
 BASEPATH = os.path.dirname(os.path.abspath(__file__)).split('main')[0]
 sys.path.append(BASEPATH)
 
-from src.models import ScaledModel, WeightedMSELoss
-from src.dataloader import AeroDataset
-from src.plotting import create_grid
+from aircraft.surrogates.models import ScaledModel, WeightedMSELoss
+from aircraft.surrogates.dataloader import AeroDataset
+from aircraft.plotting.plotting import create_grid
 
 from scipy.optimize import minimize
 

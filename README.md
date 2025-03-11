@@ -31,6 +31,10 @@ Information on the models used to model the system dynamics can be found [here](
 
 AerodynamicShapeOp
 
+## Install
+
+install with `pip install -e .`
+
 ## Priority
 
 [Neuromancer](https://github.com/pnnl/neuromancer)

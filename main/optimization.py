@@ -1,7 +1,7 @@
 import sys
 import os
 # BASEPATH = os.path.abspath(__file__).split('AIrcraft', 1)[0]+'AIrcraft/'
-# sys.path += [BASEPATH + 'src']
+# sys.path += [BASEPATH + 'aircraft']
 
 # from track import Track
 # from quad import Quad
@@ -12,10 +12,10 @@ import os
 
 BASEPATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__))).split('AIrcraft', 1)[0] + 'AIrcraft/'
 sys.path.append(BASEPATH)
-from src.dynamics_minimal import Aircraft, AircraftOpts
-from src.planner import Planner
-from src.utils import TrajectoryConfiguration
-from src.plotting_minimal import TrajectoryPlotter, TrajectoryData
+from aircraft.dynamics.dynamics import Aircraft, AircraftOpts
+from aircraft.planner import Planner
+from aircraft.utils.utils import TrajectoryConfiguration
+from aircraft.plotting_minimal import TrajectoryPlotter, TrajectoryData
 import casadi as ca
 
 from pathlib import Path

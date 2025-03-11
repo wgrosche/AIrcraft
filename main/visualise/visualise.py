@@ -8,10 +8,10 @@ import matplotlib.pyplot as plt
 import json
 BASEPATH = os.path.dirname(os.path.abspath(__file__)).split('main')[0]
 sys.path.append(BASEPATH)
-# from src.dynamics import LinearisedAircraft, CD_alpha, CL_alpha
+# from aircraft.dynamics import LinearisedAircraft, CD_alpha, CL_alpha
 DATA_DIR = os.path.join(BASEPATH, 'data')
 
-from src.dynamics import Aircraft
+from aircraft.dynamics.dynamics import Aircraft
 
 
 data_real = pd.read_csv(os.path.join(DATA_DIR, 'processed', 'data_real.csv'))

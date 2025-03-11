@@ -18,8 +18,8 @@ BASEPATH = os.path.dirname(os.path.abspath(__file__)).split('main')[0]
 
 sys.path.append(BASEPATH)
 
-from src.dataloader import AeroDataset
-from src.plotting import create_grid
+from aircraft.surrogates.dataloader import AeroDataset
+from aircraft.plotting.plotting import create_grid
 
 # # set plt to inline
 # %matplotlib ipympl
