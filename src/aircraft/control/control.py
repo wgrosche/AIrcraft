@@ -81,7 +81,7 @@ from abc import abstractmethod
 import time
 from aircraft.config import default_solver_options, BASEPATH, NETWORKPATH, DATAPATH, DEVICE, rng
 plt.ion()
-from aircraft.config import default_solver_options
+# from aircraft.config import default_solver_options
 
 @dataclass
 class ControlNode:
@@ -156,7 +156,19 @@ class ControlProblem:
     def state_constraint(self, node:ControlNode, next:ControlNode, dt:ca.MX):
         opti = self.opti
         dynamics = self.dynamics
-        opti.subject_to(next.state == dynamics(node.state, node.control, dt))
+
+        # do a couple of physical steps to get to the next node
+        num_steps = 10
+        h = dt/num_steps
+        x = node.state
+        
+        for _ in range(num_steps):
+            x = self.dynamics(x, node.control, h)
+
+        # quaternion constraint
+        opti.subject_to(ca.norm_2(x[6:10]) == 1)
+        # opti.subject_to(next.state == dynamics(node.state, node.control, dt))
+        opti.subject_to(next.state == x)
 
     def loss(self, time:Optional[ca.MX] = None):
         return time
@@ -287,7 +299,7 @@ class AircraftControl(ControlProblem):
     def control_constraint(self, node:ControlNode):
         self.opti.subject_to(self.opti.bounded(-5, node.control[0], 5))
         self.opti.subject_to(self.opti.bounded(-5, node.control[1], 5))
-        self.opti.subject_to(self.opti.bounded(0, node.control[2:], 0))
+        # self.opti.subject_to(self.opti.bounded(0, node.control[2:], 0))
 
     def state_constraint(self, node:ControlNode, next:ControlNode, dt:ca.MX):
         super().state_constraint(node, next, dt)
@@ -297,10 +309,10 @@ class AircraftControl(ControlProblem):
         alpha = aircraft.alpha
         airspeed = aircraft.airspeed
 
-        opti.subject_to(opti.bounded(20, airspeed(node.state, node.control), 80))
-        opti.subject_to(opti.bounded(-np.deg2rad(10), beta(node.state, node.control),  np.deg2rad(10)))
-        opti.subject_to(opti.bounded(-np.deg2rad(20), alpha(node.state, node.control), np.deg2rad(20)))
-        opti.subject_to(next.state[2] < 0)
+        # opti.subject_to(opti.bounded(20, airspeed(node.state, node.control), 80))
+        # opti.subject_to(opti.bounded(-np.deg2rad(10), beta(node.state, node.control),  np.deg2rad(10)))
+        # opti.subject_to(opti.bounded(-np.deg2rad(20), alpha(node.state, node.control), np.deg2rad(20)))
+        # opti.subject_to(next.state[2] < 0)
 
     def _setup_objective(self, nodes):
         """
@@ -317,15 +329,72 @@ class AircraftControl(ControlProblem):
         final_waypoint_diff = nodes[-1].state[:3] - final_waypoint
         final_waypoint_dist_sq = ca.dot(final_waypoint_diff, final_waypoint_diff)
         self.opti.subject_to(final_waypoint_dist_sq < tolerance ** 2)
-        # self.opti.minimize(final_waypoint_dist_sq)
+        # self.opti.minimize(1000*final_waypoint_dist_sq)
 
-        lambda_rate = 10.0
-        rate_penalty = 0
-        for i in range(self.num_nodes - 1):
-            rate_penalty += ca.sumsqr(self.control[:2, i+1] - self.control[:2, i])
-        self.opti.minimize(lambda_rate * rate_penalty)
-        
+        # lambda_rate = 100.0
+        # lambda_smooth = 50.0
+        # rate_penalty = ca.sumsqr(self.control[:2, 1:] - self.control[:2, :-1])
+        # smoothness_penalty = ca.sumsqr(self.control[:2, 2:] - 2 * self.control[:2, 1:-1] + self.control[:2, :-2])
+        # self.opti.minimize(lambda_rate * rate_penalty + lambda_smooth * smoothness_penalty)
+
     def callback(self, iteration: int):
+        aircraft = self.aircraft
+        f = aircraft.state_update(aircraft.state, aircraft.control, aircraft.dt_sym)
+
+        # Compute the Jacobian of f w.r.t state
+        J = ca.jacobian(f, aircraft.state)
+
+        # Create a CasADi function for numerical evaluation
+        J_func = ca.Function('J', [aircraft.state, aircraft.control, aircraft.dt_sym], [J])
+
+        print("Condition Numbers:" , np.linalg.cond(J_func(self.opti.debug.value(self.state)[:, 1:], self.opti.debug.value(self.control), self.opti.debug.value(self.time)/self.num_nodes)))
+
+        # Get constraint values and dual variables
+        g = self.opti.debug.value(self.opti.g)
+        lam_g = self.opti.debug.value(self.opti.lam_g)
+        
+        # Check which constraints are active (close to bounds)
+        tolerance = 1e-6
+        active_constraints = np.nonzero(abs(g) > tolerance)[0]
+        
+        if iteration % 10 == 0:
+
+            for i in range(self.num_nodes):
+                current_state = self.opti.debug.value(self.state)[:, i]
+                current_control = self.opti.debug.value(self.control)[:, i]
+                dt = self.opti.debug.value(self.time)/self.num_nodes
+                num_steps = 10
+                h = dt/num_steps
+                x = self.opti.debug.value(self.state)[:, i]
+                
+                for _ in range(num_steps):
+                    x = self.dynamics(x, self.opti.debug.value(self.control)[:, i], h)
+                # Predicted next state using dynamics
+
+                predicted_next = x#self.dynamics(current_state, current_control, dt)
+                actual_next = self.opti.debug.value(self.state)[:, i+1]
+                
+                dynamics_violation = np.linalg.norm(predicted_next - actual_next)
+                if dynamics_violation > 1e-3:
+                    print(f"Large dynamics violation at node {i}: {dynamics_violation}")
+            print("\nActive constraints at iteration", iteration)
+            print("Constraint values:", g[active_constraints])
+            print("Dual variables:", lam_g[active_constraints])
+            
+            # Print specific constraint types
+            print("\nControl limits active:")
+            print("Aileron:", abs(self.opti.debug.value(self.control[0])) >= 5.0)
+            print("Elevator:", abs(self.opti.debug.value(self.control[1])) >= 5.0)
+            
+            # Print state constraints
+            if hasattr(self, 'aircraft'):
+                state = self.opti.debug.value(self.state)[:, :-1]
+                control = self.opti.debug.value(self.control)
+                print("\nState constraints:")
+                print(f"Airspeed bounds violated: {self.aircraft.airspeed(state, control)}")
+                print(f"Alpha bounds violated: {self.aircraft.alpha(state, control)}")
+                print(f"Beta bounds violated: {self.aircraft.beta(state, control)}")
+
 
         super().callback(iteration)
         # print("distance to final: ", np.linalg.norm(np.array(self.opti.debug.value(self.state))[:2, -1] - [100,0]))
@@ -342,6 +411,16 @@ class AircraftControl(ControlProblem):
 
     def solve(self, warm_start:Optional[ca.OptiSol] = None):
         super().solve(warm_start=warm_start)
+
+        trajectory_data = TrajectoryData(
+                state=np.array(self.opti.debug.value(self.state))[:, 1:],
+                control=np.array(self.opti.debug.value(self.control)),
+                time=np.array(self.opti.debug.value(self.time))
+            )
+        self.plotter.plot(trajectory_data=trajectory_data)
+        plt.draw()
+        self.plotter.figure.canvas.start_event_loop(0.0002)
+
         plt.show(block = True)
 
 class WaypointControl(AircraftControl):
@@ -437,9 +516,9 @@ def main():
     opts = AircraftOpts(poly_path=poly_path, aircraft_config=aircraft_config, physical_integration_substeps=1)
 
     aircraft = Aircraft(opts = opts)
-    trim_state_and_control = [0, 0, -200, 30, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
+    trim_state_and_control = [0, 0, -200, 50, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
     
-    num_nodes = 100
+    num_nodes = 500
     dt = 0.01
 
     guess =  np.zeros((aircraft.num_states + aircraft.num_controls, num_nodes + 1))

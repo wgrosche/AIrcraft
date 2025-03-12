@@ -59,7 +59,7 @@ def main(mode:Optional[int] = None) -> None:
 
     # Storage for eigenvalues
     eigenvalues_list = []
-
+    condition_numbers = []
     for dx in state_perturbations:
         for du in control_perturbations:
             perturbed_state = state + dx
@@ -73,10 +73,17 @@ def main(mode:Optional[int] = None) -> None:
             # Compute eigenvalues
             eigenvalues = np.linalg.eigvals(J_val)
             eigenvalues_list.append(eigenvalues)
+            # Compute condition number
+            condition_number = np.linalg.cond(J_val)
+            condition_numbers.append(condition_number)
+
 
     # Convert to NumPy array for easier analysis
     eigenvalues_array = np.array(eigenvalues_list)
+    condition_numbers_array = np.array(condition_numbers)
+    print(condition_numbers_array)
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+
 
     # First subplot - Eigenvalues
     unit_circle = plt.Circle((0, 0), 1, color='gray', fill=False, linestyle='dashed')

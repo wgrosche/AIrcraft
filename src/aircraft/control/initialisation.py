@@ -468,75 +468,75 @@ class DubinsInitialiser:
         # Visualize the generated 3D Dubins path
         visualize_3d_dubins_path(self.dubins_waypoints, self.dubins_path, orientations = self.orientations)
 
-import json
-traj_dict = json.load(open('data/glider/problem_definition.json'),)
-config = TrajectoryConfiguration(traj_dict)
-dubins_init = DubinsInitialiser(config)
-dubins_init.visualise()
+# import json
+# traj_dict = json.load(open('data/glider/problem_definition.json'),)
+# config = TrajectoryConfiguration(traj_dict)
+# dubins_init = DubinsInitialiser(config)
+# dubins_init.visualise()
 
-from aircraft.dynamics.dynamics import Aircraft, AircraftOpts
-from pathlib import Path
-def default_initialiser(aircraft:Aircraft, initial_state:Optional[np.ndarray] = None, mode:int = 1):
+# from aircraft.dynamics.dynamics import Aircraft, AircraftOpts
+# from pathlib import Path
+# def default_initialiser(aircraft:Aircraft, initial_state:Optional[np.ndarray] = None, mode:int = 1):
 
-    mode = 1
-    traj_dict = json.load(open('data/glider/problem_definition.json'))
+#     mode = 1
+#     traj_dict = json.load(open('data/glider/problem_definition.json'))
 
-    trajectory_config = TrajectoryConfiguration(traj_dict)
+#     trajectory_config = TrajectoryConfiguration(traj_dict)
 
-    aircraft_config = trajectory_config.aircraft
+#     aircraft_config = trajectory_config.aircraft
 
-    if mode == 0:
-        model_path = Path(NETWORKPATH) / 'model-dynamics.pth'
-        opts = AircraftOpts(nn_model_path=model_path, aircraft_config=aircraft_config)
-    elif mode == 1:
-        poly_path = Path(NETWORKPATH) / 'fitted_models_casadi.pkl'
-        opts = AircraftOpts(poly_path=poly_path, aircraft_config=aircraft_config, physical_integration_substeps=1)
-    elif mode == 2:
-        linear_path = Path(DATAPATH) / 'glider' / 'linearised.csv'
-        opts = AircraftOpts(linear_path=linear_path, aircraft_config=aircraft_config)
+#     if mode == 0:
+#         model_path = Path(NETWORKPATH) / 'model-dynamics.pth'
+#         opts = AircraftOpts(nn_model_path=model_path, aircraft_config=aircraft_config)
+#     elif mode == 1:
+#         poly_path = Path(NETWORKPATH) / 'fitted_models_casadi.pkl'
+#         opts = AircraftOpts(poly_path=poly_path, aircraft_config=aircraft_config, physical_integration_substeps=1)
+#     elif mode == 2:
+#         linear_path = Path(DATAPATH) / 'glider' / 'linearised.csv'
+#         opts = AircraftOpts(linear_path=linear_path, aircraft_config=aircraft_config)
 
-    aircraft = Aircraft(opts = opts)
+#     aircraft = Aircraft(opts = opts)
 
-    perturbation = False
+#     perturbation = False
     
-    trim_state_and_control = [0, 0, 0, 30, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
+#     trim_state_and_control = [0, 0, 0, 30, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
 
-    if trim_state_and_control is not None:
-        state = ca.vertcat(trim_state_and_control[:aircraft.num_states])
-        control = np.zeros(aircraft.num_controls)
-        control[:3] = trim_state_and_control[aircraft.num_states:-3]
-        control[0] = 0
-        control[1] = 0
-        aircraft.com = np.array(trim_state_and_control[-3:])
-    else:
-        x0 = np.zeros(3)
-        v0 = ca.vertcat([60, 0, 0])
-        # would be helpful to have a conversion here between actual pitch, roll and yaw angles and the Quaternion q0, so we can enter the angles in a sensible way.
-        q0 = Quaternion(ca.vertcat(0, 0, 0, 1))
-        omega0 = np.array([0, 0, 0])
-        state = ca.vertcat(x0, v0, q0, omega0)
-        control = np.zeros(aircraft.num_controls)
-        control[0] = +0
-        control[1] = 5
+#     if trim_state_and_control is not None:
+#         state = ca.vertcat(trim_state_and_control[:aircraft.num_states])
+#         control = np.zeros(aircraft.num_controls)
+#         control[:3] = trim_state_and_control[aircraft.num_states:-3]
+#         control[0] = 0
+#         control[1] = 0
+#         aircraft.com = np.array(trim_state_and_control[-3:])
+#     else:
+#         x0 = np.zeros(3)
+#         v0 = ca.vertcat([60, 0, 0])
+#         # would be helpful to have a conversion here between actual pitch, roll and yaw angles and the Quaternion q0, so we can enter the angles in a sensible way.
+#         q0 = Quaternion(ca.vertcat(0, 0, 0, 1))
+#         omega0 = np.array([0, 0, 0])
+#         state = ca.vertcat(x0, v0, q0, omega0)
+#         control = np.zeros(aircraft.num_controls)
+#         control[0] = +0
+#         control[1] = 5
 
-    dyn = aircraft.state_update
-    dt = .01
-    tf = 5
-    state_list = np.zeros((aircraft.num_states, int(tf / dt)))
-    t = 0
-    ele_pos = True
-    ail_pos = True
-    control_list = np.zeros((aircraft.num_controls, int(tf / dt)))
-    for i in tqdm(range(int(tf / dt)), desc = 'Simulating Trajectory:'):
-        if np.isnan(state[0]):
-            print('Aircraft crashed')
-            break
-        else:
-            state_list[:, i] = state.full().flatten()
-            control_list[:, i] = control
-            state = dyn(state, control, dt)
+#     dyn = aircraft.state_update
+#     dt = .01
+#     tf = 5
+#     state_list = np.zeros((aircraft.num_states, int(tf / dt)))
+#     t = 0
+#     ele_pos = True
+#     ail_pos = True
+#     control_list = np.zeros((aircraft.num_controls, int(tf / dt)))
+#     for i in tqdm(range(int(tf / dt)), desc = 'Simulating Trajectory:'):
+#         if np.isnan(state[0]):
+#             print('Aircraft crashed')
+#             break
+#         else:
+#             state_list[:, i] = state.full().flatten()
+#             control_list[:, i] = control
+#             state = dyn(state, control, dt)
                     
-            t += 1
+#             t += 1
             
 
 
