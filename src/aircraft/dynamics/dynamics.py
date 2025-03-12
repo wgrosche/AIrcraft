@@ -862,7 +862,7 @@ if __name__ == '__main__':
         state = ca.vertcat(trim_state_and_control[:aircraft.num_states])
         control = np.zeros(aircraft.num_controls)
         control[:3] = trim_state_and_control[aircraft.num_states:-3]
-        control[0] = 0
+        control[0] = 1
         control[1] = -1
         aircraft.com = np.array(trim_state_and_control[-3:])
     else:

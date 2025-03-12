@@ -29,9 +29,9 @@ else:
 #                         }
 
 default_solver_options = {'ipopt': {'max_iter': 10000,
-                                    'tol': 1e-2,
-                                    'acceptable_tol': 1e-2,
-                                    'acceptable_obj_change_tol': 1e-2,
+                                    'tol': 1e-4,
+                                    'acceptable_tol': 1e-3,
+                                    'acceptable_obj_change_tol': 1e-3,
                                     'hessian_approximation': 'exact',
                                     'linear_solver': 'mumps',
                                     'mumps_mem_percent': 10000,      # Increase memory allocation percentage
