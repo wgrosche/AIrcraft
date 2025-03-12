@@ -8,6 +8,11 @@ from scipy.spatial.transform import Rotation as R
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
+"""
+
+
+"""
+
 def cumulative_distances(waypoints:np.ndarray, VERBOSE:bool = False):
     """
     Given a set of waypoints, calculate the distance between each waypoint.

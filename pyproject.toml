@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aircraft"
+version = "0.1"
+description = "Aircraft trajectory optimization"
+authors = [{name = "grosche"}]
+dependencies = [
+    "numpy",
+    "casadi",
+    "matplotlib",
+    "scipy",
+    "h5py"
+]
+
+
+
+[tool.setuptools]
+packages = ["src"]
+
+# Dependencies from git repositories
+[project.urls]
+"Homepage" = "https://github.com/wgrosche/AIrcraft"
+
+[tool.pip.dependencies]
+dubins = {git = "https://github.com/AgRoboticsResearch/pydubins.git"}

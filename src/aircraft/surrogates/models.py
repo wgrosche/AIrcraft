@@ -47,7 +47,7 @@ try:
             for model in self.models:
                 output.append(model(x))
             return torch.cat(output, dim=-1)
-except:
+except ImportError:
     print("gpytorch not installed, gaussian process models not available")
     
                                                          

@@ -18,3 +18,27 @@ else:
     DEVICE = torch.device("cpu")
 
 
+
+default_solver_options = {'ipopt': {'max_iter': 10000,
+                                    'tol': 1e-2,
+                                    'acceptable_tol': 1e-2,
+                                    'acceptable_obj_change_tol': 1e-2,
+                                    'hessian_approximation': 'limited-memory'
+                                    },
+                        'print_time': 10,
+                        # 'expand' : True
+                        }
+
+
+control_dict = {'scale_state' : np.array(
+                            [1, 1, 1, 1],
+                            [1e3, 1e3, 1e3],
+                            [1e2, 1e2, 1e2],
+                            [1, 1, 1]
+                            ),
+                'scale_control' : np.array(
+                            5, 5, 5,
+                            [1e2, 1e2, 1e2],
+                            [1, 1, 1],
+                            [1e2, 1e2, 1e2]
+                            )}

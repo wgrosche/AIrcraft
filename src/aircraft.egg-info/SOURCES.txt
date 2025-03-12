@@ -1,10 +1,13 @@
 LICENSE
 README.md
+pyproject.toml
 setup.py
 src/aircraft/__init__.py
+src/aircraft/config.py
 src/aircraft.egg-info/PKG-INFO
 src/aircraft.egg-info/SOURCES.txt
 src/aircraft.egg-info/dependency_links.txt
+src/aircraft.egg-info/requires.txt
 src/aircraft.egg-info/top_level.txt
 src/aircraft/control/__init__.py
 src/aircraft/control/control.py
@@ -29,6 +32,10 @@ src/aircraft/optimiser/__init__.py
 src/aircraft/optimiser/adam.py
 src/aircraft/optimiser/convergence.py
 src/aircraft/optimiser/optimiser.py
+src/aircraft/plotting/__init__.py
+src/aircraft/plotting/plot.py
+src/aircraft/plotting/plot_control.py
+src/aircraft/plotting/plotting.py
 src/aircraft/reinforce/__init__.py
 src/aircraft/reinforce/rl.py
 src/aircraft/surrogates/__init__.py

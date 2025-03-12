@@ -70,50 +70,163 @@ from aircraft.plotting.plotting import TrajectoryPlotter, TrajectoryData
 import threading
 import torch
 
-BASEPATH = os.path.dirname(os.path.abspath(__file__)).split('src')[0]
-NETWORKPATH = os.path.join(BASEPATH, 'data', 'networks')
-DATAPATH = os.path.join(BASEPATH, 'data')
-DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else 
-                      ("mps" if torch.backends.mps.is_available() else "cpu"))
-sys.path.append(BASEPATH)
+from typing import Type, List
+
+
 from pathlib import Path
-from src.dynamics.dynamics import AircraftOpts
-
+from aircraft.dynamics.dynamics import AircraftOpts
+from aircraft.control.initialisation import cumulative_distances
+from abc import abstractmethod
+import time
+from aircraft.config import default_solver_options, BASEPATH, NETWORKPATH, DATAPATH, DEVICE
 plt.ion()
-default_solver_options = {'ipopt': {'max_iter': 10000,
-                                    'tol': 1e-2,
-                                    'acceptable_tol': 1e-2,
-                                    'acceptable_obj_change_tol': 1e-2,
-                                    'hessian_approximation': 'limited-memory'
-                                    },
-                        'print_time': 10,
-                        # 'expand' : True
-                        }
 
-def cumulative_distances(waypoints:np.ndarray, VERBOSE:bool = False):
+@dataclass
+class ControlNode:
+    index:Optional[int] = None
+    state:Optional[ca.MX] = None
+    control:Optional[ca.MX] = None
+
+@dataclass
+class ControlNodeWaypoints(ControlNode):
+    lam:Optional[ca.MX] = None
+    mu:Optional[ca.MX] = None
+    nu:Optional[ca.MX] = None
+
+class ControlProblem:
     """
-    Given a set of waypoints, calculate the distance between each waypoint.
+    Control Problem parent class
+    """
 
-    Parameters
-    ----------
-    waypoints : np.array
-        Array of waypoints. (d x n) where d is the dimension of the waypoints 
-        and n is the number of waypoints. The first waypoint is taken as the 
-        initial position.
+    def __init__(self, dynamics:ca.Function, num_nodes:int, opts:Optional[dict] = {}):
 
-    Returns
-    -------
-    distance : np.array
-        Cumulative distance between waypoints.
+        self.opti = ca.Opti()
+        self.state_dim = dynamics.size1_in(0)
+        self.control_dim = dynamics.size1_in(1)
+        self.num_nodes = num_nodes
+        self.verbose = opts.get('verbose', False)
+        self.dynamics = dynamics
+
+        self.scale_state = opts.get('scale_state', None)
+        self.scale_control = opts.get('scale_control', None)
+        self.scale_time = None
+        self.initial_state = opts.get('initial_state', None)
+
+        self.filepath = opts.get('savefile', None)
+        if self.filepath:
+            self.h5file = h5py.File(self.filepath, "a")
+
+    def control_constraint(self, node:ControlNode):
+        """
+        Does nothing in base class
+        """
+        pass
+
+    def state_constraint(self, node:ControlNode, next:ControlNode, dt:ca.MX):
+        opti = self.opti
+        dynamics = self.dynamics
+        opti.subject_to(next.state == dynamics(node.state, node.control, dt))
+
+    def loss(self, time:Optional[ca.MX] = None):
+        return time ** 2
+
+    def _setup_step(self, index:int, current_node:ControlNode, guess:np.ndarray):
+        opti = self.opti
+        next_node = ControlNode(
+                index=index,
+                state = ca.vertcat(self.scale_state) * opti.variable(self.state_dim),
+                control = ca.vertcat(self.scale_control) * opti.variable(self.control_dim)
+            )
+            
+        self.state_constraint(current_node, next_node, self.dt)
+        self.control_constraint(current_node)
+
+        opti.set_initial(next_node.state, guess[:self.state_dim, index])
+        opti.set_initial(next_node.control, guess[self.state_dim:, index])
+        return next_node
     
-    """
-    differences = np.diff(waypoints, axis=0)
-    distances = np.linalg.norm(differences, axis=1)
-    distance = np.cumsum(distances)
+    def _setup_time(self):
+        opti = self.opti()
+        self.time = self.scale_time * opti.variable()
 
-    if VERBOSE: 
-        print("Cumulative waypoint distances: ", distance)
-    return distance
+        opti.subject_to(self.time > 0)
+        opti.set_initial(self.time, self.scale_time)
+
+        self.dt = self.time / self.num_nodes
+
+    def _setup_initial_node(self, guess:np.ndarray):
+        opti = self.opti
+        current_node = ControlNode(
+            index=0,
+            state=ca.DM(self.scale_state) * opti.variable(self.state_dim),
+            control=ca.DM(self.scale_control) * opti.variable(self.control_dim),
+        )
+
+        opti.subject_to(current_node.state == guess[:self.state_dim, 0])
+        opti.set_initial(current_node.state, guess[:self.state_dim, 0])
+        opti.set_initial(current_node.control, guess[self.state_dim:, 0])
+
+        return current_node
+    
+    def _setup_variables(self, nodes:List[ControlNode]):
+        self.state = ca.hcat([nodes[i].state for i in range(self.num_nodes + 1)])
+        self.control = ca.hcat([nodes[i].control for i in range(self.num_nodes)])
+
+        if self.verbose:
+            print("State Shape: ", self.state.shape)
+            print("Control Shape: ", self.control.shape)
+
+    def _setup_objective(self):
+        self.opti.minimize(self.loss(time = self.time))
+
+    def setup(self, guess:np.ndarray):
+        self._setup_time()
+        nodes = [self._setup_initial_node(guess)]
+        
+        for index in range(1, self.num_nodes + 1):
+            current_node = self._setup_step(index, current_node, guess)
+            nodes.append(current_node)
+
+        self._setup_variables(nodes)
+        self._setup_objective()
+
+    def save_progress(self, iteration, states, controls, time_vals):
+        if self.h5file is not None:
+            try:
+                # Combine and iterate through the last 10 entries
+                for i, (state, control, time_val) in enumerate(zip(states[-10:], controls[-10:], time_vals[-10:])):
+                    grp_name = f'iteration_{iteration - 10 + i}'
+                    grp = self.h5file.require_group(grp_name)  # Creates or accesses the group
+                    grp.attrs['timestamp'] = time.time()
+
+                    # Create or overwrite datasets efficiently
+                    for name, data in zip(['state', 'control', 'time'], [state, control, time_val]):
+                        if name in grp:
+                            del grp[name]  # Overwrite if dataset already exists
+                        grp.create_dataset(name, data=data, compression='gzip')
+            except Exception as e:
+                print(f"Error saving progress: {e}")
+
+    def callback(self, iteration: int):
+        if self.plotter and iteration % 10 == 5:
+            trajectory_data = TrajectoryData(
+                state=np.array(self.opti.debug.value(self.state))[:, 1:],
+                control=np.array(self.opti.debug.value(self.control)),
+                time=np.array(self.opti.debug.value(self.time))
+            )
+            self.plotter.plot(trajectory_data=trajectory_data)
+            plt.draw()
+            self.plotter.figure.canvas.start_event_loop(0.0002)
+
+        # Save the progress every 10 iterations
+        if self.filepath is not None:
+            self.sol_state_list.append(self.opti.debug.value(self.state))
+            self.sol_control_list.append(self.opti.debug.value(self.control))
+            self.final_times.append(self.opti.debug.value(self.time))
+            if iteration % 10 == 0:
+                self.save_progress(iteration, self.sol_state_list, self.sol_control_list, self.final_times)
+
+        
 
 class ControlProblem:
     def __init__(
@@ -154,14 +267,14 @@ class ControlProblem:
 
     @dataclass
     class Node:
-        index:int
-        state:ca.MX
-        state_next:ca.MX
-        control:ca.MX
-        lam:ca.MX
-        lam_next:ca.MX
-        mu:ca.MX
-        nu:ca.MX
+        index:Optional[int] = None
+        state:Optional[ca.MX] = None
+        state_next:Optional[ca.MX] = None
+        control:Optional[ca.MX] = None
+        lam:Optional[ca.MX] = None
+        lam_next:Optional[ca.MX] = None
+        mu:Optional[ca.MX] = None
+        nu:Optional[ca.MX] = None
 
     def setup_opti_vars(self, 
                         scale_state = ca.vertcat(

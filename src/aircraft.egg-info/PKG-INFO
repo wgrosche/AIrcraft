@@ -1,4 +1,11 @@
 Metadata-Version: 2.2
 Name: aircraft
 Version: 0.1
+Summary: Aircraft trajectory optimization
+Author: grosche
 License-File: LICENSE
+Requires-Dist: numpy
+Requires-Dist: casadi
+Requires-Dist: matplotlib
+Requires-Dist: scipy
+Requires-Dist: h5py
