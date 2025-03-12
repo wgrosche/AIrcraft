@@ -863,7 +863,7 @@ if __name__ == '__main__':
         control = np.zeros(aircraft.num_controls)
         control[:3] = trim_state_and_control[aircraft.num_states:-3]
         control[0] = 0
-        control[1] = 0
+        control[1] = -1
         aircraft.com = np.array(trim_state_and_control[-3:])
     else:
         x0 = np.zeros(3)
@@ -877,6 +877,12 @@ if __name__ == '__main__':
         control[1] = 5
 
     dyn = aircraft.state_update
+    jacobian_elevator = ca.jacobian(aircraft.state_derivative(aircraft.state, aircraft.control), aircraft.control[1])
+    jacobian_func = ca.Function('jacobian_func', [aircraft.state, aircraft.control], [jacobian_elevator])
+    jacobian_elevator_val = jacobian_func(state, control)
+
+    print("Jacobian of state derivatives w.r.t. elevator:")
+    print(jacobian_elevator_val)
     dt = .01
     tf = 5
     state_list = np.zeros((aircraft.num_states, int(tf / dt)))

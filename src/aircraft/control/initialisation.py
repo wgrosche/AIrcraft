@@ -7,13 +7,14 @@ from scipy.spatial.transform import Rotation as R
 
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
+from typing import Optional
 
 """
 
 
 """
 
-def cumulative_distances(waypoints:np.ndarray, VERBOSE:bool = False):
+def cumulative_distances(waypoints:np.ndarray, verbose:bool = False):
     """
     Given a set of waypoints, calculate the distance between each waypoint.
 
@@ -34,7 +35,7 @@ def cumulative_distances(waypoints:np.ndarray, VERBOSE:bool = False):
     distances = np.linalg.norm(differences, axis=1)
     distance = np.cumsum(distances)
 
-    if VERBOSE: 
+    if verbose: 
         print("Cumulative waypoint distances: ", distance)
     return distance
 
@@ -379,6 +380,16 @@ def get_velocity_directions(path_points):
 
 
 class DubinsInitialiser:
+    """
+    TODO:
+    Initialises a waypoint traversal trajectory with the dubins shortest path.
+
+    implements the initialise method which returns a trajectory "guess" containing
+    guesses for state and control as well as (optionally) the waypoint variables lambda, mu and nu.
+
+    Control initialisation assumes bang-bang type control for turns and neutral controls otherwise.
+    
+    """
     def __init__(self, trajectory:TrajectoryConfiguration):
         self.waypoints = trajectory.waypoints.waypoints
         initial_state = trajectory.waypoints.initial_state
@@ -426,6 +437,28 @@ class DubinsInitialiser:
         print(len(self.dubins_path))
         # compute orientations, velocities and angular velocities
 
+    def waypoint_variable_guess(self):
+
+        num_waypoints = self.num_waypoints
+
+        lambda_guess = np.zeros((num_waypoints, self.num_nodes + 1))
+        mu_guess = np.zeros((num_waypoints, self.num_nodes))
+        nu_guess = np.zeros((num_waypoints, self.num_nodes))
+
+        i_wp = 0
+        for i in range(1, self.num_nodes):
+            if i > self.switch_var[i_wp]:
+                i_wp += 1
+
+            if ((i_wp == 0) and (i + 1 >= self.switch_var[0])) or i + 1 - self.switch_var[i_wp-1] >= self.switch_var[i_wp]:
+                mu_guess[i_wp, i] = 1
+
+            for j in range(num_waypoints):
+                if i + 1 >= self.switch_var[j]:
+                    lambda_guess[j, i] = 1
+
+        return (lambda_guess, mu_guess, nu_guess)
+
     @property
     def trajectory(self):
         pass
@@ -441,3 +474,194 @@ config = TrajectoryConfiguration(traj_dict)
 dubins_init = DubinsInitialiser(config)
 dubins_init.visualise()
 
+from aircraft.dynamics.dynamics import Aircraft, AircraftOpts
+from pathlib import Path
+def default_initialiser(aircraft:Aircraft, initial_state:Optional[np.ndarray] = None, mode:int = 1):
+
+    mode = 1
+    traj_dict = json.load(open('data/glider/problem_definition.json'))
+
+    trajectory_config = TrajectoryConfiguration(traj_dict)
+
+    aircraft_config = trajectory_config.aircraft
+
+    if mode == 0:
+        model_path = Path(NETWORKPATH) / 'model-dynamics.pth'
+        opts = AircraftOpts(nn_model_path=model_path, aircraft_config=aircraft_config)
+    elif mode == 1:
+        poly_path = Path(NETWORKPATH) / 'fitted_models_casadi.pkl'
+        opts = AircraftOpts(poly_path=poly_path, aircraft_config=aircraft_config, physical_integration_substeps=1)
+    elif mode == 2:
+        linear_path = Path(DATAPATH) / 'glider' / 'linearised.csv'
+        opts = AircraftOpts(linear_path=linear_path, aircraft_config=aircraft_config)
+
+    aircraft = Aircraft(opts = opts)
+
+    perturbation = False
+    
+    trim_state_and_control = [0, 0, 0, 30, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
+
+    if trim_state_and_control is not None:
+        state = ca.vertcat(trim_state_and_control[:aircraft.num_states])
+        control = np.zeros(aircraft.num_controls)
+        control[:3] = trim_state_and_control[aircraft.num_states:-3]
+        control[0] = 0
+        control[1] = 0
+        aircraft.com = np.array(trim_state_and_control[-3:])
+    else:
+        x0 = np.zeros(3)
+        v0 = ca.vertcat([60, 0, 0])
+        # would be helpful to have a conversion here between actual pitch, roll and yaw angles and the Quaternion q0, so we can enter the angles in a sensible way.
+        q0 = Quaternion(ca.vertcat(0, 0, 0, 1))
+        omega0 = np.array([0, 0, 0])
+        state = ca.vertcat(x0, v0, q0, omega0)
+        control = np.zeros(aircraft.num_controls)
+        control[0] = +0
+        control[1] = 5
+
+    dyn = aircraft.state_update
+    dt = .01
+    tf = 5
+    state_list = np.zeros((aircraft.num_states, int(tf / dt)))
+    t = 0
+    ele_pos = True
+    ail_pos = True
+    control_list = np.zeros((aircraft.num_controls, int(tf / dt)))
+    for i in tqdm(range(int(tf / dt)), desc = 'Simulating Trajectory:'):
+        if np.isnan(state[0]):
+            print('Aircraft crashed')
+            break
+        else:
+            state_list[:, i] = state.full().flatten()
+            control_list[:, i] = control
+            state = dyn(state, control, dt)
+                    
+            t += 1
+            
+
+
+
+
+    def state_guess(self, trajectory:TrajectoryConfiguration):
+        """
+        Initial guess for the state variables.
+        """
+        state_dim = self.aircraft.num_states
+        initial_pos = trajectory.waypoints.initial_position
+        initial_orientation = trajectory.waypoints.initial_state[6:10]
+        velocity_guess = trajectory.waypoints.default_velocity
+        waypoints = self.waypoints[1:, :]
+        
+        x_guess = np.zeros((state_dim, self.num_nodes + 1))
+        distance = self.distances
+    
+        self.r_glide = 10
+        
+        direction_guess = (waypoints[0, :] - initial_pos)
+        vel_guess = velocity_guess *  direction_guess / np.linalg.norm(direction_guess)
+
+        if self.VERBOSE:
+            print("Cumulative Waypoint Distances: ", distance)
+            print("Predicted Switching Nodes: ", self.switch_var)
+            print("Direction Guess: ", direction_guess)
+            print("Velocity Guess: ", vel_guess)
+            print("Initial Position: ", initial_pos)
+            print("Waypoints: ", waypoints)
+
+        x_guess[:3, 0] = initial_pos
+        x_guess[3:6, 0] = vel_guess
+
+
+        rotation, _ = R.align_vectors(np.array(direction_guess).reshape(1, -1), [[1, 0, 0]])
+
+        # Check if the aircraft is moving in the opposite direction
+        if np.dot(direction_guess.T, [1, 0, 0]) < 0:
+            flip_y = R.from_euler('y', 180, degrees=True)
+            rotation = rotation * flip_y
+
+        # Get the euler angles
+        euler = rotation.as_euler('xyz')
+        print("Euler: ", euler)
+        # If roll is close to 180, apply correction
+        # if abs(euler[0]) >= np.pi/2: 
+            # Create rotation around x-axis by 180 degrees
+        roll_correction = R.from_euler('x', 180, degrees=True)
+        
+        x_guess[6:10, 0] = (rotation).as_quat()
+
+        # z_flip = R.from_euler('x', 180, degrees=True)
+
+        for i, waypoint in enumerate(waypoints):
+            if len(self.trajectory.waypoints.waypoint_indices) < 3:
+                    waypoint[2] = initial_pos[2] + self.distances[i] / self.r_glide
+        i_wp = 0
+        for i in range(self.num_nodes):
+            # switch condition
+            if i > self.switch_var[i_wp]:
+                i_wp += 1
+                
+            if i_wp == 0:
+                wp_last = initial_pos
+            else:
+                wp_last = waypoints[i_wp-1, :]
+            wp_next = waypoints[i_wp, :]
+
+            if i_wp > 0:
+                interpolation = (i - self.switch_var[i_wp-1]) / (self.switch_var[i_wp] - self.switch_var[i_wp-1])
+            else:
+                interpolation = i / self.switch_var[0]
+
+            
+
+            # extend position guess
+            pos_guess = (1 - interpolation) * wp_last + interpolation * wp_next
+
+            x_guess[:3, i + 1] = np.reshape(pos_guess, (3,))
+            
+
+            direction = (wp_next - wp_last) / ca.norm_2(wp_next - wp_last)
+            vel_guess = velocity_guess * direction
+            x_guess[3:6, i + 1] = np.reshape(velocity_guess * direction, (3,))
+
+            rotation, _ = R.align_vectors(np.array(direction).reshape(1, -1), [[1, 0, 0]])
+
+            # Check if the aircraft is moving in the opposite direction
+            if np.dot(direction.T, [1, 0, 0]) < 0:
+                flip_y = R.from_euler('y', 180, degrees=True)
+                rotation = rotation * flip_y
+
+            # Get the euler angles
+            euler = rotation.as_euler('xyz')
+            # print("Euler: ", euler)
+            # If roll is close to 180, apply correction
+            # if abs(euler[0]) >= np.pi/2: 
+                # Create rotation around x-axis by 180 degrees
+            # roll_correction = R.from_euler('x', 180, degrees=True)
+                # Apply correction
+            # rotation = rotation * roll_correction
+
+
+            x_guess[6:10, i + 1] = (rotation).as_quat()
+
+        # x_guess = self.smooth_trajectory(x_guess)
+
+        time_guess = distance[-1] / velocity_guess
+        # if self.VERBOSE:
+        #     print("State Guess: ", x_guess)
+        #     plotter = TrajectoryPlotter(self.aircraft)
+        #     trajectory_data = TrajectoryData(
+        #         state = np.array(x_guess),
+        #         # time = np.array(time_guess)
+        #     )
+            
+        #     plotter.plot(trajectory_data = trajectory_data)
+        #     plt.pause(0.001)
+        #     # fig = plt.figure()
+        #     # ax = fig.add_subplot(111, projection = '3d')
+        #     # ax.plot(x_guess[4, :], x_guess[5, :], x_guess[6, :])
+            
+        #     plt.show(block = True)
+        
+        
+        return x_guess, time_guess
+    

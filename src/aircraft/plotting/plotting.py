@@ -428,6 +428,7 @@ class TrajectoryPlotter:
         assert isinstance(trajectory_data, TrajectoryData), "trajectory_data must be a TrajectoryData object or a filepath"
 
         # self.axes.clear()
+        self.figure.suptitle(f"Final Time: {trajectory_data.time}")
         self.plot_state(trajectory_data)
         self.plot_control(trajectory_data)
         self.plot_progress_variables(trajectory_data)

@@ -18,27 +18,44 @@ else:
     DEVICE = torch.device("cpu")
 
 
+# default_solver_options = {'ipopt': {'max_iter': 10000,
+#                                     'tol': 1e-2,
+#                                     'acceptable_tol': 1e-2,
+#                                     'acceptable_obj_change_tol': 1e-2,
+#                                     'hessian_approximation': 'limited-memory'
+#                                     },
+#                         'print_time': 10,
+#                         # 'expand' : True
+#                         }
 
 default_solver_options = {'ipopt': {'max_iter': 10000,
                                     'tol': 1e-2,
                                     'acceptable_tol': 1e-2,
                                     'acceptable_obj_change_tol': 1e-2,
-                                    'hessian_approximation': 'limited-memory'
+                                    'hessian_approximation': 'exact',
+                                    'linear_solver': 'mumps',
+                                    'mumps_mem_percent': 10000,      # Increase memory allocation percentage
+                                    'mumps_pivtol': 1e-6,           # Pivot tolerance (can help with numerical stability)
+                                    'mumps_pivtolmax': 1e-2,        # Maximum pivot tolerance
+                                    'mumps_permuting_scaling': 7,   # Use a more robust scaling strategy
+                                    'max_cpu_time': 1e4             # Increase the maximum CPU time
                                     },
                         'print_time': 10,
-                        # 'expand' : True
+                        'expand': True
+
                         }
 
 
-control_dict = {'scale_state' : np.array(
+import casadi as ca
+control_dict = {'scale_state' : ca.vertcat(
                             [1, 1, 1, 1],
                             [1e3, 1e3, 1e3],
                             [1e2, 1e2, 1e2],
                             [1, 1, 1]
-                            ),
-                'scale_control' : np.array(
-                            5, 5, 5,
-                            [1e2, 1e2, 1e2],
-                            [1, 1, 1],
-                            [1e2, 1e2, 1e2]
-                            )}
+                            ), "max_control_nodes" : 100}
+                # 'scale_control' : ca.vertcat(
+                #             5, 5, 5,
+                #             [1e2, 1e2, 1e2],
+                #             [1, 1, 1],
+                #             [1e2, 1e2, 1e2]
+                #             )}
