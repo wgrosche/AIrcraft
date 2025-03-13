@@ -32,8 +32,10 @@ default_solver_options = {'ipopt': {'max_iter': 10000,
                                     'tol': 1e-4,
                                     'acceptable_tol': 1e-3,
                                     'acceptable_obj_change_tol': 1e-3,
-                                    'hessian_approximation': 'exact',
+                                    'hessian_approximation': 'limited-memory',#'exact',
                                     'linear_solver': 'mumps',
+                                    # 'jacobian_approximation': 'exact',  # Use exact Jacobian as well
+                                    # 'calc_lam_p': True,
                                     'mumps_mem_percent': 10000,      # Increase memory allocation percentage
                                     'mumps_pivtol': 1e-6,           # Pivot tolerance (can help with numerical stability)
                                     'mumps_pivtolmax': 1e-2,        # Maximum pivot tolerance

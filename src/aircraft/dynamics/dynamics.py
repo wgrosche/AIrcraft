@@ -29,7 +29,7 @@ print(DEVICE)
 @dataclass
 class AircraftOpts:
     epsilon:float = 1e-6
-    physical_integration_substeps:int = 1
+    physical_integration_substeps:int = 10
     linear_path:Optional[Path] = None
     poly_path:Optional[Path] = None
     nn_model_path:Optional[Path] = None
@@ -627,26 +627,59 @@ class Aircraft:
         self._q_frd_ned_dot = (0.5 * q_frd_ecf * omega_frd_ned).coeffs()
         return ca.Function('q_frd_ecf_dot', 
             [self.state, self.control], [self._q_frd_ned_dot])
+    # @property
+    # def q_frd_ned_update(self):
+    #     dt = self.dt_sym
+    #     q_frd_ned = Quaternion(self._q_frd_ned)
+    #     omega_frd_ned = self._omega_frd_ned  # Assume this is a 3D vector
+
+    #     theta = ca.norm_2(omega_frd_ned)  # Angular velocity magnitude
+    #     half_theta = 0.5 * dt * theta
+
+    #     # Compute exponential map terms
+    #     exp_q = ca.vertcat(ca.if_else(theta > 1e-6,  # Avoid division by zero
+    #                                 ca.sin(half_theta) * omega_frd_ned / theta,
+    #                                 ca.MX.zeros(3, 1)),# Vector part, 
+    #                                 ca.cos(half_theta))   # Scalar part
+
+    #     # Compute the updated quaternion
+    #     q_next = Quaternion.product(exp_q, q_frd_ned.coeffs())
+
+    #     return ca.Function('q_frd_ned_update',
+    #                     [self.state, self.control, dt], [q_next])
+
     @property
     def q_frd_ned_update(self):
         dt = self.dt_sym
         q_frd_ned = Quaternion(self._q_frd_ned)
         omega_frd_ned = self._omega_frd_ned  # Assume this is a 3D vector
 
-        theta = ca.norm_2(omega_frd_ned)  # Angular velocity magnitude
+        # Angular velocity magnitude
+        theta = ca.norm_2(omega_frd_ned)  
         half_theta = 0.5 * dt * theta
 
-        # Compute exponential map terms
-        exp_q = ca.vertcat(ca.if_else(theta > 1e-6,  # Avoid division by zero
-                                    ca.sin(half_theta) * omega_frd_ned / theta,
-                                    ca.MX.zeros(3, 1)),# Vector part, 
-                                    ca.cos(half_theta))   # Scalar part
+        # Use Taylor series expansion for small angles to improve stability
+        sin_half_theta = ca.if_else(theta > 1e-6, 
+                                    ca.sin(half_theta), 
+                                    half_theta)  # Approximate sin(x) ≈ x for small x
+        cos_half_theta = ca.if_else(theta > 1e-6, 
+                                    ca.cos(half_theta), 
+                                    1 - (half_theta ** 2) / 2)  # Approximate cos(x) ≈ 1 - x^2/2
 
-        # Compute the updated quaternion
+        # Normalized axis of rotation (handle division by zero safely)
+        axis = ca.if_else(theta > 1e-6, 
+                        omega_frd_ned / theta, 
+                        ca.MX.zeros(3, 1))
+
+        # Compute exponential map terms (quaternion)
+        exp_q = ca.vertcat(sin_half_theta * axis, cos_half_theta)
+
+        # Compute the updated quaternion and normalize it
         q_next = Quaternion.product(exp_q, q_frd_ned.coeffs())
+        q_next = q_next / ca.norm_2(q_next)  # Ensure unit norm
 
-        return ca.Function('q_frd_ned_update',
-                        [self.state, self.control, dt], [q_next])
+        return ca.Function('q_frd_ned_update', [self.state, self.control, dt], [q_next])
+
 
 
     @property
@@ -713,31 +746,64 @@ class Aircraft:
             [self._state_derivative], ['x', 'u'], ['x_dot']
             )
     
+    # def state_step(self, state, control, dt_scaled):
+    #     """ 
+    #     Runge kutta step for state update. Due to the multiplicative nature
+    #     of the quaternion integration we cannot rely on conventional 
+    #     integerators. 
+    #     """
+    #     state_derivative = self.state_derivative
+    #     k1 = state_derivative(state, control)
+    #     state_k1 = state + dt_scaled / 2 * k1
+
+    #     k2 = state_derivative(state_k1, control)
+    #     state_k2 = state + dt_scaled / 2 * k2
+
+
+    #     k3 = state_derivative(state_k2, control)
+    #     state_k3 = state + dt_scaled * k3
+
+    #     k4 = state_derivative(state_k3, control)
+
+    #     state = state + dt_scaled / 6 * (k1 + 2 * k2 + 2 * k3 + k4)
+
+    #     state[6:10] = self.q_frd_ned_update(state, control, dt_scaled)
+
+
+    #     return state
+
     def state_step(self, state, control, dt_scaled):
         """ 
-        Runge kutta step for state update. Due to the multiplicative nature
-        of the quaternion integration we cannot rely on conventional 
-        integerators. 
+        Runge-Kutta step for state update.
+        Due to the multiplicative nature of the quaternion integration,
+        we cannot rely on conventional integrators.
         """
         state_derivative = self.state_derivative
+
+        # Precompute scaled timestep constants
+        half_dt = dt_scaled / 2
+        sixth_dt = dt_scaled / 6
+
+        # Runge-Kutta intermediate steps
         k1 = state_derivative(state, control)
-        state_k1 = state + dt_scaled / 2 * k1
+        state_k1 = state + half_dt * k1
 
         k2 = state_derivative(state_k1, control)
-        state_k2 = state + dt_scaled / 2 * k2
-
+        state_k2 = state + half_dt * k2
 
         k3 = state_derivative(state_k2, control)
         state_k3 = state + dt_scaled * k3
 
         k4 = state_derivative(state_k3, control)
 
-        state = state + dt_scaled / 6 * (k1 + 2 * k2 + 2 * k3 + k4)
+        # Aggregate RK4 step
+        state = state + sixth_dt * (k1 + 2 * k2 + 2 * k3 + k4)
 
+        # Quaternion update to maintain unit norm
         state[6:10] = self.q_frd_ned_update(state, control, dt_scaled)
 
-
         return state
+
 
 
     @property
@@ -750,17 +816,17 @@ class Aircraft:
         control_sym = self.control
         num_steps = self.STEPS
 
-        if num_steps == 1:
-            state = self.state_step(state, control_sym, dt)
-        else:
+        # if num_steps == 1:
+        #     state = self.state_step(state, control_sym, dt)
+        # else:
 
-            dt_scaled = dt / num_steps
-            input_to_fold = ca.vertcat(self.state, self.control, dt)
-            fold_output = ca.vertcat(self.state_step(state, control_sym, dt_scaled), control_sym, dt)
-            folded_update = ca.Function('folder', [input_to_fold], [fold_output])
-            
-            F = folded_update.fold(num_steps)
-            state = F(input_to_fold)[:self.num_states]
+        dt_scaled = dt / num_steps
+        input_to_fold = ca.vertcat(self.state, self.control, dt)
+        fold_output = ca.vertcat(self.state_step(state, control_sym, dt_scaled), control_sym, dt)
+        folded_update = ca.Function('folder', [input_to_fold], [fold_output])
+        
+        F = folded_update.fold(num_steps)
+        state = F(input_to_fold)[:self.num_states]
 
         return ca.Function(
             'state_update', 
@@ -856,14 +922,15 @@ if __name__ == '__main__':
 
     perturbation = False
     
-    trim_state_and_control = [0, 0, 0, 30, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
+    trim_state_and_control = [0, 0, 0, 50, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
+    # trim_state_and_control = [0, 0, 0, 30, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
 
     if trim_state_and_control is not None:
         state = ca.vertcat(trim_state_and_control[:aircraft.num_states])
         control = np.zeros(aircraft.num_controls)
         control[:3] = trim_state_and_control[aircraft.num_states:-3]
-        control[0] = 1
-        control[1] = -1
+        control[0] = 0
+        control[1] = 0
         aircraft.com = np.array(trim_state_and_control[-3:])
     else:
         x0 = np.zeros(3)

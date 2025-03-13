@@ -13,6 +13,9 @@ import matplotlib.pyplot as plt
 
 perturbation = False
 
+
+
+
 # state around which to calculate the stability
 trim_state_and_control = [0, 0, 0, 30, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
 
@@ -82,7 +85,36 @@ def main(mode:Optional[int] = None) -> None:
     eigenvalues_array = np.array(eigenvalues_list)
     condition_numbers_array = np.array(condition_numbers)
     print(condition_numbers_array)
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+
+    def plot_control_surface_condition_numbers(state, control, control_ranges=(-5, 5), num_points=20):
+        """Plot condition numbers for different control surface deflections"""
+        # Create meshgrid for aileron and elevator deflections
+        aileron_range = np.linspace(control_ranges[0], control_ranges[1], num_points)
+        elevator_range = np.linspace(control_ranges[0], control_ranges[1], num_points)
+        ail_mesh, ele_mesh = np.meshgrid(aileron_range, elevator_range)
+        
+        # Calculate condition numbers for each combination
+        condition_numbers = np.zeros_like(ail_mesh)
+        for i in range(num_points):
+            for j in range(num_points):
+                control[0] = ail_mesh[i,j]  # aileron
+                control[1] = ele_mesh[i,j]  # elevator
+                J_val = J_func(state, control, 0.01)
+                condition_numbers[i,j] = max(np.abs(np.linalg.eigvals(J_val)))#np.linalg.cond(J_val)
+
+        
+        # Create 3D surface plot
+        fig = plt.figure(figsize=(10, 8))
+        ax = fig.add_subplot(111, projection='3d')
+        surf = ax.plot_surface(ail_mesh, ele_mesh, condition_numbers, cmap='viridis')
+        
+        ax.set_xlabel('Aileron Deflection (deg)')
+        ax.set_ylabel('Elevator Deflection (deg)')
+        ax.set_zlabel('Max Eigenvalue')
+        fig.colorbar(surf)
+        
+        plt.show(block=True)
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(12, 12))
 
 
     # First subplot - Eigenvalues
@@ -122,8 +154,21 @@ def main(mode:Optional[int] = None) -> None:
     ax2.legend()
     ax2.grid()
 
+    # Condition Numbers Plot
+
+    ax3.plot(timesteps, max_eigenvalues, marker='o', linestyle='-')
+    ax3.set_ylabel("Condition Number")
+    ax3.set_title("Condition of Perturbed Jacobian")
+    ax3.legend()
+    ax3.grid()
+
+    # Control Deflected Condition Numbers Plot
+
     fig.tight_layout()
     plt.show(block = True)
+
+
+    plot_control_surface_condition_numbers(state, control)
 
 
 if __name__ == '__main__':
