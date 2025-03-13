@@ -624,8 +624,8 @@ def main():
     aircraft = Aircraft(opts = opts)
     trim_state_and_control = [0, 0, -200, 50, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
     
-    num_nodes = 300
-    time_guess = 3
+    num_nodes = 100
+    time_guess = 10
     dt = time_guess / (num_nodes)
 
     guess =  np.zeros((aircraft.num_states + aircraft.num_controls, num_nodes + 1))
@@ -673,5 +673,5 @@ def main():
 
 
 if __name__ == "__main__":
-    # main()
-    minimal_quad_test()
+    main()
+    # minimal_quad_test()
