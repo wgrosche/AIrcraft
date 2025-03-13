@@ -27,24 +27,35 @@ from dataclasses import dataclass
 print(DEVICE)
 
 @dataclass
-class AircraftOpts:
+class SixDOFOpts:
     epsilon:float = 1e-6
     physical_integration_substeps:int = 10
+    gravity:ca.MX = ca.vertcat(0, 0, 9.81)
+    mass:float = 1.0
+
+@dataclass
+class AircraftOpts(SixDOFOpts):
     linear_path:Optional[Path] = None
     poly_path:Optional[Path] = None
     nn_model_path:Optional[Path] = None
     aircraft_config:Optional[AircraftConfiguration] = None
     realtime:bool = False # Work in progress implementation of faster nn 
     
+    def __post_init__(self):
+        if self.aircraft_config is not None:
+            self.mass = self.aircraft_config.mass
+    
 class SixDOF(ABC):
     """
     Baseclass for 6DOF Dynamics Simulation in a NED system
     """
-    def __init__(self, opts:dict = {}):
-        self.gravity = ca.vertcat(0, 0, 9.81)
+    def __init__(self, opts:Optional[SixDOFOpts] = None):
+        if not opts:
+            opts = SixDOFOpts()
+        self.gravity = opts.gravity
         self.dt_sym = ca.MX.sym('dt')
-        self.epsilon = opts.get('epsilon', 10e-6)
-        self.mass = opts.get('mass', 1.0)
+        self.epsilon = opts.epsilon
+        self.mass = opts.mass
         self.com = None
 
     @property
@@ -896,8 +907,6 @@ class AircraftTrim(Aircraft):
         inertia_tensor = aero_inertia_tensor + mass * com_term
 
         return inertia_tensor
-
-
 
 if __name__ == '__main__':
     from aircraft.plotting.plotting import TrajectoryPlotter
