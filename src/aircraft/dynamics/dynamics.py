@@ -40,23 +40,30 @@ class AircraftOpts(SixDOFOpts):
     nn_model_path:Optional[Path] = None
     aircraft_config:Optional[AircraftConfiguration] = None
     realtime:bool = False # Work in progress implementation of faster nn 
+    stall_angle_alpha:Tuple[float] = (np.deg2rad(-10), np.deg2rad(10))
+    stall_angle_beta:Tuple[float] = (np.deg2rad(-10), np.deg2rad(10))
     
     def __post_init__(self):
         if self.aircraft_config is not None:
             self.mass = self.aircraft_config.mass
     
+
 class SixDOF(ABC):
     """
     Baseclass for 6DOF Dynamics Simulation in a NED system
     """
-    def __init__(self, opts:Optional[SixDOFOpts] = None):
-        if not opts:
-            opts = SixDOFOpts()
+    def __init__(self, opts:Optional[SixDOFOpts] = SixDOFOpts()):
         self.gravity = opts.gravity
         self.dt_sym = ca.MX.sym('dt')
         self.epsilon = opts.epsilon
         self.mass = opts.mass
         self.com = None
+
+    def _ensure_initialized(self, *properties):
+        """Ensure properties are initialized by calling them"""
+        for prop in properties:
+            if not hasattr(self, f"_{prop}"):
+                getattr(self, prop)
 
     @property
     def state(self) -> ca.MX:
@@ -124,8 +131,7 @@ class SixDOF(ABC):
     
     @property
     def airspeed(self):
-        if not hasattr(self, '_v_frd_rel'):
-            self.v_frd_rel
+        self._ensure_initialized('v_frd_rel')
         self._airspeed = ca.sqrt(ca.sumsqr(self._v_frd_rel) + self.epsilon)
 
         return ca.Function('airspeed', [self.state, self.control], 
@@ -133,8 +139,7 @@ class SixDOF(ABC):
     
     @property
     def alpha(self):
-        if not hasattr(self, '_v_frd_rel'):
-            self.v_frd_rel
+        self._ensure_initialized('v_frd_rel')
         v_frd_rel = self._v_frd_rel
         self._alpha = ca.atan2(v_frd_rel[2], v_frd_rel[0] + self.epsilon)
         return ca.Function('alpha', [self.state, self.control], [self._alpha])    
@@ -159,11 +164,7 @@ class SixDOF(ABC):
 
     @property
     def phi_dot(self):
-        if not hasattr(self, '_phi'):
-            self.phi
-
-        if not hasattr(self, '_theta'):
-            self.theta
+        self._ensure_initialized('phi', 'theta')
 
         phi = self._phi
         theta = self._theta
@@ -175,8 +176,7 @@ class SixDOF(ABC):
 
     @property
     def theta_dot(self):
-        if not hasattr(self, '_phi'):
-            self.phi
+        self._ensure_initialized('phi')
         phi = self._phi
         q, r = self._omega_frd_ned[1], self._omega_frd_ned[2]
 
@@ -185,10 +185,8 @@ class SixDOF(ABC):
 
     @property
     def psi_dot(self):
-        if not hasattr(self, '_phi'):
-            self.phi
-        if not hasattr(self, '_theta'):
-            self.theta
+
+        self._ensure_initialized('phi', 'theta')
         phi = self._phi
         theta = self._theta
         
@@ -199,10 +197,7 @@ class SixDOF(ABC):
 
     @property
     def beta(self):
-        if not hasattr(self, '_v_frd_rel'):
-            self.v_frd_rel
-        if not hasattr(self, '_airspeed'):
-            self.airspeed
+        self._ensure_initialized('v_frd_rel', 'airspeed')
 
         v_frd_rel = self._v_frd_rel
         self._beta = ca.asin(v_frd_rel[1] / self._airspeed)
@@ -210,8 +205,7 @@ class SixDOF(ABC):
 
     @property
     def qbar(self):
-        if not hasattr(self, '_v_frd_rel'):
-            self.v_frd_rel
+        self._ensure_initialized('v_frd_rel')
         self._qbar = 0.5 * 1.225 * ca.dot(self._v_frd_rel, self._v_frd_rel)
         return ca.Function('qbar', [self.state, self.control], [self._qbar])
 
@@ -246,10 +240,7 @@ class SixDOF(ABC):
 
     @property
     def moments_frd(self):
-        if not hasattr(self, '_moments_aero_frd'):
-            self.moments_aero_frd
-        if not hasattr(self, '_moments_from_forces_frd'):
-            self.moments_from_forces_frd
+        self._ensure_initialized('moments_aero_frd', 'moments_from_forces_frd')
         self._moments_frd = self._moments_aero_frd + self._moments_from_forces_frd
         
         return ca.Function('moments_frd', 
@@ -612,8 +603,7 @@ class Aircraft(SixDOF):
         """
         Includes changed angle of attack due to pitch rate
         """
-        if not hasattr(self, '_v_frd_rel'):
-            self.v_frd_rel
+        self._ensure_initialized('v_frd_rel')
         v_frd_rel = self._v_frd_rel
         self._elevator_alpha = ca.atan2(v_frd_rel[2] + self.rudder_moment_arm * self._omega_frd_ned[1], v_frd_rel[0] + self.EPSILON)
         return ca.Function('elevator_alpha', [self.state, self.control], [self._elevator_alpha])
@@ -624,8 +614,7 @@ class Aircraft(SixDOF):
         """
         Includes changed angle of attack due to roll rate
         """
-        if not hasattr(self, '_v_frd_rel'):
-            self.v_frd_rel
+        self._ensure_initialized('_v_frd_rel')
         v_frd_rel = self._v_frd_rel
         self._left_wing_alpha = ca.atan2(v_frd_rel[2] - self.b * self._omega_frd_ned[0] / 4, v_frd_rel[0] + self.EPSILON)
 
@@ -637,8 +626,7 @@ class Aircraft(SixDOF):
         """
         Includes changed angle of attack due to roll rate
         """
-        if not hasattr(self, '_v_frd_rel'):
-            self.v_frd_rel
+        self._ensure_initialized('v_frd_rel')
         v_frd_rel = self._v_frd_rel
         self._right_wing_alpha = ca.atan2(v_frd_rel[2] + self.b * self._omega_frd_ned[0] / 4, v_frd_rel[0] + self.EPSILON)
 
@@ -647,10 +635,7 @@ class Aircraft(SixDOF):
     
     @property
     def rudder_beta(self):
-        if not hasattr(self, '_v_frd_rel'):
-            self.v_frd_rel
-        if not hasattr(self, '_airspeed'):
-            self.airspeed
+        self._ensure_initialized('v_frd_rel', 'airspeed')
 
         
         v_frd_rel = self._v_frd_rel
@@ -663,8 +648,7 @@ class Aircraft(SixDOF):
     
     @property
     def left_wing_qbar(self):
-        if not hasattr(self, '_v_frd_rel'):
-            self.v_frd_rel
+        self._ensure_initialized('v_frd_rel')
         
         r = self._omega_frd_ned[2]
         new_vel = self._v_frd_rel[0] 
@@ -675,8 +659,7 @@ class Aircraft(SixDOF):
     
     @property
     def right_wing_qbar(self):
-        if not hasattr(self, '_v_frd_rel'):
-            self.v_frd_rel
+        self._ensure_initialized('v_frd_rel')
 
         r = self._omega_frd_ned[2]
         new_vel = self._v_frd_rel[0] 
@@ -693,44 +676,19 @@ class Aircraft(SixDOF):
 
         To calculate damping factors the effective velocities (under the angular rotation) of the relevant lifting surfaces are calculated and passed as inputs to the model.
         """
-        if not hasattr(self, '_qbar'):
-            self.qbar
-        if not hasattr(self, '_alpha'):
-            self.alpha
-        if not hasattr(self, '_beta'):
-            self.beta
-        if not hasattr(self, '_elevator_alpha'):
-            self.elevator_alpha
-        if not hasattr(self, '_right_wing_alpha'):
-            self.right_wing_alpha
-        if not hasattr(self, '_left_wing_alpha'):
-            self.left_wing_alpha
-        if not hasattr(self, '_right_wing_qbar'):
-            self.right_wing_qbar
-        if not hasattr(self, '_left_wing_qbar'):
-            self.left_wing_qbar
-        if not hasattr(self, '_rudder_beta'):
-            self.rudder_beta
 
-        rudder_beta = self._rudder_beta
-        left_wing_qbar = self._left_wing_qbar
-        right_wing_qbar = self._right_wing_qbar
-        left_wing_alpha = self._left_wing_alpha
-        right_wing_alpha = self._right_wing_alpha
-        elevator_alpha = self._elevator_alpha
-        
-        qbar = self._qbar
-        alpha = self._alpha
-        beta = self._beta
-        aileron = self._aileron
-        elevator = self._elevator
+        self._ensure_initialized(
+            'qbar', 'alpha', 'beta', 'elevator_alpha', 
+            'right_wing_alpha', 'left_wing_alpha', 
+            'right_wing_qbar', 'left_wing_qbar', 'rudder_beta'
+        )
 
         inputs = ca.vertcat(
-            qbar, 
-            alpha, 
-            beta, 
-            aileron, 
-            elevator
+            self._qbar, 
+            self._alpha, 
+            self._beta, 
+            self._aileron, 
+            self._elevator
             )
         
         if self.LINEAR:
@@ -741,18 +699,18 @@ class Aircraft(SixDOF):
 
 
 
-            # # roll rate contribution with terms due to changed angle of attack and airspeed
+            # roll rate contribution with terms due to changed angle of attack and airspeed
             left_wing_inputs = ca.vertcat(
-                left_wing_qbar, # may want to use qbar here instead
-                left_wing_alpha,
+                self._left_wing_qbar, # may want to use qbar here instead
+                self._left_wing_alpha,
                 0,
                 0,
                 0
             )
             left_wing_lift_coeff = ca.vertcat(*[self.fitted_models['casadi_functions'][i](left_wing_inputs) for i in self.fitted_models['casadi_functions'].keys()])
             right_wing_inputs = ca.vertcat(
-                right_wing_qbar, # may want to use qbar here instead
-                right_wing_alpha,
+                self._right_wing_qbar, # may want to use qbar here instead
+                self._right_wing_alpha,
                 0,
                 0,
                 0
@@ -762,22 +720,22 @@ class Aircraft(SixDOF):
             outputs[3] += self.b / 4 * (right_wing_lift_coeff[2] / 2 - left_wing_lift_coeff[2] / 2) # span over 4 assumes wing lift attacks at centre of wing, coeffs/2 to adjust reference area as the lift of each wing should be halved relative to the whole plane
             # pitch coefficient contribution due to pitch rate
             elevator_inputs = ca.vertcat(
-                qbar,
-                elevator_alpha,
-                beta,
-                aileron,
-                elevator
+                self._qbar,
+                self._elevator_alpha,
+                self._beta,
+                self._aileron,
+                self._elevator
             )
             elevator_damped_pitch_coeff = ca.vertcat(*[self.fitted_models['casadi_functions'][i](elevator_inputs) for i in self.fitted_models['casadi_functions'].keys()])
             outputs[4] = elevator_damped_pitch_coeff[4]
 
             # yaw coefficient contribution due to yaw rate
             rudder_inputs = ca.vertcat(
-                qbar,
-                alpha,
-                rudder_beta,
-                aileron,
-                elevator
+                self._qbar,
+                self._alpha,
+                self._rudder_beta,
+                self._aileron,
+                self._elevator
             )  
             rudder_damped_yaw_coeff = ca.vertcat(*[self.fitted_models['casadi_functions'][i](rudder_inputs) for i in self.fitted_models['casadi_functions'].keys()])
             outputs[5] = rudder_damped_yaw_coeff[5]
@@ -793,8 +751,8 @@ class Aircraft(SixDOF):
 
         steepness = 10
 
-        alpha_scaling = 1 / (1 + ca.exp(steepness * (ca.fabs(alpha) - stall_angle_alpha)))
-        beta_scaling = 1 / (1 + ca.exp(steepness * (ca.fabs(beta) - stall_angle_beta)))
+        alpha_scaling = 1 / (1 + ca.exp(steepness * (ca.fabs(self._alpha) - stall_angle_alpha)))
+        beta_scaling = 1 / (1 + ca.exp(steepness * (ca.fabs(self._beta) - stall_angle_beta)))
         
         outputs[2] *= alpha_scaling
         outputs[2] *= beta_scaling
@@ -813,10 +771,7 @@ class Aircraft(SixDOF):
     
     @property
     def _forces_frd(self):
-        if not hasattr(self, '_coefficients'):
-            self.coefficients
-        if not hasattr(self, '_qbar'):
-            self.qbar
+        self._ensure_initialized('coefficients', 'qbar')
 
         forces = self._coefficients[:3] * self._qbar * self.S
 
@@ -838,10 +793,7 @@ class Aircraft(SixDOF):
     
     @property
     def _moments_aero_frd(self):
-        if not hasattr(self, '_coefficients'):
-            self.coefficients
-        if not hasattr(self, '_qbar'):
-            self.qbar
+        self._ensure_initialized('coefficients', 'qbar')
         moments_aero = (self._coefficients[3:] * self._qbar * self.S 
                         * ca.vertcat(self.b, self.c, self.b))
 

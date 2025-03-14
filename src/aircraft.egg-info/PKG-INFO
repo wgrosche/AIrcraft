@@ -3,6 +3,7 @@ Name: aircraft
 Version: 0.1
 Summary: Aircraft trajectory optimization
 Author: grosche
+Project-URL: Homepage, https://github.com/wgrosche/AIrcraft
 License-File: LICENSE
 Requires-Dist: numpy
 Requires-Dist: casadi

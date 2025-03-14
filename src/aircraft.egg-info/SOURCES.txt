@@ -11,11 +11,8 @@ src/aircraft.egg-info/requires.txt
 src/aircraft.egg-info/top_level.txt
 src/aircraft/control/__init__.py
 src/aircraft/control/control.py
-src/aircraft/control/control_minimal_dynamics copy.py
-src/aircraft/control/control_minimal_dynamics.py
 src/aircraft/control/initialisation.py
 src/aircraft/control/mhe.py
-src/aircraft/control/minimal.py
 src/aircraft/control/moving_horizon.py
 src/aircraft/control/planner.py
 src/aircraft/control/rpg_optimise.py

@@ -599,6 +599,124 @@ class Quadrotor:
             ['x', 'u', 'dt'], ['xn'])
         return integrator
     
+class MHE(ControlProblem):
+    def __init__(self, reference_trajectory):
+        super().__init__()
+        self.reference_trajectory = reference_trajectory
+
+    def progress(self, node):
+        """
+        Progress along the reference trajectory for a given node. Since we won't be tracking exactly we use a tube constraint with distance along the tube 
+        """
+
+    def _setup_objective(self, nodes):
+        opti = self.opti
+
+        return 
+    
+import casadi as ca
+import numpy as np
+
+class MHE:
+    def __init__(self, N, dt, state_dim, control_dim):
+        # Horizon length and time step
+        self.N = N
+        self.dt = dt
+        
+        # State, control, and progress dimensions
+        self.state_dim = state_dim
+        self.control_dim = control_dim
+        
+        # Progress variable (scalar)
+        self.s = ca.SX.sym('s', N + 1)
+        
+        # State and control variables
+        self.x = ca.SX.sym('x', state_dim, N + 1)
+        self.u = ca.SX.sym('u', control_dim, N)
+        
+        # Reference waypoint positions
+        self.wp = ca.SX.sym('wp', state_dim, N + 1)
+
+        # Weights for cost function
+        self.R = ca.SX.sym('R', control_dim, control_dim)
+
+        # Initial state and progress
+        self.x0 = ca.SX.sym('x0', state_dim)
+        self.s0 = ca.SX.sym('s0')
+
+        # Objective and constraints
+        self.cost = 0
+        self.g = []
+
+        # Model and cost definition
+        self.define_model()
+        self.define_cost_function()
+        self.setup_solver()
+
+    def define_model(self):
+        """Define the system dynamics and progress update."""
+        def dynamics(x, u):
+            # Example dynamics: x_dot = u (replace with actual dynamics)
+            return x + self.dt * u
+
+        for k in range(self.N):
+            # Dynamics constraint
+            x_next = dynamics(self.x[:, k], self.u[:, k])
+            self.g.append(self.x[:, k + 1] - x_next)
+
+            # Progress update (distance traveled along trajectory)
+            delta_s = ca.norm_2(self.x[:, k + 1] - self.x[:, k])
+            self.g.append(self.s[k + 1] - (self.s[k] + delta_s))
+
+    def define_cost_function(self):
+        """Define the objective function."""
+        # Maximize cumulative progress at the final step (equivalent to minimizing -s[N])
+        self.cost = -self.s[-1]
+
+        for k in range(self.N):
+            # Control effort penalty to keep inputs reasonable
+            control_dev = self.u[:, k]
+            self.cost += ca.mtimes([control_dev.T, self.R, control_dev])
+
+    def setup_solver(self):
+        """Configure and create the solver."""
+        # Concatenate variables
+        vars = ca.vertcat(ca.reshape(self.x, -1, 1), ca.reshape(self.u, -1, 1), self.s)
+        g = ca.vertcat(*self.g)
+        
+        # Optimization problem
+        nlp = {'x': vars, 'f': self.cost, 'g': g}
+        opts = {'ipopt.print_level': 0, 'print_time': 0}
+        self.solver = ca.nlpsol('solver', 'ipopt', nlp, opts)
+
+    def solve(self, x0, s0, wp, R):
+        """Solve the MHE problem given current state, progress, and waypoints."""
+        # Initial guess for states and controls
+        x_init = np.tile(x0, (self.N + 1, 1)).T
+        u_init = np.zeros((self.control_dim, self.N))
+        s_init = np.linspace(s0, s0 + 1, self.N + 1)  # Linear progress initialization
+        var_init = np.concatenate((x_init.flatten(), u_init.flatten(), s_init))
+
+        # Constraints (dynamics consistency and progress update)
+        lbx, ubx = -np.inf * np.ones_like(var_init), np.inf * np.ones_like(var_init)
+        lbg, ubg = np.zeros(len(self.g)), np.zeros(len(self.g))
+
+        # Set parameter values
+        p = np.concatenate([wp.flatten(), R.flatten(), x0.flatten(), [s0]])
+
+        # Solve the problem
+        sol = self.solver(x0=var_init, lbx=lbx, ubx=ubx, lbg=lbg, ubg=ubg)
+        x_opt = sol['x'].full()
+
+        # Extract optimized states, controls, and progress
+        n_x = self.state_dim * (self.N + 1)
+        n_u = self.control_dim * self.N
+
+        x_traj = x_opt[:n_x].reshape((self.state_dim, self.N + 1))
+        u_traj = x_opt[n_x:n_x + n_u].reshape((self.control_dim, self.N))
+        s_traj = x_opt[n_x + n_u:]
+
+        return x_traj, u_traj, s_traj
 
 
 def minimal_quad_test():
