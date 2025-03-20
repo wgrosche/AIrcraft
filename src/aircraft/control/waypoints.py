@@ -3,6 +3,125 @@ import casadi as ca
 from scipy.spatial.transform import Rotation as R
 from typing import List
 
+
+from aircraft.control.base import ControlNode, ControlProblem
+from typing import List, Optional
+from dataclasses import dataclass
+
+from aircraft.utils.utils import TrajectoryConfiguration
+
+@dataclass
+class ControlNodeWaypoints(ControlNode):
+    lam:Optional[ca.MX] = None
+    mu:Optional[ca.MX] = None
+    nu:Optional[ca.MX] = None
+
+    @classmethod
+    def from_control_node(cls, node:ControlNode, lam:Optional[ca.MX] = None,
+                            mu:Optional[ca.MX] = None,
+                            nu:Optional[ca.MX] = None):
+        return cls(
+            index = node.index,
+            state = node.state,
+            control = node.control,
+            lam = lam,
+            mu = mu,
+            nu = nu
+        )
+    
+
+
+class WaypointControl(ControlProblem):
+    """
+    Implements waypoint traversal via complementarity constraint.
+
+    TODO: Modify so that it only implements waypoint constraints to create a family tree of control classes
+    """
+    def __init__(self, dynamics:ca.Function, trajectory_config:TrajectoryConfiguration, opts:Optional[dict] = {}):
+        """
+        To be implemented
+        """
+        max_control_nodes = opts.get('max_control_nodes', 100)
+        # to calculate the num of nodes needed we use the dubins path from initialisation.py and add a tolerance
+        num_nodes = 100
+        self.waypoint_tolerance = 100
+        self.trajectory = trajectory_config
+        self.num_waypoints = len(trajectory_config.waypoints.waypoints)
+
+        super().__init__(dynamics, num_nodes, opts)
+
+
+    def waypoint_constraint(self, node:ControlNodeWaypoints, next:ControlNodeWaypoints):
+        """
+        Waypoint constraint implementation from:
+        https://rpg.ifi.uzh.ch/docs/ScienceRobotics21_Foehn.pdf
+        """
+        # tolerance = self.trajectory.waypoints.tolerance
+        tolerance = self.waypoint_tolerance
+        waypoint_indices = np.array(self.trajectory.waypoints.waypoint_indices)
+        num_waypoints = self.num_waypoints
+        waypoints = self.waypoints[1:, waypoint_indices]
+        opti = self.opti
+        
+        for j in range(num_waypoints):
+            opti.subject_to(next.lam[j] - node.lam[j] + node.mu[j] == 0)
+            opti.subject_to(node.mu[j] >= 0)
+            if j < num_waypoints - 1:
+                opti.subject_to(node.lam[j] - node.lam[j + 1] <= 0)
+
+            diff = node.state[waypoint_indices] - waypoints[j, waypoint_indices]
+            opti.subject_to(opti.bounded(0, node.nu[j], tolerance**2))
+            opti.subject_to(node.mu[j] * (ca.dot(diff, diff) - node.nu[j]) == 0)
+
+        return None
+    
+    def _setup_step(self, index:int, current_node:ControlNode, guess:np.ndarray):
+        opti = self.opti
+
+        next_node = ControlNodeWaypoints.from_control_node(
+            super()._setup_step(index, current_node, guess), 
+            lam = opti.variable(self.num_waypoints),
+            mu=opti.variable(self.num_waypoints),
+            nu=opti.variable(self.num_waypoints))
+            
+        self.waypoint_constraint(current_node, next_node)
+        lam_start = self.state_dim + self.control_dim
+        lam_end = lam_start + self.num_waypoints
+        opti.set_initial(next_node.lam, guess[lam_start:lam_end, index])
+
+        mu_end = lam_end + self.num_waypoints
+        opti.set_initial(next_node.mu, guess[lam_end:mu_end, index])
+
+        nu_end = mu_end + self.num_waypoints
+        opti.set_initial(next_node.nu, guess[mu_end:nu_end, index])
+        return next_node
+    
+    def _setup_initial_node(self, guess:np.ndarray):
+        opti = self.opti
+        current_node = ControlNodeWaypoints.from_control_node(
+            super()._setup_initial_node(guess), 
+            lam = opti.variable(self.num_waypoints),
+            mu=opti.variable(self.num_waypoints),
+            nu=opti.variable(self.num_waypoints))
+
+        lam_start = self.state_dim + self.control_dim
+        lam_end = lam_start + self.num_waypoints
+        opti.set_initial(current_node.lam, guess[lam_start:lam_end, 0])
+
+        mu_end = lam_end + self.num_waypoints
+        opti.set_initial(current_node.mu, guess[lam_end:mu_end, 0])
+
+        nu_end = mu_end + self.num_waypoints
+        opti.set_initial(current_node.nu, guess[mu_end:nu_end, 0])
+        return current_node
+    
+    def _initialise_waypoints(self):
+        """
+        TODO: Implement
+        """
+        pass
+    
+
 def waypoint_distances(waypoints:np.ndarray, 
                        p_initial:np.ndarray, 
                        verbose:bool = False):

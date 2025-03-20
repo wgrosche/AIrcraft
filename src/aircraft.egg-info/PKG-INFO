@@ -1,4 +1,4 @@
-Metadata-Version: 2.2
+Metadata-Version: 2.4
 Name: aircraft
 Version: 0.1
 Summary: Aircraft trajectory optimization
@@ -10,3 +10,4 @@ Requires-Dist: casadi
 Requires-Dist: matplotlib
 Requires-Dist: scipy
 Requires-Dist: h5py
+Dynamic: license-file
