@@ -1,75 +1,7 @@
 import numpy as np
 from dataclasses import dataclass
 import casadi as ca
-
-scale_state = ca.DM(ca.vertcat(
-    [1, 1, 1, 1],
-    [1e3, 1e3, 1e3],
-    [1e2, 1e2, 1e2],
-    [1, 1, 1]
-    ))
-scale_control = ca.DM(ca.vertcat(
-    5, 5
-    ))
-scale_time = 1
-
-opts = {'scale_state': scale_state, 
-        'scale_control': scale_control, 
-        'scale_time': scale_time, 
-        'aircraft':aircraft,
-        'traj_dict': traj_dict}
-
-class ControlNode:
-    def __init__(self, opti, opts = {}):
-        self.state = opts['scale_state'] * opti.variable(scale_state.shape[0])
-        self.control = opts['scale_control'] * opti.variable(scale_control.shape[0])
-        self.reached = opti.variable()
-        self.aircraft = opts['aircraft']
-        self.opti = opti
-        self.traj_dict = opts['traj_dict']
-
-        self.constrain_control()
-        self.constrain_state()
-
-
-    def constrain_state(self):
-        opti = self.opti
-        aircraft = self.aircraft
-        dynamics = aircraft.state_update
-        state_envelope = self.traj_dict.state_envelope
-
-        alpha = aircraft.alpha
-        beta = aircraft.beta
-        airspeed = aircraft.airspeed
-
-        opti.subject_to(opti.bounded(state_envelope.alpha.lb,
-        alpha(self.state, self.control), state_envelope.alpha.ub))
-
-        opti.subject_to(opti.bounded(state_envelope.beta.lb,
-            beta(self.state, self.control), state_envelope.beta.ub))
-
-        opti.subject_to(opti.bounded(state_envelope.airspeed.lb,
-            airspeed(self.state, self.control), state_envelope.airspeed.ub))
-        
-    def constrain_control(self):
-        control_envelope = self.trajectory.control
-        opti = self.opti
-        com = self.trajectory.aircraft.aero_centre_offset
-
-        opti.subject_to(opti.bounded(control_envelope.lb[:6],
-                self.control[:6], control_envelope.ub[:6]))
-        
-        opti.subject_to(opti.bounded(np.zeros(self.control[9:].shape),
-                self.control[9:], np.zeros(self.control[9:].shape)))
-        
-        opti.subject_to(self.control[6:9]==com)
-
-        
-
-    
-    opti.subject_to(node2.state_next == dynamics(node1.state, node2.control, dt))
-
-
+from aircraft.control.base import ControlProblem
 
 class MHE:
     def __init__(self):

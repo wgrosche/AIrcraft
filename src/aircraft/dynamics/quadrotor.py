@@ -1,8 +1,9 @@
 import casadi as ca
 from liecasadi import Quaternion
+from aircraft.dynamics.base import SixDOF
 
 
-class Quadrotor:
+class Quadrotor(SixDOF):
     def __init__(self):
         """
         RPG Time Optimal Quadrotor Simplification for testing

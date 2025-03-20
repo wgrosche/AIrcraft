@@ -43,8 +43,8 @@ class WaypointControl(ControlProblem):
         """
         max_control_nodes = opts.get('max_control_nodes', 100)
         # to calculate the num of nodes needed we use the dubins path from initialisation.py and add a tolerance
-        num_nodes = 100
-        self.waypoint_tolerance = 100
+        num_nodes = np.min(max_control_nodes, 100)
+        self.waypoint_tolerance = opts.get('waypoint_tolerance', 1e-3)
         self.trajectory = trajectory_config
         self.num_waypoints = len(trajectory_config.waypoints.waypoints)
 

@@ -18,7 +18,8 @@ dependencies = [
 
 
 [tool.setuptools]
-packages = ["aircraft"]
+package-dir = {"" = "src"}
+packages = {find = {where = ["src"]}}
 
 # Dependencies from git repositories
 [project.urls]

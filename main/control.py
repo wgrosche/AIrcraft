@@ -22,7 +22,7 @@ BASEPATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 print(BASEPATH)
 sys.path.append(BASEPATH)
 
-from aircraft.dynamics.dynamics import Aircraft
+from aircraft.dynamics.aircraft import Aircraft
 from aircraft.waypoints import waypoint_distances, setup_progress_vars, x_guess
 # from aircraft.preprocessing import get_airplane_params
 from aircraft.surrogates.models import ScaledModel, MiniModel

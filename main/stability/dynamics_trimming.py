@@ -33,7 +33,7 @@ from aircraft.utils.utils import load_model, TrajectoryConfiguration
 from aircraft.plotting_minimal import TrajectoryPlotter
 from dataclasses import dataclass
 
-from aircraft.dynamics.dynamics import AircraftTrim, AircraftOpts
+from aircraft.dynamics.aircraft import AircraftTrim, AircraftOpts
 
 print(DEVICE)
     

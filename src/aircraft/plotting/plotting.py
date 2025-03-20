@@ -19,7 +19,7 @@ sys.path.append(BASEPATH)
 
 from aircraft.utils.utils import load_model
 from aircraft.config import DEVICE, NETWORKPATH, DATAPATH, VISUPATH
-from aircraft.dynamics.dynamics import Aircraft, AircraftOpts
+from aircraft.dynamics.aircraft import Aircraft, AircraftOpts
 
 __all__ = ['create_grid', 'TrajectoryPlotter']
 

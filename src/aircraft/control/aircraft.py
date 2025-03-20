@@ -61,7 +61,7 @@ BASEPATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 print(BASEPATH)
 sys.path.append(BASEPATH)
 
-from aircraft.dynamics.dynamics import Aircraft, Quadrotor
+from aircraft.dynamics.aircraft import Aircraft, Quadrotor
 from collections import namedtuple
 from scipy.spatial.transform import Rotation as R
 from aircraft.utils.utils import TrajectoryConfiguration, load_model
@@ -83,7 +83,7 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
-from aircraft.dynamics.dynamics import AircraftOpts
+from aircraft.dynamics.aircraft import AircraftOpts
 from aircraft.control.initialisation import cumulative_distances
 from abc import abstractmethod
 import time
