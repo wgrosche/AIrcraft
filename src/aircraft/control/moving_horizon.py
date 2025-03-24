@@ -2,16 +2,48 @@ import numpy as np
 from dataclasses import dataclass
 import casadi as ca
 from aircraft.control.base import ControlProblem
+from aircraft.control.aircraft import AircraftControl
 
-class MHE:
+class MHTT:
+    """
+    Class for trajectory tracking
+    """
     def __init__(self):
-        self.nodes = 20
+        self.opti = ca.Opti()
+        self.step = 10 # number of timesteps between MHE problems
+        self.nodes = 20 # number of timesteps for horizon
         self.max_dt = 1.0
         self.waypoints = []
         self.dynamics = None
 
-
+        self.progress = self.opti.variable()
+        self.opti.subject_to(self.opti.bounded(0, self.progress, 1))
         pass
+
+
+    def track(self):
+         sub_guess = self.guess(start, end)
+         subproblem = ControlProblem(self.dynamics, num_nodes_per, opts)
+         subproblem.setup(sub_guess)
+         
+
+    def guess(self, start, end):
+         """
+         straight line trajectory between start and end
+         """
+
+         pass
+    
+    def solve(self):
+        """
+        evaluate prog
+        """
+        s = 0
+        while s < 1:
+             sol = self.subproblem.solve()
+             s = sol.value(self.progress[self.step])
+             
+    
 
     def loss(self):
         pass
