@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
 from aircraft.plotting.plotting import plot_trajectory
-from aircraft.dynamics.dynamics import Aircraft
+from aircraft.dynamics.aircraft import Aircraft
 
 
 def plot_trajectory(ax:Axes3D, state:np.ndarray):

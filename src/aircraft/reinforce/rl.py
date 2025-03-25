@@ -3,7 +3,7 @@ Starting on rl implementation for trajectory optimisation
 
 """
 from abc import abstractmethod, ABC
-from aircraft.dynamics.dynamics import Aircraft
+from aircraft.dynamics.aircraft import Aircraft
 import numpy as np
 
 

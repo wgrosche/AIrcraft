@@ -132,7 +132,7 @@ NETWORKPATH = os.path.join(BASEPATH, 'data', 'networks')
 DATAPATH = os.path.join(BASEPATH, 'data')
 sys.path.append(BASEPATH)
 
-from aircraft.dynamics.dynamics import Aircraft, AircraftOpts
+from aircraft.dynamics.aircraft import Aircraft, AircraftOpts
 from aircraft.utils.utils import load_model, aero_to_state, TrajectoryConfiguration
 
 # Wrap functions for aerodynamic derivatives

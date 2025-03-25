@@ -11,7 +11,7 @@ sys.path.append(BASEPATH)
 # from aircraft.dynamics import LinearisedAircraft, CD_alpha, CL_alpha
 DATA_DIR = os.path.join(BASEPATH, 'data')
 
-from aircraft.dynamics.dynamics import Aircraft
+from aircraft.dynamics.aircraft import Aircraft
 
 
 data_real = pd.read_csv(os.path.join(DATA_DIR, 'processed', 'data_real.csv'))

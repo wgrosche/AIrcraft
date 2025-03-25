@@ -1,4 +1,4 @@
-from aircraft.dynamics.dynamics import Aircraft, AircraftOpts
+from aircraft.dynamics.aircraft import Aircraft, AircraftOpts
 from aircraft.utils.utils import load_model, TrajectoryConfiguration, AircraftConfiguration, perturb_quaternion
 from aircraft.config import NETWORKPATH, DATAPATH, DEVICE
 from pathlib import Path

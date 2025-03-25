@@ -17,7 +17,7 @@ print(BASEPATH)
 sys.path.append(BASEPATH)
 DATAPATH = os.path.join(BASEPATH, 'data')
 
-from aircraft.dynamics.dynamics import Aircraft, AircraftOpts, TrajectoryConfiguration
+from aircraft.dynamics.aircraft import Aircraft, AircraftOpts, TrajectoryConfiguration
 from aircraft.utils.utils import load_model
 from aircraft.plotting_minimal import TrajectoryPlotter
 

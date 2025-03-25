@@ -1,7 +1,7 @@
 import unittest
 import casadi as ca
 import numpy as np
-from aircraft.dynamics.dynamics import Aircraft 
+from aircraft.dynamics.aircraft import Aircraft 
 from aircraft.utils.utils import load_model
 from liecasadi import Quaternion
 import torch
