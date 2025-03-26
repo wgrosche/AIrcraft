@@ -1,6 +1,7 @@
 import numpy as np
 import dubins # https://github.com/AgRoboticsResearch/pydubins.git
 from aircraft.utils.utils import TrajectoryConfiguration
+from scipy.interpolate import CubicSpline
 
 import numpy as np
 from scipy.spatial.transform import Rotation as R
@@ -459,10 +460,52 @@ class DubinsInitialiser:
 
         return (lambda_guess, mu_guess, nu_guess)
 
-    @property
-    def trajectory(self):
-        pass
+    # def trajectory(self, s):
+    #     """
+    #     Smooth trajectory interpolated from dubins path
+    #     """
+    #     s_values = np.linspace(0, 1, num=len(self.dubins_path))
+    #     x_values = [i[0] for i in self.dubins_path]
+    #     y_values = [i[1] for i in self.dubins_path]
+    #     z_values = [i[2] for i in self.dubins_path]
+    #     # Fit cubic splines for each coordinate
+    #     Px = CubicSpline(s_values, x_values, bc_type='clamped')
+    #     Py = CubicSpline(s_values, y_values, bc_type='clamped')
+    #     Pz = CubicSpline(s_values, z_values, bc_type='clamped')
 
+    #     return np.array([Px(s), Py(s), Pz(s)])
+    
+    def linear_interp(self, s, s_vals, y_vals):
+        """Returns a CasADi SX symbolic expression for piecewise linear interpolation."""
+        import casadi as ca
+        
+        expr = 0
+        for i in range(len(s_vals) - 1):
+            # Compute the weight of each segment
+            w = ca.if_else((s >= s_vals[i]) and (s <= s_vals[i+1]), 
+                        (s_vals[i+1] - s) / (s_vals[i+1] - s_vals[i]), 
+                        0)
+            expr += w * y_vals[i] + (1 - w) * y_vals[i+1]
+        return expr
+
+
+    def trajectory(self, s):
+        import casadi as ca
+        
+        s_values = np.linspace(0, 1, num=len(self.dubins_path))
+        x_values = [i[0] for i in self.dubins_path]
+        y_values = [i[1] for i in self.dubins_path]
+        z_values = [i[2] for i in self.dubins_path]
+        # # Fit cubic splines for each coordinate
+        # Px = ca.interpolant('Px', 'bspline', [s_values], x_values)
+        # Py = ca.interpolant('Py', 'bspline', [s_values], y_values)
+        # Pz = ca.interpolant('Pz', 'bspline', [s_values], z_values)
+
+        return ca.vertcat(
+                self.linear_interp(s, s_values, x_values),
+                self.linear_interp(s, s_values, y_values),
+                self.linear_interp(s, s_values, z_values)
+            )
 
     def visualise(self):
         # Visualize the generated 3D Dubins path

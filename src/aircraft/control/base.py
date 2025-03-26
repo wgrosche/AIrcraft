@@ -42,7 +42,7 @@ class ControlProblem:
 
     def __init__(self, dynamics:ca.Function, num_nodes:int, opts:Optional[dict] = {}):
 
-        self.opti = ca.Opti()
+        self.opti = ca.Opti('nlp')
         self.state_dim = dynamics.size1_in(0)
         self.control_dim = dynamics.size1_in(1)
         self.num_nodes = num_nodes
@@ -98,6 +98,9 @@ class ControlProblem:
             
         self.state_constraint(current_node, next_node, self.dt)
         self.control_constraint(current_node)
+
+        # initial_state = opti.parameter(13) TODO: investigate this for speeding up initialisation esp for MHE
+        
 
         opti.set_initial(next_node.state, guess[:self.state_dim, index])
         opti.set_initial(next_node.control, guess[self.state_dim:, index])

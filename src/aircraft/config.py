@@ -43,7 +43,7 @@ default_solver_options = {'ipopt': {'max_iter': 10000,
                                     'max_cpu_time': 1e4             # Increase the maximum CPU time
                                     },
                         'print_time': 10,
-                        'expand': True
+                        'expand': True # NOTE: Find way to set to true with interpolant
 
                         }
 
