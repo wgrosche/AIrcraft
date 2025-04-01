@@ -103,7 +103,7 @@ class AircraftControl(ControlProblem):
 
 
     def control_constraint(self, node:ControlNode):
-        self.opti.subject_to(self.opti.bounded(-3, node.control[0], 3))
+        self.opti.subject_to(self.opti.bounded(-1, node.control[0], 1))
         self.opti.subject_to(self.opti.bounded(-3, node.control[1], 3))
         # self.opti.subject_to(self.opti.bounded(0, node.control[2:], 0))
 
@@ -114,8 +114,9 @@ class AircraftControl(ControlProblem):
         beta = aircraft.beta
         alpha = aircraft.alpha
         airspeed = aircraft.airspeed
-
+        roll = aircraft.phi
         opti.subject_to(opti.bounded(20, airspeed(node.state, node.control), 80))
+        opti.subject_to(opti.bounded(-np.deg2rad(50), roll(node.state),  np.deg2rad(50)))
         opti.subject_to(opti.bounded(-np.deg2rad(10), beta(node.state, node.control),  np.deg2rad(10)))
         opti.subject_to(opti.bounded(-np.deg2rad(20), alpha(node.state, node.control), np.deg2rad(20)))
         opti.subject_to(next.state[2] < 0)

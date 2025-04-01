@@ -390,19 +390,19 @@ class SixDOF(ABC):
         dt = self.dt_sym
         state = self.state
         control_sym = self.control
-        num_steps = 100# self.STEPS
+        num_steps = self.STEPS
 
-        # if num_steps == 1:
-        #     state = self.state_step(state, control_sym, dt)
-        # else:
+        if num_steps == 1:
+            state = self.state_step(state, control_sym, dt)
+        else:
 
-        dt_scaled = dt / num_steps
-        input_to_fold = ca.vertcat(self.state, self.control, dt)
-        fold_output = ca.vertcat(self.state_step(state, control_sym, dt_scaled), control_sym, dt)
-        folded_update = ca.Function('folder', [input_to_fold], [fold_output])
-        
-        F = folded_update.fold(num_steps)
-        state = F(input_to_fold)[:self.num_states]
+            dt_scaled = dt / num_steps
+            input_to_fold = ca.vertcat(self.state, self.control, dt)
+            fold_output = ca.vertcat(self.state_step(state, control_sym, dt_scaled), control_sym, dt)
+            folded_update = ca.Function('folder', [input_to_fold], [fold_output])
+            
+            F = folded_update.fold(num_steps)
+            state = F(input_to_fold)[:self.num_states]
 
         return ca.Function(
             'state_update', 
