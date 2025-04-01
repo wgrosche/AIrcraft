@@ -481,12 +481,20 @@ class DubinsInitialiser:
         
         expr = 0
         for i in range(len(s_vals) - 1):
-            # Compute the weight of each segment
-            w = ca.if_else((s >= s_vals[i]) and (s <= s_vals[i+1]), 
-                        (s_vals[i+1] - s) / (s_vals[i+1] - s_vals[i]), 
-                        0)
+            # Use CasADi's logical operators instead of Python's and/or
+            condition = ca.logic_and(s >= s_vals[i], s <= s_vals[i+1])
+            
+            # Calculate the weight when the condition is true
+            weight = (s_vals[i+1] - s) / (s_vals[i+1] - s_vals[i])
+            
+            # Use if_else to apply the weight only when the condition is true
+            w = ca.if_else(condition, weight, 0)
+            
+            # Add the weighted contribution to the expression
             expr += w * y_vals[i] + (1 - w) * y_vals[i+1]
+        
         return expr
+
 
 
     def trajectory(self, s):
