@@ -241,12 +241,16 @@ class TrajectoryPlotter:
         ax.grid(True)
         ax.set_title('Trajectory (NED)')
 
-    def _update_or_create_line(self, ax, attr_name, y_data, label):
+    def _update_or_create_line(self, ax, attr_name, y_data, label, drawstyle = None):
         """
         Updates an existing line if available; otherwise, creates a new one.
         """
         if not hasattr(self, attr_name):
-            line, = ax.plot(y_data, label=label)
+            if drawstyle:
+                line, = ax.plot(np.arange(len(y_data)), y_data, drawstyle=drawstyle, label=label)
+
+            else:
+                line, = ax.plot(y_data, label=label)
             setattr(self, attr_name, line)
         else:
             line = getattr(self, attr_name)
@@ -368,12 +372,13 @@ class TrajectoryPlotter:
     def plot_deflections(self, trajectory_data:TrajectoryData):
         ax = self.axes.controls
         control = trajectory_data.control
-        self._update_or_create_line(ax, '_delta_a_line', control[0, :], r'$\delta_a$')
-        self._update_or_create_line(ax, '_delta_e_line', control[1, :], r'$\delta_e$')
-        # self._update_or_create_line(ax, '_delta_r_line', control[2, :], r'$\delta_r$')
+        self._update_or_create_line(ax, '_delta_a_line', control[0, :], r'$\delta_a$', drawstyle='steps-post')
+        self._update_or_create_line(ax, '_delta_e_line', control[1, :], r'$\delta_e$', drawstyle='steps-post')
+        # self._update_or_create_line(ax, '_delta_r_line', control[2, :], r'$\delta_r$', drawstyle='steps-post')
+
         ax.legend()
         ax.grid(True)
-        ax.set_title('Control Surface Deflctions')
+        ax.set_title('Control Surface Deflections')
 
     def plot_thrust(self, trajectory_data:TrajectoryData):
         state= trajectory_data.state
@@ -432,6 +437,13 @@ class TrajectoryPlotter:
         self.plot_state(trajectory_data)
         self.plot_control(trajectory_data)
         self.plot_progress_variables(trajectory_data)
+
+        # Auto-adjust all axes limits
+        for ax in self.axes():
+            if ax != self.axes.position:  # Skip 3D position plot as it's handled separately
+                ax.relim()  # Recompute the data limits
+                ax.autoscale_view()  # Autoscale the view based on the data limits
+                ax.grid(True)  # Ensure grid is visible
 
     def save(self, iteration:Optional[int] = None, save_path = os.path.join(VISUPATH, 'trajectory_image.png')):
         if iteration is not None:
