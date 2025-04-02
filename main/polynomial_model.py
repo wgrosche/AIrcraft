@@ -89,20 +89,24 @@ def create_interactive_aero_plot(data, casadi_functions,
     grid_alpha_beta = create_grid(data[input_features[:3]], 10)  # Grid for q, alpha, beta
     aileron_values = np.linspace(data['aileron'].min(), data['aileron'].max(), 10)
     elevator_values = np.linspace(data['elevator'].min(), data['elevator'].max(), 10)
+    min_airspeed = 0
+    max_airspeed = 200
+    airspeed_values = np.linspace(min_airspeed, max_airspeed, 50)
     
     # Precompute aerodynamic outputs
     precomputed_outputs = {output: {} for output in output_features}
-
-    for aileron in aileron_values:
-        for elevator in elevator_values:
-            temp_grid = grid_alpha_beta.copy()
-            temp_grid['aileron'] = aileron
-            temp_grid['elevator'] = elevator
-            key = (aileron, elevator)
-            
-            for output in output_features:
-                y_pred = casadi_functions[output](temp_grid.values.T).full().flatten()
-                precomputed_outputs[output][key] = y_pred
+    for airspeed in airspeed_values:
+        for aileron in aileron_values:
+            for elevator in elevator_values:
+                temp_grid = grid_alpha_beta.copy()
+                temp_grid['aileron'] = aileron
+                temp_grid['elevator'] = elevator
+                temp_grid['q'] = airspeed**2 / 1.225 / 2
+                key = (airspeed, aileron, elevator)
+                
+                for output in output_features:
+                    y_pred = casadi_functions[output](temp_grid.values.T).full().flatten()
+                    precomputed_outputs[output][key] = y_pred
 
     # Initialize 3D scatter plots
     scatter_plots = []
@@ -110,7 +114,7 @@ def create_interactive_aero_plot(data, casadi_functions,
     for i, output in enumerate(output_features):
         ax = fig.add_subplot(2, 3, i + 1, projection='3d')
         scatter = ax.scatter(grid_alpha_beta['alpha'], grid_alpha_beta['beta'], 
-                             precomputed_outputs[output][(aileron_values[0], elevator_values[0])], 
+                             precomputed_outputs[output][(airspeed_values[40], aileron_values[0], elevator_values[0])], 
                              marker='o', label='sim')
         scatter_plots.append(scatter)
         
@@ -124,41 +128,20 @@ def create_interactive_aero_plot(data, casadi_functions,
         ax.legend()
     
     # Create sliders
+    ax_airspeed = plt.axes([0.2, 0.15, 0.6, 0.03])
     ax_aileron = plt.axes([0.2, 0.1, 0.6, 0.03])
     ax_elevator = plt.axes([0.2, 0.05, 0.6, 0.03])
     
     s_aileron = Slider(ax_aileron, 'Aileron', data['aileron'].min(), data['aileron'].max(), valinit=0)
     s_elevator = Slider(ax_elevator, 'Elevator', data['elevator'].min(), data['elevator'].max(), valinit=0)
-    
-    # def update(val):
-    #     # Find nearest precomputed grid values
-    #     aileron_idx = np.argmin(np.abs(aileron_values - s_aileron.val))
-    #     elevator_idx = np.argmin(np.abs(elevator_values - s_elevator.val))
-    #     key = (aileron_values[aileron_idx], elevator_values[elevator_idx])
-        
-    #     for scatter, train_scatter, output in zip(scatter_plots, training_data_scatter, output_features):
-    #         # Update precomputed outputs
-    #         y_pred = precomputed_outputs[output][key]
-    #         scatter._offsets3d = (grid_alpha_beta['alpha'], 
-    #                               grid_alpha_beta['beta'], 
-    #                               y_pred)
-            
-    #         # Update training data scatter points
-    #         mask = (
-    #             (np.abs(data['aileron'] - aileron_values[aileron_idx]) < 1e-0) &
-    #             (np.abs(data['elevator'] - elevator_values[elevator_idx]) < 1e-0)
-    #         )
-    #         train_alpha = data.loc[mask, 'alpha']
-    #         train_beta = data.loc[mask, 'beta']
-    #         train_output = data.loc[mask, output]
-            
-    #         train_scatter._offsets3d = (train_alpha, train_beta, train_output)
+    s_airspeed = Slider(ax_airspeed, 'Airspeed', min_airspeed, max_airspeed, valinit=airspeed_values[40])
 
     def update(val):
         # Find nearest precomputed grid values
+        airspeed_idx = np.argmin(np.abs(airspeed_values - s_airspeed.val))
         aileron_idx = np.argmin(np.abs(aileron_values - s_aileron.val))
         elevator_idx = np.argmin(np.abs(elevator_values - s_elevator.val))
-        key = (aileron_values[aileron_idx], elevator_values[elevator_idx])
+        key = (airspeed_values[airspeed_idx], aileron_values[aileron_idx], elevator_values[elevator_idx])
         
         for ax, scatter, train_scatter, output in zip(fig.axes, scatter_plots, training_data_scatter, output_features):
             # Update precomputed outputs
@@ -169,6 +152,7 @@ def create_interactive_aero_plot(data, casadi_functions,
             
             # Update training data scatter points
             mask = (
+                (np.abs(data['q'] - airspeed_values[airspeed_idx]**2 * 1.225 / 2) < 1e1) &
                 (np.abs(data['aileron'] - aileron_values[aileron_idx]) < 1e-0) &
                 (np.abs(data['elevator'] - elevator_values[elevator_idx]) < 1e-0)
             )
@@ -188,74 +172,9 @@ def create_interactive_aero_plot(data, casadi_functions,
 
     s_aileron.on_changed(update)
     s_elevator.on_changed(update)
+    s_airspeed.on_changed(update)
     update(None)
     plt.show(block=True)
-
-
-
-
-# def create_interactive_aero_plot(data, casadi_functions, 
-#                                  input_features=['q', 'alpha', 'beta', 'aileron', 'elevator'], 
-#                                  output_features=['CX', 'CY', 'CZ', 'Cl', 'Cm', 'Cn']):
-#     fig = plt.figure(figsize=(18, 10))
-#     plt.subplots_adjust(bottom=0.2)
-    
-#     # Create grid for input features (q, alpha, beta) and discretize aileron/elevator
-#     grid_alpha_beta = create_grid(data[input_features[:3]], 10)  # Grid for q, alpha, beta
-#     aileron_values = np.linspace(data['aileron'].min(), data['aileron'].max(), 10)
-#     elevator_values = np.linspace(data['elevator'].min(), data['elevator'].max(), 10)
-    
-#     # Precompute aerodynamic outputs
-#     precomputed_outputs = {output: {} for output in output_features}
-
-#     for aileron in aileron_values:
-#         for elevator in elevator_values:
-#             temp_grid = grid_alpha_beta.copy()
-#             temp_grid['aileron'] = aileron
-#             temp_grid['elevator'] = elevator
-#             key = (aileron, elevator)
-            
-#             for output in output_features:
-#                 y_pred = casadi_functions[output](temp_grid.values.T).full().flatten()
-#                 precomputed_outputs[output][key] = y_pred
-
-#     # Initialize 3D scatter plots
-#     scatter_plots = []
-#     for i, output in enumerate(output_features):
-#         ax = fig.add_subplot(2, 3, i + 1, projection='3d')
-#         scatter = ax.scatter(data['alpha'], data['beta'], 
-#                              data[output], marker='o', label='sim')
-#         scatter_plots.append((scatter, output))
-#         ax.set_xlabel('alpha')
-#         ax.set_ylabel('beta')
-#         ax.set_zlabel(output)
-#         ax.legend()
-    
-#     # Create sliders
-#     ax_aileron = plt.axes([0.2, 0.1, 0.6, 0.03])
-#     ax_elevator = plt.axes([0.2, 0.05, 0.6, 0.03])
-    
-#     s_aileron = Slider(ax_aileron, 'Aileron', data['aileron'].min(), data['aileron'].max(), valinit=0)
-#     s_elevator = Slider(ax_elevator, 'Elevator', data['elevator'].min(), data['elevator'].max(), valinit=0)
-    
-#     def update(val):
-#         # Find nearest precomputed grid values
-#         aileron_idx = np.argmin(np.abs(aileron_values - s_aileron.val))
-#         elevator_idx = np.argmin(np.abs(elevator_values - s_elevator.val))
-#         key = (aileron_values[aileron_idx], elevator_values[elevator_idx])
-        
-#         for scatter, output in scatter_plots:
-#             y_pred = precomputed_outputs[output][key]
-#             scatter._offsets3d = (grid_alpha_beta['alpha'], 
-#                                   grid_alpha_beta['beta'], 
-#                                   y_pred)
-            
-#         fig.canvas.draw_idle()
-
-#     s_aileron.on_changed(update)
-#     s_elevator.on_changed(update)
-#     update(None)
-#     plt.show(block=True)
 
 
 def main():

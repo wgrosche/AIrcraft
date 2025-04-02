@@ -68,6 +68,7 @@ def main():
         control[0] = 1
         control[1] = 5
 
+    # aircraft.STEPS = 100
     dyn = aircraft.state_update
     jacobian_elevator = ca.jacobian(aircraft.state_derivative(aircraft.state, aircraft.control), aircraft.control[1])
     jacobian_func = ca.Function('jacobian_func', [aircraft.state, aircraft.control], [jacobian_elevator])
@@ -76,7 +77,7 @@ def main():
     print("Jacobian of state derivatives w.r.t. elevator:")
     print(jacobian_elevator_val)
     dt = .01
-    tf = 50
+    tf = 10
     state_list = np.zeros((aircraft.num_states, int(tf / dt)))
     t = 0
     ele_pos = True

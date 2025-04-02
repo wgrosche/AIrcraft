@@ -58,30 +58,43 @@ class EpsilonGreedy:
         self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
 
 class OUNoise:
-    """Ornstein-Uhlenbeck process."""
-
-    def __init__(self, size, seed, mu=0.0, theta=1.5, sigma=1.5, sigma_min = 0.005, sigma_decay=.975):
-        """Initialize parameters and noise process."""
+    """Ornstein-Uhlenbeck process for exploration in continuous action spaces."""
+    def __init__(self, size, seed, mu=0.0, theta=0.5, sigma=0.2, sigma_min=0.01, sigma_decay=0.99, dt=1e-2):
+        """Initialize parameters and noise process.
+        
+        Args:
+            size: Dimension of the action space
+            seed: Random seed for reproducibility
+            mu: Mean of the noise (usually 0)
+            theta: Rate of mean reversion (how quickly process returns to mean)
+            sigma: Scale of noise/volatility
+            sigma_min: Minimum noise scale (prevents exploration from vanishing completely)
+            sigma_decay: Decay rate for noise scale over time
+            dt: Time step size for discretization
+        """
         self.mu = mu * np.ones(size)
         self.theta = theta
         self.sigma = sigma
         self.sigma_min = sigma_min
         self.sigma_decay = sigma_decay
-        self.seed = random.seed(seed)
+        self.dt = dt
         self.size = size
+        
+        # Set random seed
+        self.rng = rng
         self.reset()
-
+        
     def reset(self):
-        """Reset the internal state (= noise) to mean (mu)."""
+        """Reset the internal state to mean (mu) and decay sigma."""
         self.state = copy(self.mu)
-        """Reduce  sigma from initial value to min"""
-        self.sigma = max(self.sigma_min, self.sigma*self.sigma_decay)
-        # pass
-
+        # Decay sigma but keep it above minimum threshold
+        self.sigma = max(self.sigma_min, self.sigma * self.sigma_decay)
+        
     def sample(self):
         """Update internal state and return it as a noise sample."""
         x = self.state
-        dx = self.theta * (self.mu - x) + self.sigma * rng.standard_normal(self.size)
+        # OU process discretized update equation
+        dx = self.theta * (self.mu - x) * self.dt + self.sigma * np.sqrt(self.dt) * self.rng.standard_normal(self.size)
         self.state = x + dx
         return self.state
 
@@ -254,8 +267,8 @@ class Agent():
 
     def act(self, state, add_noise=True):
         """Returns actions for given state as per current policy."""
-        if add_noise:
-            self.param_noise.add_noise()
+        # if add_noise:
+        #     self.param_noise.add_noise()
         state = torch.from_numpy(state).float().to(device)
         acts = np.zeros((self.num_agents, self.action_size))
         self.actor_local.eval()
@@ -263,14 +276,14 @@ class Agent():
             for agent in range(self.num_agents):
                 acts[agent,:] = self.actor_local(state[agent,:]).cpu().data.numpy()
         self.actor_local.train()
-        # if add_noise:
-        #     acts += self.noise.sample()
+        if add_noise:
+            acts += self.noise.sample()
 
         # if add_noise:
         #     acts = self.exploration.select_action(acts)
 
-        if add_noise:
-            self.param_noise.remove_noise()
+        # if add_noise:
+        #     self.param_noise.remove_noise()
 
         return np.clip(acts, -3, 3)
 

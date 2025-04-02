@@ -69,7 +69,7 @@ STEP 1: Set the Training Parameters
         scores_average_window (int): the window size employed for calculating the average score (e.g. 100)
         solved_score (float): the average score required for the environment to be considered solved
     """
-num_episodes=500
+num_episodes=5000
 episode_scores = []
 scores_average_window = 100      
 solved_score = 30     
@@ -164,24 +164,39 @@ for i_episode in range(1, num_episodes+1):
             speed = aircraft.v_frd_rel(states[i], actions[i, :])[0]
             speed_threshold = 40
             if speed < speed_threshold:
-                speed_penalty = -1000 * (speed_threshold - speed)  # Gradual penalty
+                speed_penalty = -10 * (speed_threshold - speed)  # Gradual penalty
             else:
                 speed_penalty = 0
             rewards[i] += speed_penalty
             state_progression[i][:, iteration] = states[i]
             control_progression[i][:, iteration] = actions[i]
 
+            pitch = aircraft.theta(states[i])
+            pitch_penalty = -50 * abs(pitch)  # Penalize any pitch deviation
+            rewards[i] += pitch_penalty
+
+            # Penalize high angular rates
+            angular_rates = states[i][10:13]
+            rate_penalty = -20 * np.linalg.norm(angular_rates)
+            rewards[i] += rate_penalty
+
+            # Progressive altitude loss penalty
+            altitude = states[i][2]
+            initial_altitude = initial_state.full().flatten()[2]
+            altitude_loss_penalty = -30 * max(0, initial_altitude - altitude)
+            rewards[i] += altitude_loss_penalty
+
             # roll penalty
             roll = aircraft.phi(states[i])
-            roll_threshold = np.deg2rad(90)
-            if roll > roll_threshold:
-                roll_penalty = 100 * (roll_threshold - np.abs(roll))
+            roll_threshold = np.deg2rad(50)
+            if np.abs(roll) > roll_threshold:
+                roll_penalty = 10 * (roll_threshold - np.abs(roll))
             else:
                 roll_penalty = 0
             rewards[i] += roll_penalty
-        control_change_penalty = np.linalg.norm(actions - previous_actions, axis=1)
-        control_change_penalty_weight = 10  # Adjust the weight as needed
-        rewards -= control_change_penalty * control_change_penalty_weight
+        # control_change_penalty = np.linalg.norm(actions - previous_actions, axis=1)
+        # control_change_penalty_weight = .1 # Adjust the weight as needed
+        # rewards -= control_change_penalty * control_change_penalty_weight
 
 
         # Update episode score for each unity agent
