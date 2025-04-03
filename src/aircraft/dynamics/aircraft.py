@@ -414,6 +414,14 @@ class Aircraft(SixDOF):
         self._ensure_initialized('coefficients', 'qbar')
         moments_aero = (self._coefficients[3:] * self._qbar * self.S 
                         * ca.vertcat(self.b, self.c, self.b))
+        
+        # simplified rudder added in
+        C_n_delta_r = -0.01
+        delta_r = self._thrust[0]
+        N_rudder = C_n_delta_r * delta_r * self._qbar * self.S * self.b
+
+        moments_aero[2] += N_rudder
+
 
         return moments_aero
 
@@ -455,7 +463,7 @@ class Quadrotor(SixDOF):
         forces = self._coefficients[:3] * self._qbar * self.S
 
         # antialign drag and velocity
-        forces[0] = ca.sign(self._v_frd_rel[0])*forces[0]
+        forces[0] = ca.sign(self._v_frd_rel[0]) * forces[0]
 
         # forces += self._thrust
 
@@ -463,7 +471,7 @@ class Quadrotor(SixDOF):
         penalty_factor = 10.0  # Scale factor for additional drag
 
         # Smooth penalty function for increased drag
-        excess_speed = self._airspeed - speed_threshold
+        excess_speed = self._v_frd_rel[0] - speed_threshold
         additional_drag = penalty_factor * ca.fmax(0, excess_speed)**2  # Quadratic penalty for smoothness
 
         # Apply the additional drag along the x-axis (forward direction)

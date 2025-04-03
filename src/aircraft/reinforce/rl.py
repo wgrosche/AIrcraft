@@ -276,11 +276,11 @@ class Agent():
             for agent in range(self.num_agents):
                 acts[agent,:] = self.actor_local(state[agent,:]).cpu().data.numpy()
         self.actor_local.train()
-        if add_noise:
-            acts += self.noise.sample()
-
         # if add_noise:
-        #     acts = self.exploration.select_action(acts)
+        #     acts += self.noise.sample()
+
+        if add_noise:
+            acts = self.exploration.select_action(acts)
 
         # if add_noise:
         #     self.param_noise.remove_noise()

@@ -103,8 +103,9 @@ class AircraftControl(ControlProblem):
 
 
     def control_constraint(self, node:ControlNode):
-        self.opti.subject_to(self.opti.bounded(-1, node.control[0], 1))
-        self.opti.subject_to(self.opti.bounded(-3, node.control[1], 3))
+        self.opti.subject_to(self.opti.bounded(-3, node.control[0], 3)) # aileron
+        self.opti.subject_to(self.opti.bounded(-3, node.control[1], 3)) # elevator
+        self.opti.subject_to(self.opti.bounded(-3, node.control[2], 3)) # rudder
         # self.opti.subject_to(self.opti.bounded(0, node.control[2:], 0))
 
     def state_constraint(self, node:ControlNode, next:ControlNode, dt:ca.MX):

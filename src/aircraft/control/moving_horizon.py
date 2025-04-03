@@ -12,7 +12,7 @@ class MPCCNode(ControlNode):
     progress:Optional[ca.MX] = None
 
 class MHTT(ControlProblem):
-    def __init__(self, dynamics, track, num_nodes = 30, dt = 0.01):
+    def __init__(self, dynamics, track, num_nodes = 100, dt = 0.001):
         super().__init__(dynamics, num_nodes)
         self.track = track
 

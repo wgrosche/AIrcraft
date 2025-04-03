@@ -37,7 +37,7 @@ opts = AircraftOpts(poly_path=poly_path, aircraft_config=aircraft_config, physic
 
 aircraft = Aircraft(opts = opts)
     
-trim_state_and_control = [0, 0, -200, 80, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
+trim_state_and_control = [0, 0, -200, 50, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
 
 state = ca.vertcat(trim_state_and_control[:aircraft.num_states])
 control = np.zeros(aircraft.num_controls)
@@ -53,11 +53,11 @@ action_dim = aircraft.num_controls  # Example action dimension
 initial_state = state
 
 
-aircraft.STEPS = 100
-dt = .1
+aircraft.STEPS = 10
+dt = .001
 dyn = aircraft.state_update.expand()
-max_time = 10
-goal = np.array([100, 100])
+max_time = 2
+goal = np.array([50, -10])
 
 
 """
@@ -89,7 +89,7 @@ determined above.
 """
 num_agents = 1
 # agent = Agent(state_size=state_dim, action_size=action_dim, num_agents=num_agents, random_seed=0)
-agent = Agent(state_size=state_dim, action_size=2, num_agents=num_agents, random_seed=0)
+agent = Agent(state_size=state_dim, action_size=3, num_agents=num_agents, random_seed=0)
 
 
 """
@@ -111,7 +111,7 @@ The agent training process involves the following:
 Below we also exit the training process early if the environment is solved. 
 That is, if the average score for the previous 100 episodes is greater than solved_score.
 """
-tolerance = 10
+tolerance = 1
 plotter = TrajectoryPlotter(aircraft)
 plt.show()
 # loop from num_episodes
@@ -136,7 +136,7 @@ for i_episode in range(1, num_episodes+1):
     while True:
         # determine actions for the unity agents from current sate
         actions = np.zeros((num_agents, action_dim))
-        actions[:, :2] = agent.act(states)
+        actions[:, :3] = agent.act(states)
         
         # print(states)
         # send the actions to the unity agents in the environment and receive resultant environment information
@@ -156,7 +156,7 @@ for i_episode in range(1, num_episodes+1):
         dones =  np.array([(np.linalg.norm(states[i][:2] - goal) < tolerance) for i in range(num_agents)]  )         # see if episode has finished for each unity agent in the environment
         # print(actions)
         #Send (S, A, R, S') info to the training agent for replay buffer (memory) and network updates
-        agent.step(states, actions[:, :2], rewards, next_states, dones)
+        agent.step(states, actions[:, :3], rewards, next_states, dones)
 
         # set new states to current states for determining next actions
         states = next_states
@@ -183,17 +183,17 @@ for i_episode in range(1, num_episodes+1):
             # Progressive altitude loss penalty
             altitude = states[i][2]
             initial_altitude = initial_state.full().flatten()[2]
-            altitude_loss_penalty = -30 * max(0, initial_altitude - altitude)
+            altitude_loss_penalty = -10 * max(0, -initial_altitude + altitude)
             rewards[i] += altitude_loss_penalty
 
             # roll penalty
-            roll = aircraft.phi(states[i])
-            roll_threshold = np.deg2rad(50)
-            if np.abs(roll) > roll_threshold:
-                roll_penalty = 10 * (roll_threshold - np.abs(roll))
-            else:
-                roll_penalty = 0
-            rewards[i] += roll_penalty
+            # roll = aircraft.phi(states[i])
+            # roll_threshold = np.deg2rad(50)
+            # if np.abs(roll) > roll_threshold:
+            #     roll_penalty = 10 * (roll_threshold - np.abs(roll))
+            # else:
+            #     roll_penalty = 0
+            # rewards[i] += roll_penalty
         # control_change_penalty = np.linalg.norm(actions - previous_actions, axis=1)
         # control_change_penalty_weight = .1 # Adjust the weight as needed
         # rewards -= control_change_penalty * control_change_penalty_weight
@@ -203,6 +203,11 @@ for i_episode in range(1, num_episodes+1):
         agent_scores += rewards
         t += dt
         iteration += 1
+        if np.any(np.isnan(states)):
+            break
+
+        # if states[0][0] > 100:
+        #     break
         # If any unity agent indicates that the episode is done, 
         # then exit episode loop, to begin new episode
         if np.any(dones):

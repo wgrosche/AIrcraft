@@ -47,7 +47,7 @@ def main():
 
     perturbation = False
     
-    trim_state_and_control = [0, 0, 0, 50, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
+    trim_state_and_control = [0, 0, 0, 30, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
     # trim_state_and_control = [0, 0, 0, 30, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
 
     if trim_state_and_control is not None:
@@ -55,7 +55,7 @@ def main():
         control = np.zeros(aircraft.num_controls)
         control[:3] = trim_state_and_control[aircraft.num_states:-3]
         control[0] = 1
-        control[1] = 0
+        control[1] = -1
         aircraft.com = np.array(trim_state_and_control[-3:])
     else:
         x0 = np.zeros(3)
@@ -77,7 +77,7 @@ def main():
     print("Jacobian of state derivatives w.r.t. elevator:")
     print(jacobian_elevator_val)
     dt = .01
-    tf = 10
+    tf = 5
     state_list = np.zeros((aircraft.num_states, int(tf / dt)))
     t = 0
     ele_pos = True
@@ -88,10 +88,12 @@ def main():
             print('Aircraft crashed')
             break
         else:
-            if aircraft.phi(state).full().flatten() > np.deg2rad(50):
+            if aircraft.phi(state).full().flatten() > np.deg2rad(70):
                 control[0] = -1
-            elif aircraft.phi(state).full().flatten() < np.deg2rad(-50):
+
+            elif aircraft.phi(state).full().flatten() < np.deg2rad(-70):
                 control[0] = 1
+
             state_list[:, i] = state.full().flatten()
             control_list[:, i] = control
             state = dyn(state, control, dt)

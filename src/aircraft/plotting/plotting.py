@@ -374,7 +374,7 @@ class TrajectoryPlotter:
         control = trajectory_data.control
         self._update_or_create_line(ax, '_delta_a_line', control[0, :], r'$\delta_a$', drawstyle='steps-post')
         self._update_or_create_line(ax, '_delta_e_line', control[1, :], r'$\delta_e$', drawstyle='steps-post')
-        # self._update_or_create_line(ax, '_delta_r_line', control[2, :], r'$\delta_r$', drawstyle='steps-post')
+        self._update_or_create_line(ax, '_delta_r_line', control[2, :], r'$\delta_r$', drawstyle='steps-post')
 
         ax.legend()
         ax.grid(True)
