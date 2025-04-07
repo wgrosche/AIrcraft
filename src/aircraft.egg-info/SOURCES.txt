@@ -32,6 +32,7 @@ src/aircraft/plotting/plot.py
 src/aircraft/plotting/plot_control.py
 src/aircraft/plotting/plotting.py
 src/aircraft/reinforce/__init__.py
+src/aircraft/reinforce/curriculum.py
 src/aircraft/reinforce/rl.py
 src/aircraft/spectral/chebyshev.py
 src/aircraft/surrogates/__init__.py

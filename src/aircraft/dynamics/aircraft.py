@@ -171,11 +171,13 @@ class Aircraft(SixDOF):
         if not hasattr(self, '_control_initialized') or not self._control_initialized:
             self._aileron = ca.MX.sym('aileron')
             self._elevator = ca.MX.sym('elevator')
+            self._rudder = ca.MX.sym('rudder')
             self._thrust = ca.MX.sym('thrust', 3)
 
             self._control = ca.vertcat(
             self._aileron, 
             self._elevator,
+            self._rudder,
             self._thrust
             )
             self.num_controls = self._control.size()[0]
@@ -376,7 +378,7 @@ class Aircraft(SixDOF):
         outputs[2] *= beta_scaling
 
         outputs[4] *= alpha_scaling
-        outputs[4] *= beta_scaling
+        # outputs[4] *= beta_scaling
 
 
         self._coefficients = outputs
@@ -417,7 +419,7 @@ class Aircraft(SixDOF):
         
         # simplified rudder added in
         C_n_delta_r = -0.01
-        delta_r = self._thrust[0]
+        delta_r = self._rudder
         N_rudder = C_n_delta_r * delta_r * self._qbar * self.S * self.b
 
         moments_aero[2] += N_rudder
