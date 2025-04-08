@@ -70,6 +70,12 @@ def main():
 
     # aircraft.STEPS = 100
     dyn = aircraft.state_update
+
+    print("Is state symbolic?", aircraft.state.is_symbolic())
+    print("Is control symbolic?", aircraft.control.is_symbolic())
+    print("Is state_derivative symbolic?", aircraft.state_derivative(aircraft.state, aircraft.control).is_symbolic())
+    print("Symbolic dependencies of state_derivative:", ca.symvar(aircraft.state_derivative(aircraft.state, aircraft.control)))
+
     jacobian_elevator = ca.jacobian(aircraft.state_derivative(aircraft.state, aircraft.control), aircraft.control[1])
     jacobian_func = ca.Function('jacobian_func', [aircraft.state, aircraft.control], [jacobian_elevator])
     jacobian_elevator_val = jacobian_func(state, control)

@@ -439,55 +439,6 @@ class AircraftLinear(SixDOF):
 
         self._coefficients = None
         return ca.Function('coefficients', [self.state, self.control], [self._coefficients])
-    
-class Quadrotor(SixDOF):
-    def __init__(self):
-        super().__init__()
-
-    @property
-    def control(self):
-        if not hasattr(self, '_control_initialized') or not self._control_initialized:
-            self._thrust = ca.MX.sym('thrust', 4)
-
-            self._control = ca.vertcat(
-            self._thrust
-            )
-            self.num_controls = self._control.size()[0]
-
-            self._control_initialized = True
-
-        return self._control
-    
-    @property
-    def _forces_frd(self):
-        self._ensure_initialized('coefficients', 'qbar')
-
-        forces = self._coefficients[:3] * self._qbar * self.S
-
-        # antialign drag and velocity
-        forces[0] = ca.sign(self._v_frd_rel[0]) * forces[0]
-
-        # forces += self._thrust
-
-        speed_threshold = 80.0  # m/s
-        penalty_factor = 10.0  # Scale factor for additional drag
-
-        # Smooth penalty function for increased drag
-        excess_speed = self._v_frd_rel[0] - speed_threshold
-        additional_drag = penalty_factor * ca.fmax(0, excess_speed)**2  # Quadratic penalty for smoothness
-
-        # Apply the additional drag along the x-axis (forward direction)
-        forces[0] -= additional_drag
-        return forces
-    
-    @property
-    def _moments_aero_frd(self):
-        self._ensure_initialized('coefficients', 'qbar')
-        moments_aero = (self._coefficients[3:] * self._qbar * self.S 
-                        * ca.vertcat(self.b, self.c, self.b))
-
-        return moments_aero
-    
 
 
 

@@ -10,9 +10,26 @@ class QuadrotorControl(ControlProblem):
         self.num_nodes = 100
         super().__init__(dynamics, self.num_nodes)
 
-    def setup(self, _ = 0):
+    def setup(self, initial_pos:np.ndarray = np.zeros(3)):
         guess = np.zeros((self.state_dim + self.control_dim, self.num_nodes + 1))
-        guess[6, :] = 1
+        guess[9, :] = 1
+
+        # dt = .01
+        # tf = 5
+        # state_list = np.zeros((quad.num_states, int(tf / dt)))
+        # t = 0
+        # control_list = np.zeros((quad.num_controls, int(tf / dt)))
+        # for i in tqdm(range(int(tf / dt)), desc = 'Simulating Trajectory:'):
+        #     if np.isnan(state[0]):
+        #         print('quad crashed')
+        #         break
+        #     else:
+
+        #         state_list[:, i] = state.full().flatten()
+        #         control_list[:, i] = control
+        #         state = dyn(state, control, dt)
+                        
+        #         t += 1
         super().setup(guess)
 
     def control_constraint(self, node):
@@ -32,16 +49,3 @@ class QuadrotorControl(ControlProblem):
         ax.scatter(sol.value(self.state[0, :]), sol.value(self.state[1, :]), sol.value(self.state[2, :]))
         plt.show(block = True)
     
-def main():
-    """
-    Minimal test of quadrotor control class
-    """
-    quad = Quadrotor()
-    control_problem = QuadrotorControl(quad.step())
-
-    control_problem.setup()
-    control_problem.solve()
-
-    
-if __name__ == '__main__':
-    main()
