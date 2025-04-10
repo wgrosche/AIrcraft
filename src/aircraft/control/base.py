@@ -35,10 +35,13 @@ def plot_convergence(self, ax:plt.axes, sol:ca.OptiSol):
     plt.tight_layout()
     plt.show(block = True)
 
+
+
 class ControlProblem:
     """
     Control Problem parent class
     """
+    
 
     def __init__(self, dynamics:ca.Function, num_nodes:int, opts:Optional[dict] = {}):
 
@@ -64,6 +67,13 @@ class ControlProblem:
         self.sol_state_list = []
         self.sol_control_list = []
         self.final_times = []
+        self.constraint_descriptions = []
+
+    def constraint(self):
+        """
+        Wrapper for constraints, adds description and sets up the opti implementation
+        """
+        pass
 
     def control_constraint(self, node:ControlNode):
         """
@@ -75,7 +85,9 @@ class ControlProblem:
         opti = self.opti
         dynamics = self.dynamics
         opti.subject_to(ca.norm_2(node.state[6:10]) == 1)
+        self.constraint_descriptions.append(('normalised quaternion constraint', node.state[6:10], '=='))
         opti.subject_to(next.state == dynamics(node.state, node.control, dt))
+        self.constraint_descriptions.append(('dynamics constraint', next.state, '=='))
 
     def loss(self, time:Optional[ca.MX] = None):
         return time
@@ -100,7 +112,6 @@ class ControlProblem:
         self.control_constraint(current_node)
 
         # initial_state = opti.parameter(13) TODO: investigate this for speeding up initialisation esp for MHE
-        
 
         opti.set_initial(next_node.state, guess[:self.state_dim, index])
         opti.set_initial(next_node.control, guess[self.state_dim:, index])
@@ -109,10 +120,11 @@ class ControlProblem:
     def _setup_time(self):
         opti = self.opti
         if not self.scale_time:
-            self.scale_time = 1
+            self.scale_time = 5
         self.time = self.scale_time * opti.variable()
 
         opti.subject_to(self.time > 0)
+        self.constraint_descriptions.append(('positive time', self.time, '>'))
         opti.set_initial(self.time, self.scale_time)
 
         self.dt = self.time / self.num_nodes
@@ -133,6 +145,7 @@ class ControlProblem:
             )
 
         opti.subject_to(current_node.state == guess[:self.state_dim, 0])
+        self.constraint_descriptions.append(('initial state', current_node.state, '=='))
         opti.set_initial(current_node.state, guess[:self.state_dim, 0])
         opti.set_initial(current_node.control, guess[self.state_dim:, 0])
 
@@ -155,6 +168,7 @@ class ControlProblem:
         nodes = [current_node]
         
         for index in range(1, self.num_nodes + 1):
+            print(f"Setting up node {index}")
             current_node = self._setup_step(index, current_node, guess)
             nodes.append(current_node)
 

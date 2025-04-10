@@ -42,7 +42,7 @@ class Quadrotor(SixDOF):
     
     @property
     def _forces_frd(self):
-        return ca.vertcat(0, 0, ca.sum1(self._thrust))
+        return ca.vertcat(0, 0, -ca.sum1(self._thrust))
     
 
     @property
