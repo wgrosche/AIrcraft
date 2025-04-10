@@ -255,25 +255,16 @@ class SixDOF(ABC):
         q_frd_ned = Quaternion(self._q_frd_ned)
         omega_frd_ned = self._omega_frd_ned  # Assume this is a 3D vector
 
-        # Angular velocity magnitude
-        theta = ca.norm_2(omega_frd_ned)
-        half_theta = 0.5 * dt * theta
-
-        # Use smooth approximations for sin and cos to avoid discontinuities
+        # Compute the exponential map using the Rodrigues' rotation formula
+        half_theta = 0.5 * dt * ca.norm_fro(omega_frd_ned)
         sin_half_theta = ca.sin(half_theta)
         cos_half_theta = ca.cos(half_theta)
 
-        # Normalized axis of rotation
-        axis = ca.if_else(theta > 1e-6,
-                        omega_frd_ned / theta,
-                        ca.MX.zeros(3, 1))
+        # Compute the exponential map terms (quaternion)
+        exp_q = ca.vertcat(sin_half_theta * omega_frd_ned, cos_half_theta)
 
-        # Compute exponential map terms (quaternion)
-        exp_q = ca.vertcat(sin_half_theta * axis, cos_half_theta)
-
-        # Compute the updated quaternion and normalize it
-        q_next = Quaternion(exp_q)*q_frd_ned
-        q_next = q_next.normalize().coeffs()#/ ca.norm_2(q_next)  # Ensure unit norm
+        # Compute the updated quaternion
+        q_next = Quaternion.product(exp_q, q_frd_ned.coeffs())
 
         return ca.Function('q_frd_ned_update', [self.state, self.control, dt], [q_next])
     
@@ -403,7 +394,7 @@ class SixDOF(ABC):
         state = state + sixth_dt * (k1 + 2 * k2 + 2 * k3 + k4)
 
         # Quaternion update to maintain unit norm
-        state[6:10] = self.q_frd_ned_update(state, control, dt_scaled)
+        # state[6:10] = self.q_frd_ned_update(state, control, dt_scaled)
         state[6:10] = Quaternion(state[6:10]).normalize()
 
         return state

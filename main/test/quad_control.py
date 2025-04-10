@@ -122,6 +122,7 @@ def main():
     """
     
     quad = Quadrotor()
+    quad.STEPS = 1
     # create guess with dubins initialiser
     traj_dict = json.load(open('data/glider/problem_definition.json'))
 
@@ -142,8 +143,8 @@ def main():
     initial_guess = initialiser.guess
 
     initial_guess = np.zeros((21, 13))
-    initial_guess[:, 6] = 1
-    initial_guess[:, 5] = -10
+    initial_guess[:, 9] = 1
+    initial_guess[:, 3] = 5
     initial_guess = np.concat((initial_guess, np.ones((initial_guess.shape[0],quad.num_controls ))), axis = 1).T
     num_nodes = initial_guess.shape[1] - 1
     i = 0
@@ -168,10 +169,10 @@ def main():
     # return None
 
     print(num_nodes)
-    control_problem = QuadrotorControl(quad.state_update, num_nodes)
+    control_problem = QuadrotorControl(quad, num_nodes)
     print(initialiser.guess.T[:control_problem.state_dim, 0])
     # control_problem.setup(initial_guess, target = initial_guess.T[:3, -1])
-    control_problem.setup(state_list, target = [10, 10, 10])
+    control_problem.setup(state_list, target = [100, 10, 10])
     # control_problem.setup(state_list, target = state_list.T[:3, -1])
     try:
         sol = control_problem.solve()

@@ -29,10 +29,10 @@ else:
 #                         }
 
 default_solver_options = {'ipopt': {'max_iter': 10000,
-                                    'tol': 1e-4,
-                                    'acceptable_tol': 1e-3,
-                                    'acceptable_obj_change_tol': 1e-3,
-                                    'hessian_approximation': 'limited-memory',#'exact',
+                                    'tol': 1e-6,
+                                    'acceptable_tol': 1e-6,
+                                    'acceptable_obj_change_tol': 1e-6,
+                                    'hessian_approximation': 'exact', #'limited-memory',
                                     'linear_solver': 'mumps',
                                     # 'jacobian_approximation': 'exact',  # Use exact Jacobian as well
                                     # 'calc_lam_p': True,
