@@ -69,11 +69,47 @@ class ControlProblem:
         self.final_times = []
         self.constraint_descriptions = []
 
-    def constraint(self):
+    def constraint(self, expr, description=None):
         """
-        Wrapper for constraints, adds description and sets up the opti implementation
+        Wrapper for adding constraints to the opti stack with optional auto-description.
+
+        Args:
+            expr: Constraint expression (scalar or vector). Can be bounded, equality, or inequality.
+            description: Optional human-readable description string.
         """
-        pass
+        self.opti.subject_to(expr)
+        num_constraints = expr.numel()
+        # Auto-generate a fallback description if not provided
+        if description is None:
+            # Try to infer the type
+            if hasattr(expr, 'is_equal') and expr.is_equal():  # CasADi equality
+                inferred_type = "equality"
+            elif hasattr(expr, 'is_lte') and expr.is_lte():    # CasADi less-than
+                inferred_type = "inequality"
+            else:
+                inferred_type = "constraint"
+
+            # Use the symbolic expression as a fallback string
+            raw_str = str(expr)
+
+            # Limit to 1 line and truncate if too long
+            if "\n" in raw_str:
+                raw_str = raw_str.split("\n")[0]
+            if len(raw_str) > 80:
+                raw_str = raw_str[:77] + "..."
+
+            description = f"{inferred_type}: {raw_str}"
+
+        # Expand descriptions if vector-valued
+        if num_constraints == 1:
+            self.constraint_descriptions.append(description)
+        else:
+            self.constraint_descriptions.extend(
+                [f"{description} (dim {i})" for i in range(num_constraints)]
+            )
+
+
+
 
     def control_constraint(self, node:ControlNode):
         """
@@ -84,10 +120,12 @@ class ControlProblem:
     def state_constraint(self, node:ControlNode, next:ControlNode, dt:ca.MX):
         opti = self.opti
         dynamics = self.dynamics
-        opti.subject_to(ca.norm_2(node.state[6:10]) == 1)
-        self.constraint_descriptions.append(('normalised quaternion constraint', node.state[6:10], '=='))
-        opti.subject_to(next.state == dynamics(node.state, node.control, dt))
-        self.constraint_descriptions.append(('dynamics constraint', next.state, '=='))
+        self.constraint(ca.sumsqr(node.state[6:10]) - 1 == 0)
+        # opti.subject_to(ca.sumsqr(node.state[6:10]) - 1 == 0)
+        # self.constraint_descriptions.append(('normalised quaternion constraint', ca.sumsqr(node.state[6:10]), '=='))
+        self.constraint(next.state - dynamics(node.state, node.control, dt) == 0)
+        # opti.subject_to(next.state - dynamics(node.state, node.control, dt) == 0)
+        # self.constraint_descriptions.append(('dynamics constraint', next.state, '=='))
 
     def loss(self, time:Optional[ca.MX] = None):
         return time
@@ -120,11 +158,12 @@ class ControlProblem:
     def _setup_time(self):
         opti = self.opti
         if not self.scale_time:
-            self.scale_time = 5
+            self.scale_time = 1
         self.time = self.scale_time * opti.variable()
 
-        opti.subject_to(self.time > 0)
-        self.constraint_descriptions.append(('positive time', self.time, '>'))
+        # opti.subject_to(self.time > 0)
+        self.constraint(self.opti.bounded(0.1, self.time, 5))
+        # self.constraint_descriptions.append(('positive time', self.time, '>'))
         opti.set_initial(self.time, self.scale_time)
 
         self.dt = self.time / self.num_nodes
@@ -144,9 +183,11 @@ class ControlProblem:
                 control=opti.variable(self.control_dim),
             )
 
-        opti.subject_to(current_node.state == guess[:self.state_dim, 0])
-        self.constraint_descriptions.append(('initial state', current_node.state, '=='))
+        
+        # opti.subject_to(current_node.state == guess[:self.state_dim, 0])
+        # self.constraint_descriptions.append(('initial state', current_node.state, '=='))
         opti.set_initial(current_node.state, guess[:self.state_dim, 0])
+        self.constraint(current_node.state == guess[:self.state_dim, 0])
         opti.set_initial(current_node.control, guess[self.state_dim:, 0])
 
         return current_node

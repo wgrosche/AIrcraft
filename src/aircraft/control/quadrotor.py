@@ -8,17 +8,18 @@ import casadi as ca
 class QuadrotorControl(ControlProblem):
     def control_constraint(self, node):
         opti = self.opti
-
-        opti.subject_to(opti.bounded(0, node.control, 100))
-        self.constraint_descriptions.append(('thrust constraint', node.control, '><'))
+        self.constraint(opti.bounded(0, node.control, 100))
+        # opti.subject_to(opti.bounded(0, node.control, 100))
+        # self.constraint_descriptions.append(('thrust constraint', node.control, '><'))
         return super().control_constraint(node)
     
     def setup(self, guess, target=None):
         super().setup(guess)
         if target is not None:
             self.opti.minimize(ca.sumsqr(self.state[:3, -1] -  target))
-            self.opti.subject_to(self.state[:3, -1] ==  target)
-            self.constraint_descriptions.append(('goal constraint', self.state[:3, -1], '=='))
+            self.constraint(self.state[:3, -1] ==  target)
+            # self.opti.subject_to(self.state[:3, -1] ==  target)
+            # self.constraint_descriptions.append(('goal constraint', self.state[:3, -1], '=='))
             
             
     

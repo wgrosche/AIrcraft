@@ -256,30 +256,58 @@ class SixDOF(ABC):
         omega_frd_ned = self._omega_frd_ned  # Assume this is a 3D vector
 
         # Angular velocity magnitude
-        theta = ca.norm_2(omega_frd_ned)  
+        theta = ca.norm_2(omega_frd_ned)
         half_theta = 0.5 * dt * theta
 
-        # Use Taylor series expansion for small angles to improve stability
-        sin_half_theta = ca.if_else(theta > 1e-6, 
-                                    ca.sin(half_theta), 
-                                    half_theta)  # Approximate sin(x) ≈ x for small x
-        cos_half_theta = ca.if_else(theta > 1e-6, 
-                                    ca.cos(half_theta), 
-                                    1 - (half_theta ** 2) / 2)  # Approximate cos(x) ≈ 1 - x^2/2
+        # Use smooth approximations for sin and cos to avoid discontinuities
+        sin_half_theta = ca.sin(half_theta)
+        cos_half_theta = ca.cos(half_theta)
 
-        # Normalized axis of rotation (handle division by zero safely)
-        axis = ca.if_else(theta > 1e-6, 
-                        omega_frd_ned / theta, 
+        # Normalized axis of rotation
+        axis = ca.if_else(theta > 1e-6,
+                        omega_frd_ned / theta,
                         ca.MX.zeros(3, 1))
 
         # Compute exponential map terms (quaternion)
         exp_q = ca.vertcat(sin_half_theta * axis, cos_half_theta)
 
         # Compute the updated quaternion and normalize it
-        q_next = Quaternion.product(exp_q, q_frd_ned.coeffs())
-        q_next = q_next / ca.norm_2(q_next)  # Ensure unit norm
+        q_next = Quaternion(exp_q)*q_frd_ned
+        q_next = q_next.normalize().coeffs()#/ ca.norm_2(q_next)  # Ensure unit norm
 
         return ca.Function('q_frd_ned_update', [self.state, self.control, dt], [q_next])
+    
+    # @property
+    # def q_frd_ned_update(self):
+    #     dt = self.dt_sym
+    #     q_frd_ned = Quaternion(self._q_frd_ned)
+    #     omega_frd_ned = self._omega_frd_ned  # Assume this is a 3D vector
+
+    #     # Angular velocity magnitude
+    #     theta = ca.norm_2(omega_frd_ned)  
+    #     half_theta = 0.5 * dt * theta
+
+    #     # Use Taylor series expansion for small angles to improve stability
+    #     sin_half_theta = ca.if_else(theta > 1e-6, 
+    #                                 ca.sin(half_theta), 
+    #                                 half_theta)  # Approximate sin(x) ≈ x for small x
+    #     cos_half_theta = ca.if_else(theta > 1e-6, 
+    #                                 ca.cos(half_theta), 
+    #                                 1 - (half_theta ** 2) / 2)  # Approximate cos(x) ≈ 1 - x^2/2
+
+    #     # Normalized axis of rotation (handle division by zero safely)
+    #     axis = ca.if_else(theta > 1e-6, 
+    #                     omega_frd_ned / theta, 
+    #                     ca.MX.zeros(3, 1))
+
+    #     # Compute exponential map terms (quaternion)
+    #     exp_q = ca.vertcat(sin_half_theta * axis, cos_half_theta)
+
+    #     # Compute the updated quaternion and normalize it
+    #     q_next = Quaternion.product(exp_q, q_frd_ned.coeffs())
+    #     q_next = q_next / ca.norm_2(q_next)  # Ensure unit norm
+
+    #     return ca.Function('q_frd_ned_update', [self.state, self.control, dt], [q_next])
 
 
 
