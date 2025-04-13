@@ -96,7 +96,7 @@ def main():
     control = np.zeros(aircraft.num_controls)
     control[:len(trim_state_and_control) - aircraft.num_states - 3] = trim_state_and_control[aircraft.num_states:-3]
     aircraft.com = np.array(trim_state_and_control[-3:])
-    aircraft.STEPS = 1
+    aircraft.STEPS = 10
     dyn = aircraft.state_update
 
     # Initialize trajectory with debugging prints
