@@ -276,16 +276,16 @@ class Agent():
             for agent in range(self.num_agents):
                 acts[agent,:] = self.actor_local(state[agent,:]).cpu().data.numpy()
         self.actor_local.train()
-        # if add_noise:
-        #     acts += self.noise.sample()
-
         if add_noise:
-            acts = self.exploration.select_action(acts)
+            acts += self.noise.sample()
+
+        # if add_noise:
+        #     acts = self.exploration.select_action(acts)
 
         # if add_noise:
         #     self.param_noise.remove_noise()
 
-        return np.clip(acts, -3, 3)
+        return np.clip(acts, -5, 5)
 
     def reset(self):
         self.noise.reset()
@@ -318,7 +318,7 @@ class Agent():
         # Minimize the loss
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
-        #torch.nn.utils.clip_grad_norm(self.critic_local.parameters(), 1)
+        torch.nn.utils.clip_grad_norm_(self.critic_local.parameters(), 1)
         self.critic_optimizer.step()
 
         # ---------------------------- update actor ---------------------------- #

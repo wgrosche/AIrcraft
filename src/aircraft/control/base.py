@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 import time
 from aircraft.config import default_solver_options, BASEPATH, NETWORKPATH, DATAPATH, DEVICE, rng
-
+from abc import ABC, abstractmethod
 
 plt.ion()
 
@@ -37,13 +37,13 @@ def plot_convergence(self, ax:plt.axes, sol:ca.OptiSol):
 
 
 
-class ControlProblem:
+class ControlProblem(ABC):
     """
     Control Problem parent class
     """
     
 
-    def __init__(self, dynamics:ca.Function, num_nodes:int, opts:Optional[dict] = {}):
+    def __init__(self, *, dynamics:ca.Function, num_nodes:int, opts:Optional[dict] = {}, **kwargs):
 
         self.opti = ca.Opti('nlp')
         self.state_dim = dynamics.size1_in(0)
@@ -54,7 +54,7 @@ class ControlProblem:
 
         self.scale_state = opts.get('scale_state', None)
         self.scale_control = opts.get('scale_control', None)
-        self.scale_time = None
+        self.timescale = None
         self.initial_state = opts.get('initial_state', None)
         self.solver_opts = opts.get('solver_options', default_solver_options)
 
@@ -68,8 +68,9 @@ class ControlProblem:
         self.sol_control_list = []
         self.final_times = []
         self.constraint_descriptions = []
+        super().__init__(**kwargs)
 
-    def constraint(self, expr, description=None):
+    def constraint(self, expr, description=None) -> None:
         """
         Wrapper for adding constraints to the opti stack with optional auto-description.
 
@@ -108,27 +109,16 @@ class ControlProblem:
                 [f"{description} (dim {i})" for i in range(num_constraints)]
             )
 
-
-
-
+    @abstractmethod
     def control_constraint(self, node:ControlNode):
-        """
-        Does nothing in base class
-        """
         pass
 
-    def state_constraint(self, node:ControlNode, next:ControlNode, dt:ca.MX):
-        opti = self.opti
-        dynamics = self.dynamics
-        self.constraint(ca.sumsqr(node.state[6:10]) - 1 == 0)
-        # opti.subject_to(ca.sumsqr(node.state[6:10]) - 1 == 0)
-        # self.constraint_descriptions.append(('normalised quaternion constraint', ca.sumsqr(node.state[6:10]), '=='))
-        self.constraint(next.state - dynamics(node.state, node.control, dt) == 0)
-        # opti.subject_to(next.state - dynamics(node.state, node.control, dt) == 0)
-        # self.constraint_descriptions.append(('dynamics constraint', next.state, '=='))
+    def state_constraint(self, node:ControlNode, next:ControlNode, dt:ca.MX) -> None:
+        self.constraint(next.state - self.dynamics(node.state, node.control, dt) == 0)
 
-    def loss(self, time:Optional[ca.MX] = None):
-        return time
+    @abstractmethod
+    def loss(self, nodes:List[ControlNode], time:Optional[ca.MX] = None) -> ca.MX:
+        pass
 
     def _setup_step(self, index:int, current_node:ControlNode, guess:np.ndarray):
         opti = self.opti
@@ -155,20 +145,16 @@ class ControlProblem:
         opti.set_initial(next_node.control, guess[self.state_dim:, index])
         return next_node
     
-    def _setup_time(self):
+    def _setup_time(self) -> None:
         opti = self.opti
-        if not self.scale_time:
-            self.scale_time = 1
-        self.time = self.scale_time * opti.variable()
-
-        # opti.subject_to(self.time > 0)
-        self.constraint(self.opti.bounded(0.1, self.time, 5))
-        # self.constraint_descriptions.append(('positive time', self.time, '>'))
-        opti.set_initial(self.time, self.scale_time)
-
+        if not self.timescale:
+            self.timescale = 1
+        self.time = self.timescale * opti.variable()
+        self.constraint(self.time > 0, description="positive time constraint")
+        opti.set_initial(self.time, self.timescale)
         self.dt = self.time / self.num_nodes
 
-    def _setup_initial_node(self, guess:np.ndarray):
+    def _setup_initial_node(self, guess:np.ndarray) -> ControlNode:
         opti = self.opti
         if self.scale_state and self.scale_control:
             current_node = ControlNode(
@@ -182,17 +168,15 @@ class ControlProblem:
                 state=opti.variable(self.state_dim),
                 control=opti.variable(self.control_dim),
             )
-
-        
-        # opti.subject_to(current_node.state == guess[:self.state_dim, 0])
-        # self.constraint_descriptions.append(('initial state', current_node.state, '=='))
-        opti.set_initial(current_node.state, guess[:self.state_dim, 0])
-        self.constraint(current_node.state == guess[:self.state_dim, 0])
-        opti.set_initial(current_node.control, guess[self.state_dim:, 0])
+        state_guess = guess[:self.state_dim, :]
+        control_guess = guess[self.state_dim:self.state_dim + self.control_dim, :]
+        opti.set_initial(current_node.state, state_guess[:, 0])
+        self.constraint(current_node.state == state_guess[:, 0])
+        opti.set_initial(current_node.control, control_guess[:, 0])
 
         return current_node
     
-    def _setup_variables(self, nodes:List[ControlNode]):
+    def _setup_variables(self, nodes:List[ControlNode]) -> None:
         self.state = ca.hcat([nodes[i].state for i in range(self.num_nodes + 1)])
         self.control = ca.hcat([nodes[i].control for i in range(self.num_nodes)])
 
@@ -200,8 +184,9 @@ class ControlProblem:
             print("State Shape: ", self.state.shape)
             print("Control Shape: ", self.control.shape)
 
+
     def _setup_objective(self, nodes):
-        self.opti.minimize(self.loss(time = self.time))
+        self.opti.minimize(self.loss(nodes = nodes, time = self.time))
 
     def setup(self, guess:np.ndarray):
         self._setup_time()
@@ -209,23 +194,19 @@ class ControlProblem:
         nodes = [current_node]
         
         for index in range(1, self.num_nodes + 1):
-            print(f"Setting up node {index}")
-            current_node = self._setup_step(index, current_node, guess)
-            nodes.append(current_node)
+            nodes.append(self._setup_step(index, nodes[-1], guess))
 
         self._setup_variables(nodes)
         self._setup_objective(nodes)
 
-    def save_progress(self, iteration, states, controls, time_vals):
-        if self.h5file is not None:
+    def save_progress(self, iteration, states, controls, time_vals, save_interval:int = 10):
+        if self.h5file is not None and iteration % save_interval == 0:
             try:
-                # Combine and iterate through the last 10 entries
                 for i, (state, control, time_val) in enumerate(zip(states[-10:], controls[-10:], time_vals[-10:])):
                     grp_name = f'iteration_{iteration - 10 + i}'
-                    grp = self.h5file.require_group(grp_name)  # Creates or accesses the group
+                    grp = self.h5file.require_group(grp_name)
                     grp.attrs['timestamp'] = time.time()
 
-                    # Create or overwrite datasets efficiently
                     for name, data in zip(['state', 'control', 'time'], [state, control, time_val]):
                         if name in grp:
                             del grp[name]  # Overwrite if dataset already exists
@@ -234,16 +215,13 @@ class ControlProblem:
                 print(f"Error saving progress: {e}")
 
     def callback(self, iteration: int):
-        # Save the progress every 10 iterations
-        if self.filepath is not None:
-            self.sol_state_list.append(self.opti.debug.value(self.state))
-            self.sol_control_list.append(self.opti.debug.value(self.control))
-            self.final_times.append(self.opti.debug.value(self.time))
-            if iteration % 10 == 0:
-                self.save_progress(iteration, self.sol_state_list, self.sol_control_list, self.final_times)
-                self.log(iteration)
+        self.sol_state_list.append(self.opti.debug.value(self.state))
+        self.sol_control_list.append(self.opti.debug.value(self.control))
+        self.final_times.append(self.opti.debug.value(self.time))
+        self.save_progress(iteration, self.sol_state_list, self.sol_control_list, self.final_times)
+        self.log(iteration)
 
-    def solve(self, warm_start:Optional[ca.OptiSol] = None):
+    def solve(self, warm_start:Optional[ca.OptiSol] = None) -> ca.OptiSol:
         self.opti.solver('ipopt', self.solver_opts)
         self.opti.callback(lambda iteration: self.callback(iteration))
         if warm_start:

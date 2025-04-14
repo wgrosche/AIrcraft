@@ -93,13 +93,13 @@ from aircraft.control.base import ControlNode, ControlProblem
 plt.ion()
 
 class AircraftControl(ControlProblem):
-    def __init__(self, aircraft:Aircraft, num_nodes:int, opts:Optional[dict] = {}, time_guess:float = None):
+    def __init__(self, *, aircraft:Aircraft, time_guess:float = None, **kwargs):
         dynamics = aircraft.state_update
         self.aircraft = aircraft
         self.plotter = TrajectoryPlotter(aircraft)
         self.scale_time = time_guess
         plt.show()
-        super().__init__(dynamics, num_nodes, opts)
+        super().__init__(dynamics=dynamics, **kwargs)
 
 
     def control_constraint(self, node:ControlNode):
@@ -116,11 +116,11 @@ class AircraftControl(ControlProblem):
         alpha = aircraft.alpha
         airspeed = aircraft.airspeed
         roll = aircraft.phi
-        opti.subject_to(opti.bounded(20, airspeed(node.state, node.control), 80))
-        opti.subject_to(opti.bounded(-np.deg2rad(50), roll(node.state),  np.deg2rad(50)))
-        opti.subject_to(opti.bounded(-np.deg2rad(10), beta(node.state, node.control),  np.deg2rad(10)))
-        opti.subject_to(opti.bounded(-np.deg2rad(20), alpha(node.state, node.control), np.deg2rad(20)))
-        opti.subject_to(next.state[2] < 0)
+        self.constraint(opti.bounded(20, airspeed(node.state, node.control), 80), description="Speed constraint")
+        self.constraint(opti.bounded(-np.deg2rad(50), roll(node.state),  np.deg2rad(50)), description="Roll constraint")
+        self.constraint(opti.bounded(-np.deg2rad(10), beta(node.state, node.control),  np.deg2rad(10)), description="Sideslip constraint")
+        self.constraint(opti.bounded(-np.deg2rad(20), alpha(node.state, node.control), np.deg2rad(20)), description="Attack constraint")
+        self.constraint(node.state[2] < 0, description="Height, constraint")
 
     def _setup_objective(self, nodes):
         """
@@ -230,7 +230,7 @@ class AircraftControl(ControlProblem):
             self.plotter.figure.canvas.start_event_loop(0.0002)
 
     def solve(self, warm_start:Optional[ca.OptiSol] = None):
-        super().solve(warm_start=warm_start)
+        sol = super().solve(warm_start=warm_start)
 
         trajectory_data = TrajectoryData(
                 state=np.array(self.opti.debug.value(self.state))[:, 1:],
@@ -242,6 +242,7 @@ class AircraftControl(ControlProblem):
         self.plotter.figure.canvas.start_event_loop(0.0002)
 
         plt.show(block = True)
+        return sol
 
     def _initialise_state(self):
         """

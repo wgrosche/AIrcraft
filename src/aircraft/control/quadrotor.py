@@ -6,10 +6,11 @@ from typing import List, Optional
 import casadi as ca
 from aircraft.plotting.plotting import TrajectoryData, TrajectoryPlotter
 class QuadrotorControl(ControlProblem):
-    def __init__(self, quad, num_nodes):
+    def __init__(self, quad, **kwargs):
         dynamics = quad.state_update
-        super().__init__(dynamics, num_nodes)
+        super().__init__(dynamics=dynamics, **kwargs)
         self.plotter = TrajectoryPlotter(quad)
+        
     def control_constraint(self, node):
         opti = self.opti
         self.constraint(opti.bounded(0, node.control, 10))
