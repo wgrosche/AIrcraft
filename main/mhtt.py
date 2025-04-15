@@ -12,8 +12,8 @@ import casadi as ca
 import numpy as np
 
 class Controller(MHTT, AircraftControl):
-    def __init__(self, *, aircraft, track, num_nodes=100, dt=0.001, opts = {}, **kwargs):
-        super().__init__(aircraft=aircraft, num_nodes=num_nodes, opts = opts, track = track, dt = dt)
+    def __init__(self, *, aircraft, track, num_nodes=30, dt=0.001, track_length=1, opts = {}, **kwargs):
+        super().__init__(aircraft=aircraft, num_nodes=num_nodes, opts = opts, track = track, dt = dt, track_length=track_length)
 
 
 
@@ -38,18 +38,21 @@ dynamics = aircraft.state_update
 progress = 0
 dubins = DubinsInitialiser(trajectory_config)
 dubins.trajectory(1)
-dubins.visualise()
-
+# dubins.visualise()
+mhtt = Controller(aircraft=aircraft, track = dubins.trajectory, track_length = dubins.length())
 
 while progress < 1:
-    mhtt = Controller(aircraft=aircraft, track = dubins.trajectory)
     initial_state = state
-    guess, progress = mhtt.initialise(initial_state)
-    mhtt.setup(guess)
+    guess, progress = mhtt.initialise(initial_state, progress)
+    mhtt.setup(guess, progress)
     sol = mhtt.solve()
     print("Solution: ", sol)
-    state = sol.value(mhtt.state)[:,10]
+    if sol.value(mhtt.progress[-1]) > 1:
+        # save the solution
+        break
+    state = ca.DM(sol.value(mhtt.state)[:,10])
+    print(state)
     
-    progress = sol.value(mhtt.progress[-1])
+    progress = sol.value(mhtt.progress[10])
     print(progress)
 

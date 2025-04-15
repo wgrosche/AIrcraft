@@ -411,7 +411,7 @@ class DubinsInitialiser:
         print(velocities.shape)
         print(orientations.shape)
         print(angular_velocities.shape)
-        self.guess = np.concat((positions, velocities, orientations, angular_velocities), axis = 1)
+        self.guess = np.concatenate((positions, velocities, orientations, angular_velocities), axis = 1)
         print(self.guess.shape)
 
     def waypoint_variable_guess(self):
@@ -472,24 +472,58 @@ class DubinsInitialiser:
         return expr
 
 
+    def length(self, N=100):
+        import casadi as ca
+
+        s = ca.MX.sym("s")
+        pos = self.trajectory(s)
+        dpos_ds = ca.jacobian(pos, s)  # ∂trajectory/∂s
+        speed = ca.norm_2(dpos_ds)
+
+        # Build integrator over s ∈ [0,1]
+        integrand = ca.Function('integrand', [s], [speed])
+        s_grid = np.linspace(0, 1, N)
+        ds = 1 / (N - 1)
+        length = 0.0
+        for i in range(N - 1):
+            si = s_grid[i]
+            si1 = s_grid[i + 1]
+            # Trapezoidal integration
+            length += 0.5 * ds * (integrand(si) + integrand(si1))
+        
+        return float(length)
+
 
     def trajectory(self, s):
         import casadi as ca
-        
         s_values = np.linspace(0, 1, num=len(self.dubins_path))
         x_values = [i[0] for i in self.dubins_path]
         y_values = [i[1] for i in self.dubins_path]
         z_values = [i[2] for i in self.dubins_path]
-        # # Fit cubic splines for each coordinate
-        # Px = ca.interpolant('Px', 'bspline', [s_values], x_values)
-        # Py = ca.interpolant('Py', 'bspline', [s_values], y_values)
-        # Pz = ca.interpolant('Pz', 'bspline', [s_values], z_values)
 
-        return ca.vertcat(
-                self.linear_interp(s, s_values, x_values),
-                self.linear_interp(s, s_values, y_values),
-                self.linear_interp(s, s_values, z_values)
-            )
+        Px = ca.interpolant('Px', 'bspline', [s_values], x_values)
+        Py = ca.interpolant('Py', 'bspline', [s_values], y_values)
+        Pz = ca.interpolant('Pz', 'bspline', [s_values], z_values)
+
+        return ca.vertcat(Px(s), Py(s), Pz(s))
+
+    # def trajectory(self, s):
+    #     import casadi as ca
+        
+    #     s_values = np.linspace(0, 1, num=len(self.dubins_path))
+    #     x_values = [i[0] for i in self.dubins_path]
+    #     y_values = [i[1] for i in self.dubins_path]
+    #     z_values = [i[2] for i in self.dubins_path]
+    #     # # Fit cubic splines for each coordinate
+    #     # Px = ca.interpolant('Px', 'bspline', [s_values], x_values)
+    #     # Py = ca.interpolant('Py', 'bspline', [s_values], y_values)
+    #     # Pz = ca.interpolant('Pz', 'bspline', [s_values], z_values)
+
+    #     return ca.vertcat(
+    #             self.linear_interp(s, s_values, x_values),
+    #             self.linear_interp(s, s_values, y_values),
+    #             self.linear_interp(s, s_values, z_values)
+    #         )
 
     def visualise(self):
         # Visualize the generated 3D Dubins path

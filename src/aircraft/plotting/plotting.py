@@ -21,7 +21,19 @@ from aircraft.utils.utils import load_model
 from aircraft.config import DEVICE, NETWORKPATH, DATAPATH, VISUPATH
 from aircraft.dynamics.aircraft import Aircraft, AircraftOpts
 
-__all__ = ['create_grid', 'TrajectoryPlotter']
+__all__ = ['create_grid', 'TrajectoryPlotter', 'TrajectoryData', 'plot_convergence']
+
+def plot_convergence(ax:plt.axes, sol:ca.OptiSol):
+    ax.semilogy(sol.stats()['iterations']['inf_du'], label="Dual infeasibility")
+    ax.semilogy(sol.stats()['iterations']['inf_pr'], label="Primal infeasibility")
+
+    ax.set_xlabel('Iterations')
+    ax.set_ylabel('Infeasibility (log scale)')
+    ax.grid(True)
+    ax.legend()
+
+    plt.tight_layout()
+    plt.show(block = True)
 
 def create_grid(data:pd.DataFrame, num_points:Optional[int] = 10) -> pd.DataFrame:
     """

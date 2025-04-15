@@ -23,31 +23,86 @@ class ControlNode:
     control:Optional[ca.MX] = None
 
 
-def plot_convergence(self, ax:plt.axes, sol:ca.OptiSol):
-    ax.semilogy(sol.stats()['iterations']['inf_du'], label="Dual infeasibility")
-    ax.semilogy(sol.stats()['iterations']['inf_pr'], label="Primal infeasibility")
 
-    ax.set_xlabel('Iterations')
-    ax.set_ylabel('Infeasibility (log scale)')
-    ax.grid(True)
-    ax.legend()
+class VariableTimeMixin:
+    def _init_variable_time(self, opti: ca.Opti, num_nodes: int, timescale: float = 1.0):
+        self._variable_time_enabled = True
+        self._num_nodes = num_nodes
+        self._timescale = timescale
 
-    plt.tight_layout()
-    plt.show(block = True)
+        self.timescale_parameter = opti.parameter()
+        opti.set_value(self.timescale_parameter, self._timescale)
+
+        self.time = self.timescale_parameter * opti.variable()
+        opti.subject_to(self.time > 0)
+
+        if hasattr(self, "constraint_descriptions"):
+            self.constraint_descriptions.append("positive time constraint")
+
+        self._dt = self.time / self._num_nodes
+
+    @property
+    def dt(self):
+        return self._dt
+
 
 
 
 class ControlProblem(ABC):
     """
-    Control Problem parent class
+    Abstract base class for defining optimal control problems using CasADi's Opti framework.
+
+    This class provides a generic structure for setting up, solving, and managing trajectory 
+    optimization or model predictive control problems involving continuous dynamics. It supports
+    scaling, logging, parameterization, and flexible constraint/variable setup over a discrete time horizon.
+
+    Subclasses must implement:
+        - `control_constraint(node)`: Enforce control-specific constraints (e.g., bounds).
+        - `loss(nodes, time)`: Define the cost function to minimize.
+
+    Attributes:
+        opti (ca.Opti): The underlying CasADi optimization object.
+        dynamics (ca.Function): A function f(x, u, dt) → x_next describing the system's dynamics.
+        num_nodes (int): Number of control nodes (time steps) in the horizon.
+        state_dim (int): Dimension of the system state vector.
+        control_dim (int): Dimension of the control input vector.
+        dt (ca.MX or float): Time step size (can be symbolic if time is optimized).
+        time (ca.MX): Total time of the horizon if optimized.
+        verbose (bool): Print debug info during setup if True.
+        solver_opts (dict): Options for the underlying solver (default: IPOPT).
+        scale_state (Optional[list[float]]): Optional scaling factors for states.
+        scale_control (Optional[list[float]]): Optional scaling factors for controls.
+        constraint_descriptions (list[str]): Human-readable descriptions of constraints (for debugging/logging).
+        sol_state_list (list[np.ndarray]): List of solved states over iterations.
+        sol_control_list (list[np.ndarray]): List of solved controls over iterations.
+        final_times (list[float]): Final time values from each solve (for adaptive time problems).
+        h5file (Optional[h5py.File]): Optional HDF5 file for logging progress to disk.
+
+    Initialization Args:
+        dynamics (ca.Function): Dynamics function f(x, u, dt).
+        num_nodes (int): Number of control steps.
+        opts (dict, optional): Dictionary of optional flags and configuration:
+            - 'verbose' (bool): Print debug output.
+            - 'scale_state' (list): State scaling factors.
+            - 'scale_control' (list): Control scaling factors.
+            - 'initial_state' (np.ndarray): Initial state for warm starting.
+            - 'solver_options' (dict): Options passed to IPOPT.
+            - 'savefile' (str): Path to an HDF5 file for saving progress.
+
+    Usage (in subclasses):
+        - Call `setup(guess)` to build the problem.
+        - Call `solve()` to solve it.
+        - Override `control_constraint()` and `loss()` to define problem-specific behavior.
     """
     
 
     def __init__(self, *, dynamics:ca.Function, num_nodes:int, opts:Optional[dict] = {}, **kwargs):
 
         self.opti = ca.Opti('nlp')
+
         self.state_dim = dynamics.size1_in(0)
         self.control_dim = dynamics.size1_in(1)
+
         self.num_nodes = num_nodes
         self.verbose = opts.get('verbose', False)
         self.dynamics = dynamics
@@ -55,6 +110,9 @@ class ControlProblem(ABC):
         self.scale_state = opts.get('scale_state', None)
         self.scale_control = opts.get('scale_control', None)
         self.timescale = None
+        self.timescale_parameter = self.opti.parameter()
+        self.state_guess_parameter = self.opti.parameter(self.state_dim, self.num_nodes + 1)
+        self.control_guess_parameter = self.opti.parameter(self.control_dim, self.num_nodes + 1)
         self.initial_state = opts.get('initial_state', None)
         self.solver_opts = opts.get('solver_options', default_solver_options)
 
@@ -69,6 +127,9 @@ class ControlProblem(ABC):
         self.final_times = []
         self.constraint_descriptions = []
         super().__init__(**kwargs)
+
+    def _scale_variable(self, var, scale):
+        return ca.DM(scale) * var if scale else var
 
     def constraint(self, expr, description=None) -> None:
         """
@@ -114,7 +175,7 @@ class ControlProblem(ABC):
         pass
 
     def state_constraint(self, node:ControlNode, next:ControlNode, dt:ca.MX) -> None:
-        self.constraint(next.state - self.dynamics(node.state, node.control, dt) == 0)
+        self.constraint(next.state - self.dynamics(node.state, node.control, dt) == 0, description=f"state dynamics constraint at node {node.index}")
 
     @abstractmethod
     def loss(self, nodes:List[ControlNode], time:Optional[ca.MX] = None) -> ca.MX:
@@ -123,36 +184,32 @@ class ControlProblem(ABC):
     def _setup_step(self, index:int, current_node:ControlNode, guess:np.ndarray):
         opti = self.opti
 
-        if self.scale_state and self.scale_control:
-            next_node = ControlNode(
-                index=0,
-                state=ca.DM(self.scale_state) * opti.variable(self.state_dim),
-                control=ca.DM(self.scale_control) * opti.variable(self.control_dim),
+        next_node = ControlNode(
+            index=0,
+            state=self._scale_variable(opti.variable(self.state_dim), self.scale_state),
+            control=self._scale_variable(opti.variable(self.control_dim), self.scale_control),
             )
-        else:
-            next_node = ControlNode(
-                index=0,
-                state=opti.variable(self.state_dim),
-                control=opti.variable(self.control_dim),
-            )
+
             
         self.state_constraint(current_node, next_node, self.dt)
         self.control_constraint(current_node)
 
         # initial_state = opti.parameter(13) TODO: investigate this for speeding up initialisation esp for MHE
-
-        opti.set_initial(next_node.state, guess[:self.state_dim, index])
-        opti.set_initial(next_node.control, guess[self.state_dim:, index])
+        
+        opti.set_initial(next_node.state, self.state_guess_parameter[:, index])
+        opti.set_initial(next_node.control, self.control_guess_parameter[:, index])
         return next_node
     
-    def _setup_time(self) -> None:
-        opti = self.opti
-        if not self.timescale:
-            self.timescale = 1
-        self.time = self.timescale * opti.variable()
-        self.constraint(self.time > 0, description="positive time constraint")
-        opti.set_initial(self.time, self.timescale)
-        self.dt = self.time / self.num_nodes
+    # def _setup_time(self) -> None:
+    #     opti = self.opti
+    #     if not self.timescale:
+    #         self.timescale = 1
+    #     opti.set_value(self.timescale_parameter, self.timescale)
+    #     self.time = self.timescale_parameter * opti.variable()
+    #     self.constraint(self.time > 0, description="positive time constraint")
+    #     opti.set_initial(self.time, self.timescale_parameter)
+        
+    #     self.dt = self.time / self.num_nodes
 
     def _setup_initial_node(self, guess:np.ndarray) -> ControlNode:
         opti = self.opti
@@ -168,11 +225,10 @@ class ControlProblem(ABC):
                 state=opti.variable(self.state_dim),
                 control=opti.variable(self.control_dim),
             )
-        state_guess = guess[:self.state_dim, :]
-        control_guess = guess[self.state_dim:self.state_dim + self.control_dim, :]
-        opti.set_initial(current_node.state, state_guess[:, 0])
-        self.constraint(current_node.state == state_guess[:, 0])
-        opti.set_initial(current_node.control, control_guess[:, 0])
+
+        opti.set_initial(current_node.state, self.state_guess_parameter[:, 0])
+        self.constraint(current_node.state == self.state_guess_parameter[:, 0])
+        opti.set_initial(current_node.control, self.control_guess_parameter[:, 0])
 
         return current_node
     
@@ -188,16 +244,36 @@ class ControlProblem(ABC):
     def _setup_objective(self, nodes):
         self.opti.minimize(self.loss(nodes = nodes, time = self.time))
 
-    def setup(self, guess:np.ndarray):
-        self._setup_time()
+    # def setup(self, guess: Optional[np.ndarray] = None):
+    #     guess = guess if guess is not None else np.zeros((self.state_dim + self.control_dim, self.num_nodes + 1))
+
+    #     self.opti.set_value(self.state_guess_parameter, guess[:self.state_dim, :])
+    #     self.opti.set_value(self.control_guess_parameter, guess[self.state_dim:self.state_dim + self.control_dim, :])
+    #     self._setup_time()
+    #     current_node = self._setup_initial_node(guess)
+    #     nodes = [current_node]
+        
+    #     for index in range(1, self.num_nodes + 1):
+    #         nodes.append(self._setup_step(index, nodes[-1], guess))
+
+    #     self._setup_variables(nodes)
+    #     self._setup_objective(nodes)
+
+    def setup(self, guess: np.ndarray):
+        guess = guess if guess is not None else np.zeros((self.state_dim + self.control_dim, self.num_nodes + 1))
+
+        self.opti.set_value(self.state_guess_parameter, guess[:self.state_dim, :])
+        self.opti.set_value(self.control_guess_parameter, guess[self.state_dim:self.state_dim + self.control_dim, :])
+
         current_node = self._setup_initial_node(guess)
         nodes = [current_node]
-        
+
         for index in range(1, self.num_nodes + 1):
             nodes.append(self._setup_step(index, nodes[-1], guess))
 
         self._setup_variables(nodes)
         self._setup_objective(nodes)
+
 
     def save_progress(self, iteration, states, controls, time_vals, save_interval:int = 10):
         if self.h5file is not None and iteration % save_interval == 0:
@@ -264,3 +340,9 @@ class ControlProblem(ABC):
         self.logger.info(f"Final control: {self.opti.debug.value(self.control)[:, -1]}")
         self.logger.info(f"Final control rate: {self.opti.debug.value(self.control)[:, -1] - self.opti.debug.value(self.control)[:, -2]}")
 
+    def get_solution(self, sol: ca.OptiSol) -> dict:
+        return {
+            "state": sol.value(self.state),
+            "control": sol.value(self.control),
+            "time": sol.value(self.time) if hasattr(self, 'time') else None
+        }
