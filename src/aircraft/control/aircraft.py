@@ -447,64 +447,14 @@ from aircraft.control.base import ControlNode, ControlProblem
 plt.ion()
 
 @dataclass
-class Waypoint:
-    """Class to represent a waypoint with position and tolerance"""
-    position: np.ndarray
-    tolerance: float = 5.0
-    
-    def is_reached(self, position):
-        """Check if a position is within tolerance of the waypoint"""
-        return np.linalg.norm(position - self.position) < self.tolerance
-
-class AircraftControl(ControlProblem):
-    def __init__(self, *, aircraft: Aircraft, time_guess: float = None, waypoints: List[Waypoint] = None, **kwargs):
-        dynamics = aircraft.state_update
-        self.aircraft = aircraft
-        self.plotter = TrajectoryPlotter(aircraft)
-        self.scale_time = time_guess
-        
-        # Initialize waypoints
-        self.waypoints = waypoints or []
-        
-        # Parameters for changing values between iterations
-        self.current_waypoint_idx = 0
-        
-        plt.show()
-        super().__init__(dynamics=dynamics, **kwargs)
-        
-        # Create parameters for MPC
-        self.initial_state_param = self.opti.parameter(self.state_dim)
+class WaypointControl(ControlProblem):
+    def __init__(self, *, trajectory: TrajectoryConfiguration, **kwargs):
+        super().__init__(**kwargs)
         self.current_waypoint_param = self.opti.parameter(3)  # x, y, z
         self.next_waypoint_param = self.opti.parameter(3)     # x, y, z
+        # Initialize waypoints
+        self.waypoints = trajectory.waypoints or []
         
-    def control_constraint(self, node: ControlNode):
-        self.opti.subject_to(self.opti.bounded(-3, node.control[0], 3))  # aileron
-        self.opti.subject_to(self.opti.bounded(-3, node.control[1], 3))  # elevator
-        self.opti.subject_to(self.opti.bounded(-3, node.control[2], 3))  # rudder
-        # self.opti.subject_to(self.opti.bounded(0, node.control[2:], 0))
-
-    def state_constraint(self, node: ControlNode, next: ControlNode, dt: ca.MX):
-        super().state_constraint(node, next, dt)
-        opti = self.opti
-        aircraft = self.aircraft
-        beta = aircraft.beta
-        alpha = aircraft.alpha
-        airspeed = aircraft.airspeed
-        roll = aircraft.phi
-        self.constraint(opti.bounded(20, airspeed(node.state, node.control), 80), description="Speed constraint")
-        self.constraint(opti.bounded(-np.deg2rad(50), roll(node.state), np.deg2rad(50)), description="Roll constraint")
-        self.constraint(opti.bounded(-np.deg2rad(10), beta(node.state, node.control), np.deg2rad(10)), description="Sideslip constraint")
-        self.constraint(opti.bounded(-np.deg2rad(20), alpha(node.state, node.control), np.deg2rad(20)), description="Attack constraint")
-        self.constraint(node.state[2] < 0, description="Height constraint")
-
-    def _setup_initial_node(self, guess):
-        """Set up initial node with parameter for initial state"""
-        current_node = super()._setup_initial_node(guess)
-        
-        # Constrain initial state to parameter value
-        self.constraint(current_node.state == self.initial_state_param, description="Initial State Lock")
-        
-        return current_node
 
     def _setup_objective(self, nodes):
         """
@@ -531,13 +481,9 @@ class AircraftControl(ControlProblem):
         self.opti.minimize(lambda_rate * rate_penalty + lambda_smooth * smoothness_penalty)
 
     def setup(self, guess, initial_state=None, current_waypoint_idx=0):
-        """Set up the optimization problem with initial guesses and parameter values"""
+        """Set up the waypoints"""
         super().setup(guess)
         
-        # Set parameter values if provided
-        if initial_state is not None:
-            self.opti.set_value(self.initial_state_param, initial_state)
-            
         # Set waypoint parameters
         if self.waypoints and current_waypoint_idx < len(self.waypoints):
             self.current_waypoint_idx = current_waypoint_idx
@@ -593,18 +539,66 @@ class AircraftControl(ControlProblem):
             return True
         return False
 
+class AircraftControl(ControlProblem):
+    """
+    Class that implements constraints upon state and control for and aircraft
+    """
+
+    def __init__(self, *, aircraft: Aircraft, **kwargs):
+        dynamics = aircraft.state_update
+        self.aircraft = aircraft
+        self.plotter = TrajectoryPlotter(aircraft)
+
+        self.current_waypoint_idx = 0
+        self.control_limits = kwargs.get('control_limits', {"aileron": [-3, 3], "elevator": [-3, 3], "rudder": [-3, 3]})
+        super().__init__(dynamics=dynamics, **kwargs)
+        
+
+        
+    def control_constraint(self, node: ControlNode):
+        super().control_constraint(node)
+        self.constraint(
+            self.opti.bounded(self.control_limits["aileron"][0], node.control[0], self.control_limits["aileron"][1]), 
+            description="Aileron Constraint")
+        self.constraint(
+            self.opti.bounded(self.control_limits["elevator"][0], node.control[1], self.control_limits["elevator"][1]), 
+            description="Elevator Constraint")
+        self.constraint(
+            self.opti.bounded(self.control_limits["rudder"][0], node.control[2], self.control_limits["rudder"][1]), 
+            description="Rudder Constraint")
+        
+
+    def state_constraint(self, node: ControlNode, next: ControlNode, dt: ca.MX):
+        super().state_constraint(node, next, dt)
+        self.constraint(
+            self.opti.bounded(20, self.aircraft.airspeed(node.state, node.control), 80), 
+            description="Speed constraint")
+        self.constraint(
+            self.opti.bounded(-np.deg2rad(50), self.aircraft.roll(node.state), np.deg2rad(50)), 
+            description="Roll constraint")
+        self.constraint(
+            self.opti.bounded(-np.deg2rad(10), self.aircraft.beta(node.state, node.control), np.deg2rad(10)), 
+            description="Sideslip constraint")
+        self.constraint(
+            self.opti.bounded(-np.deg2rad(20), self.aircraft.alpha(node.state, node.control), np.deg2rad(20)), 
+            description="Attack constraint")
+        self.constraint(node.state[2] < 0, description="Height constraint")
+
+
+
+
     def log(self, iteration):
         super().log()
         aircraft = self.aircraft
         f = aircraft.state_update(aircraft.state, aircraft.control, aircraft.dt_sym)
         
         # Compute the Jacobian of f w.r.t state
-        J = ca.jacobian(f, aircraft.state)
+        jacobian = ca.jacobian(f, aircraft.state)
         
         # Create a CasADi function for numerical evaluation
-        J_func = ca.Function('J', [aircraft.state, aircraft.control, aircraft.dt_sym], [J])
+        jacobian_func = ca.Function('J', [aircraft.state, aircraft.control, aircraft.dt_sym], [jacobian])
         
-        condition_numbers = np.linalg.cond(J_func(self.opti.debug.value(self.state)[:, 1:],
+        condition_numbers = np.linalg.cond(jacobian_func(self.opti.debug.value(self.state)[:, 1:],
                                            self.opti.debug.value(self.control),
                                            self.opti.debug.value(self.time)/self.num_nodes))
         
@@ -661,9 +655,7 @@ class AircraftControl(ControlProblem):
         self.logger.info(f"Beta values: {beta_values}")
     
     def callback(self, iteration: int):
-        # Call the parent class callback to handle saving progress
         super().callback(iteration)
-        # Plotting
         if self.plotter and iteration % 10 == 5:
             trajectory_data = TrajectoryData(
                 state=np.array(self.opti.debug.value(self.state))[:, 1:],
@@ -684,17 +676,4 @@ class AircraftControl(ControlProblem):
         self.plotter.plot(trajectory_data=trajectory_data)
         plt.draw()
         self.plotter.figure.canvas.start_event_loop(0.0002)
-        # plt.show(block = True)
         return sol
-
-    def _initialise_state(self):
-        """
-        TODO: Implement this method
-        """
-        pass
-
-    def _initialise_control(self):
-        """
-        TODO: Implement this method
-        """
-        pass

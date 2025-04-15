@@ -12,14 +12,8 @@ import h5py
 import json
 import casadi as ca
 from dataclasses import dataclass
-
-import sys
-BASEPATH = os.path.dirname(os.path.abspath(__file__)).split('main')[0]
-sys.path.append(BASEPATH)
-
-from aircraft.utils.utils import load_model
-from aircraft.config import DEVICE, NETWORKPATH, DATAPATH, VISUPATH
-from aircraft.dynamics.aircraft import Aircraft, AircraftOpts
+from aircraft.dynamics.base import SixDOF
+from aircraft.config import VISUPATH
 
 __all__ = ['create_grid', 'TrajectoryPlotter', 'TrajectoryData', 'plot_convergence']
 
@@ -129,8 +123,8 @@ class PlotAxes:
 
 
 class TrajectoryPlotter:
-    def __init__(self, aircraft, figsize=(15, 15)):
-        self.aircraft = aircraft
+    def __init__(self, six_dof:SixDOF, figsize=(15, 15)):
+        self.six_dof = six_dof
         self.figure = plt.figure(figsize=figsize)
         self.axes = PlotAxes(self.figure)
         self.lines = {}
@@ -280,11 +274,11 @@ class TrajectoryPlotter:
         print("state",state.shape, "control",control.shape)
 
         # Compute aerodynamic and Euler angles
-        alpha = np.rad2deg(self.aircraft.alpha(state, control).full().flatten())
-        beta = np.rad2deg(self.aircraft.beta(state, control).full().flatten())
-        phi = np.rad2deg(self.aircraft.phi(state).full().flatten())
-        theta = np.rad2deg(self.aircraft.theta(state).full().flatten())
-        psi = np.rad2deg(self.aircraft.psi(state).full().flatten())
+        alpha = np.rad2deg(self.six_dof.alpha(state, control).full().flatten())
+        beta = np.rad2deg(self.six_dof.beta(state, control).full().flatten())
+        phi = np.rad2deg(self.six_dof.phi(state).full().flatten())
+        theta = np.rad2deg(self.six_dof.theta(state).full().flatten())
+        psi = np.rad2deg(self.six_dof.psi(state).full().flatten())
 
         self._update_or_create_line(ax, '_alpha_line', alpha, r'$\alpha$ (attack)')
         self._update_or_create_line(ax, '_beta_line', beta, r'$\beta$ (sideslip)')
@@ -304,7 +298,7 @@ class TrajectoryPlotter:
         state = trajectory_data.state
         control = trajectory_data.control
 
-        v_frd_rel = self.aircraft.v_frd_rel(state, control).full()
+        v_frd_rel = self.six_dof.v_frd_rel(state, control).full()
 
         self._update_or_create_line(ax, '_u_line', v_frd_rel[0, :], 'u')
         self._update_or_create_line(ax, '_v_line', v_frd_rel[1, :], 'v')
@@ -317,9 +311,9 @@ class TrajectoryPlotter:
     def plot_rates(self, trajectory_data:TrajectoryData):
         state = trajectory_data.state
         ax = self.axes.rates
-        phi_dot = self.aircraft.phi_dot(state).full().flatten()
-        theta_dot = self.aircraft.theta_dot(state).full().flatten()
-        psi_dot = self.aircraft.psi_dot(state).full().flatten()
+        phi_dot = self.six_dof.phi_dot(state).full().flatten()
+        theta_dot = self.six_dof.theta_dot(state).full().flatten()
+        psi_dot = self.six_dof.psi_dot(state).full().flatten()
 
         self._update_or_create_line(ax, '_phi_dot_line', phi_dot, r'$\dot{\phi}$')
         self._update_or_create_line(ax, '_theta_dot_line', theta_dot, r'$\dot{\theta}$')
@@ -333,7 +327,7 @@ class TrajectoryPlotter:
         state = trajectory_data.state
         control = trajectory_data.control
         ax = self.axes.forces
-        forces_frd = self.aircraft.forces_frd(state, control).full()
+        forces_frd = self.six_dof.forces_frd(state, control).full()
 
         self._update_or_create_line(ax, '_Fx_line', forces_frd[0, :], 'Fx')
         self._update_or_create_line(ax, '_Fy_line', forces_frd[1, :], 'Fy')
@@ -346,9 +340,9 @@ class TrajectoryPlotter:
         ax = self.axes.moments
         state = trajectory_data.state
         control = trajectory_data.control
-        moments_frd = self.aircraft.moments_frd(state, control).full()
+        moments_frd = self.six_dof.moments_frd(state, control).full()
 
-        moments_aero_frd = self.aircraft.moments_aero_frd(state, control).full()
+        moments_aero_frd = self.six_dof.moments_aero_frd(state, control).full()
 
         self._update_or_create_line(ax, '_Mx_line', moments_frd[0, :], 'Mx')
         self._update_or_create_line(ax, '_My_line', moments_frd[1, :], 'My')
@@ -474,20 +468,3 @@ class TrajectoryPlotter:
 
     def show(self):
         self.figure.show()
-
-
-def main():
-    aircraft_params = json.load(open(os.path.join(BASEPATH, 'data', 'glider', 'glider_fs.json')))
-    model = load_model()
-    
-    aircraft = Aircraft(aircraft_params, model, STEPS=100, LINEAR=True)
-    plotter = TrajectoryPlotter(aircraft)
-
-    plotter.plot(iteration = -1)
-    plotter.show()
-    plotter.save(iteration = -1)
-
-    plotter.animation([i for i in range(50)], save = True)
-
-if __name__ == '__main__':
-    main()
