@@ -276,12 +276,13 @@ class ControlProblem(ABC):
             control=self._scale_variable(opti.variable(self.control_dim), self.scale_control),
             )
 
-            
+        state_guess = guess[:self.state_dim, index]
+        control_guess = guess[self.state_dim:self.state_dim + self.control_dim, index]
         self.state_constraint(current_node, next_node, self.dt)
         self.control_constraint(current_node)
         
-        opti.set_initial(next_node.state, self.state_guess_parameter[:, index])
-        opti.set_initial(next_node.control, self.control_guess_parameter[:, index])
+        opti.set_initial(next_node.state, state_guess)
+        opti.set_initial(next_node.control, control_guess)
         return next_node
 
     def _setup_initial_node(self, guess:np.ndarray) -> ControlNode:
@@ -293,9 +294,13 @@ class ControlProblem(ABC):
             control=self._scale_variable(opti.variable(self.control_dim), self.scale_control),
             )
 
-        opti.set_initial(current_node.state, self.state_guess_parameter[:, 0])
+        state_guess = guess[:self.state_dim, 0]
+        control_guess = guess[self.state_dim:self.state_dim + self.control_dim, 0]
+
         self.constraint(current_node.state == self.state_guess_parameter[:, 0])
-        opti.set_initial(current_node.control, self.control_guess_parameter[:, 0])
+
+        opti.set_initial(current_node.state, state_guess)
+        opti.set_initial(current_node.control, control_guess)
 
         return current_node
     
@@ -336,6 +341,10 @@ class ControlProblem(ABC):
         self.sol_state_list.append(self.opti.debug.value(self.state))
         self.sol_control_list.append(self.opti.debug.value(self.control))
         self.final_times.append(self.opti.debug.value(self.time))
+
+        if hasattr(self, "_save_progress"):
+            self._save_progress(iteration, self.sol_state_list, self.sol_control_list, self.final_times)
+
         self.log(iteration)
 
     def solve(self, warm_start:Optional[ca.OptiSol] = None) -> ca.OptiSol:

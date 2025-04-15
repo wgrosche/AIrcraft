@@ -366,7 +366,11 @@ class DubinsInitialiser:
         self.dubins_path, time_intervals = generate_3d_dubins_path(self.dubins_waypoints, trajectory.aircraft.r_min)
         print(len(self.dubins_path))
         vel_directions = get_velocity_directions(self.dubins_path)
-        rotations = [R.align_vectors(vel_dir, [1, 0, 0])[0] for vel_dir in vel_directions]
+        rotations = []
+        for vel_dir in vel_directions:
+            rot = R.align_vectors([vel_dir], [[1, 0, 0]])[0]
+            rotations.append(rot)
+        rotations = R.from_quat([r.as_quat() for r in rotations])
 
         velocities = np.array(vel_directions) * np.linalg.norm(trajectory.waypoints.initial_state[3:6])
         roll_angles = [0]

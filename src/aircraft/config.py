@@ -44,7 +44,7 @@ default_solver_options = {'ipopt': {'max_iter': 10000,
                                     'print_level': 5
                                     },
                         'print_time': 10,
-                        'expand': True # NOTE: Find way to set to true with interpolant
+                        'expand': False # NOTE: Find way to set to true with interpolant
 
                         }
 
