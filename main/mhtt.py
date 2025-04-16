@@ -13,11 +13,11 @@ import casadi as ca
 import numpy as np
 
 class Controller(MHTT, AircraftControl, SaveMixin):
-    def __init__(self, *, aircraft, track, num_nodes=30, dt=0.01, track_length=1, opts = {}, filepath:str = '', **kwargs):
+    def __init__(self, *, aircraft, track, num_nodes=100, dt=0.01, track_length=1, opts = {}, filepath:str = '', **kwargs):
         super().__init__(aircraft=aircraft, num_nodes=num_nodes, opts = opts, track = track, dt = dt, track_length=track_length)
         if filepath:
             self.save_path = filepath
-        SaveMixin._init_saving(self, self.save_path)
+        SaveMixin._init_saving(self, self.save_path, force_overwrite=False)
 
 
 
@@ -42,8 +42,8 @@ dynamics = aircraft.state_update
 progress = 0
 dubins = DubinsInitialiser(trajectory_config)
 dubins.trajectory(1)
-# dubins.visualise()
-mhtt = Controller(aircraft=aircraft, track = dubins.trajectory, track_length = dubins.length(), filepath = Path(DATAPATH) / 'mhtt_solution.h5', num_nodes=30, dt=0.001)
+dubins.visualise()
+mhtt = Controller(aircraft=aircraft, track = dubins.trajectory, track_length = dubins.length(), filepath = Path(DATAPATH) / 'trajectories' / 'mhtt_solution.h5', num_nodes=30, dt=0.001)
 
 while progress < 1:
     print("initial state: ", state, ", progress: ", progress)
@@ -55,9 +55,9 @@ while progress < 1:
     if sol.value(mhtt.progress[-1]) > 1:
         # save the solution
         break
-    state = ca.DM(sol.value(mhtt.state)[:,20])
+    state = ca.DM(sol.value(mhtt.state)[:,90])
     print(state)
     
-    progress = sol.value(mhtt.progress[20])
+    progress = sol.value(mhtt.progress[90])
     print(progress)
 

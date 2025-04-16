@@ -58,6 +58,8 @@ class WaypointControl(ControlProblem):
         self.next_waypoint_param = self.opti.parameter(3)     # x, y, z
         # Initialize waypoints
         self.waypoints = trajectory.waypoints or []
+
+
         
 
     def _setup_objective(self, nodes):
@@ -258,17 +260,17 @@ class AircraftControl(ControlProblem):
         self.logger.info(f"Alpha values: {alpha_values}")
         self.logger.info(f"Beta values: {beta_values}")
     
-    def callback(self, iteration: int):
-        super().callback(iteration)
-        if self.plotter and iteration % 10 == 5:
-            trajectory_data = TrajectoryData(
-                state=np.array(self.opti.debug.value(self.state))[:, 1:],
-                control=np.array(self.opti.debug.value(self.control)),
-                time=np.array(self.opti.debug.value(self.time))
-            )
-            self.plotter.plot(trajectory_data=trajectory_data)
-            plt.draw()
-            self.plotter.figure.canvas.start_event_loop(0.0002)
+    # def callback(self, iteration: int):
+    #     super().callback(iteration)
+    #     if self.plotter and iteration % 10 == 5:
+    #         trajectory_data = TrajectoryData(
+    #             state=np.array(self.opti.debug.value(self.state))[:, 1:],
+    #             control=np.array(self.opti.debug.value(self.control)),
+    #             time=np.array(self.opti.debug.value(self.time))
+    #         )
+    #         self.plotter.plot(trajectory_data=trajectory_data)
+    #         plt.draw()
+    #         self.plotter.figure.canvas.start_event_loop(0.0002)
 
     def solve(self, warm_start: Optional[ca.OptiSol] = None):
         sol = super().solve(warm_start=warm_start)

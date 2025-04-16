@@ -54,7 +54,7 @@ initial_state = state
 
 
 aircraft.STEPS = 10
-dt = .001
+dt = .01
 dyn = aircraft.state_update.expand()
 max_time = 2
 goal = np.array([50, -10])

@@ -119,7 +119,8 @@ from aircraft.control.aircraft import AircraftControl
 from dataclasses import dataclass
 from typing import Optional, List
 from aircraft.control.initialisation import DubinsInitialiser
-
+from aircraft.plotting.plotting import TrajectoryData
+import matplotlib.pyplot as plt
 @dataclass
 class MPCCNode(ControlNode):
     progress: Optional[ca.MX] = None
@@ -135,6 +136,10 @@ class MHTT(ControlProblem):
         # Create parameters for changing values between iterations
         self.initial_progress_param = self.opti.parameter()
         self.initial_state_param = self.opti.parameter(self.state_dim)
+
+        self.state_memory = []
+        self.control_memory = []
+        self.time_memory = 0
     
     def loss(self, nodes, time=None):
         return self.progress_loss
@@ -160,7 +165,7 @@ class MHTT(ControlProblem):
         tracking_error = ca.sumsqr(self.track(progress) - current_node.state[:3])
         self.constraint(progress == self.initial_progress_param, description="Initial Progress Lock")
 
-        self.progress_loss = 1000 * tracking_error - 100 * progress
+        self.progress_loss = 10 * tracking_error - 1* progress
 
         return current_node
     
@@ -228,8 +233,98 @@ class MHTT(ControlProblem):
         self.opti.set_value(self.initial_state_param, initial_state)
         self.opti.set_value(self.initial_progress_param, current_progress)
     
+    # def callback(self, iteration: int):
+    #     state_val = self.opti.debug.value(self.state)[:,1:]
+    #     control_val = self.opti.debug.value(self.control)
+    #     time_val = self.time
+
+    #     # Store entire horizon at this iteration
+    #     self.state_memory.append(state_val)
+    #     self.control_memory.append(control_val)
+    #     self.time_memory.append(np.linspace(iteration * self.dt, (iteration + self.num_nodes) * self.dt, self.num_nodes + 1))
+
+    #     # Plot only current trajectory if desired
+    #     if self.plotter and iteration % 10 == 5:
+    #         trajectory_data = TrajectoryData(
+    #             state=state_val,
+    #             control=control_val,
+    #             time=self.time_memory[-1][-1]
+    #         )
+    #         self.plotter.plot(trajectory_data=trajectory_data)
+    #         plt.draw()
+    #         self.plotter.figure.canvas.start_event_loop(0.0002)
     def callback(self, iteration: int):
-        """
-        To be implemented
-        """
-        pass
+        # Plot full trajectory every N iterations
+        if self.plotter and iteration % 10 == 5:
+            current_state = self.opti.debug.value(self.state)[:, 1:]
+            current_control = self.opti.debug.value(self.control)
+            current_time = np.linspace(
+                iteration * self.dt,
+                (iteration + self.num_nodes) * self.dt,
+                self.num_nodes
+            )
+
+            # Combine all past and current trajectories
+            all_states = self.state_memory + [current_state]
+            all_controls = self.control_memory + [current_control]
+            all_times = self.time_memory + self.time#[current_time]
+
+            full_state = np.hstack(all_states)  # shape: (state_dim, total_steps)
+            full_control = np.hstack(all_controls)  # shape: (control_dim, total_steps)
+            full_time = all_times#np.hstack(all_times)  # shape: (total_steps,)
+
+            trajectory_data = TrajectoryData(
+                state=full_state,
+                control=full_control,
+                time=full_time
+            )
+
+            self.plotter.plot(trajectory_data=trajectory_data)
+            plt.draw()
+            self.plotter.figure.canvas.start_event_loop(0.0002)
+
+    # def callback(self, iteration: int):
+
+        
+
+    #     # Plot full trajectory every N iterations
+    #     if self.plotter and iteration % 10 == 5:
+    #         # state_val = self.opti.debug.value(self.state)[:, 1:]
+    #         # control_val = self.opti.debug.value(self.control)
+    #         # # Concatenate all horizons into a single long trajectory
+    #         # states = [self.state_memory[0]] + [s[:, 1:] for s in self.state_memory[1:]]
+    #         # controls = self.control_memory
+    #         # times = [self.time_memory[0]] + [t[1:] for t in self.time_memory[1:]]
+    #         if self.state_memory:
+    #             full_state = np.hstack([self.state_memory, self.opti.debug.value(self.state)[:, 1:]])
+    #         else:
+    #             full_state = self.opti.debug.value(self.state)[:, 1:]
+    #         if self.control_memory:  
+    #             full_control = np.hstack([self.control_memory, self.opti.debug.value(self.control)])
+    #         else:
+    #             full_control = self.opti.debug.value(self.control)
+    #         full_time = self.time_memory + self.time
+
+    #         trajectory_data = TrajectoryData(
+    #             state=full_state,
+    #             control=full_control,
+    #             time=full_time
+    #         )
+
+    #         self.plotter.plot(trajectory_data=trajectory_data)
+    #         plt.draw()
+    #         self.plotter.figure.canvas.start_event_loop(0.0002)
+
+
+    def solve(self, warm_start: Optional[ca.OptiSol] = None):
+        sol = super().solve(warm_start=warm_start)
+        
+        # Store current horizon (excluding the first overlapping node)
+        state_val = self.opti.debug.value(self.state)[:, 1:21]
+        control_val = self.opti.debug.value(self.control[:, :20])
+
+        self.state_memory.append(state_val)
+        self.control_memory.append(control_val)
+        self.time_memory += self.time
+
+        return sol

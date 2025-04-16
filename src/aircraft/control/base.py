@@ -383,7 +383,8 @@ class ControlProblem(ABC):
             self.logger.info("Starting optimization logging")
 
         self.logger.info(f"Iteration {iteration}")
-        self.logger.info(f"Final time: {self.opti.debug.value(self.time)[-1]}")
+        if hasattr(self, "_init_variable_time"):
+            self.logger.info(f"Final time: {self.opti.debug.value(self.time)[-1]}")
         self.logger.info(f"Final position: {self.opti.debug.value(self.state)[:, -1]}")
         self.logger.info(f"Final velocity: {self.opti.debug.value(self.state)[2, -1]}")
         self.logger.info(f"Final control: {self.opti.debug.value(self.control)[:, -1]}")
