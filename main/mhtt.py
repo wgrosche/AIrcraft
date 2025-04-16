@@ -43,7 +43,7 @@ progress = 0
 dubins = DubinsInitialiser(trajectory_config)
 dubins.trajectory(1)
 dubins.visualise()
-mhtt = Controller(aircraft=aircraft, track = dubins.trajectory, track_length = dubins.length(), filepath = Path(DATAPATH) / 'trajectories' / 'mhtt_solution.h5', num_nodes=30, dt=0.001)
+mhtt = Controller(aircraft=aircraft, track = dubins.trajectory, track_length = dubins.length(), filepath = Path(DATAPATH) / 'trajectories' / 'mhtt_solution.h5', num_nodes=30, dt=0.01)
 
 while progress < 1:
     print("initial state: ", state, ", progress: ", progress)

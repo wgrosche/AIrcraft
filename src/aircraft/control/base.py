@@ -52,7 +52,6 @@ class SaveMixin:
                 Path(filepath).unlink()
 
             self.h5file = h5py.File(filepath, "a")
-
     def _save_progress(
         self,
         iteration: int,
@@ -72,9 +71,36 @@ class SaveMixin:
                 for name, data in zip(['state', 'control', 'time'], [state, control, time_val]):
                     if name in grp:
                         del grp[name]
-                    grp.create_dataset(name, data=data, compression='gzip')
+                    # Only use compression for non-scalar data
+                    if hasattr(data, 'size') and data.size > 1:
+                        grp.create_dataset(name, data=data, compression='gzip')
+                    else:
+                        grp.create_dataset(name, data=data)
         except Exception as e:
             print(f"[SaveMixin] Error saving progress: {e}")
+
+    # def _save_progress(
+    #     self,
+    #     iteration: int,
+    #     states: list,
+    #     controls: list,
+    #     times: list
+    # ):
+    #     if not self._save_enabled or self.h5file is None:
+    #         return
+
+    #     try:
+    #         for i, (state, control, time_val) in enumerate(zip(states[-10:], controls[-10:], times[-10:])):
+    #             grp_name = f'iteration_{iteration - 10 + i}'
+    #             grp = self.h5file.require_group(grp_name)
+    #             grp.attrs['timestamp'] = time.time()
+
+    #             for name, data in zip(['state', 'control', 'time'], [state, control, time_val]):
+    #                 if name in grp:
+    #                     del grp[name]
+    #                 grp.create_dataset(name, data=data, compression='gzip')
+    #     except Exception as e:
+    #         print(f"[SaveMixin] Error saving progress: {e}")
 
 
 class VariableTimeMixin:
@@ -153,7 +179,7 @@ class ControlProblem(ABC):
         constraint(expr, description): Register constraint with optional description.
     """
 
-    def __init__(self, *, dynamics:ca.Function, num_nodes:int, opts:Optional[dict] = {}, **kwargs):
+    def __init__(self, *, dynamics:ca.Function, dt:float = 0.01, num_nodes:int, opts:Optional[dict] = {}, **kwargs):
         """
         Initialize the control problem.
 
@@ -177,7 +203,9 @@ class ControlProblem(ABC):
         self.num_nodes = num_nodes
         self.verbose = opts.get('verbose', False)
         self.dynamics = dynamics
-
+        if not hasattr(self, "dt"):
+            self.dt = dt
+            self.time = dt * num_nodes
         self.scale_state = opts.get('scale_state', None)
         self.scale_control = opts.get('scale_control', None)
 

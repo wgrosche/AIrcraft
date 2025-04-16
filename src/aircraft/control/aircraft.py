@@ -180,7 +180,7 @@ class AircraftControl(ControlProblem):
             self.opti.bounded(20, self.aircraft.airspeed(node.state, node.control), 80), 
             description="Speed constraint")
         self.constraint(
-            self.opti.bounded(-np.deg2rad(50), self.aircraft.phi(node.state), np.deg2rad(50)), 
+            self.opti.bounded(-np.deg2rad(90), self.aircraft.phi(node.state), np.deg2rad(90)), 
             description="Roll constraint")
         self.constraint(
             self.opti.bounded(-np.deg2rad(10), self.aircraft.beta(node.state, node.control), np.deg2rad(10)), 

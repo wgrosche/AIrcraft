@@ -162,7 +162,7 @@ for i_episode in range(1, num_episodes + 1):
             break
 
         if np.any(dones):
-            print(f"reached termination condition with end state {states}")
+            print(f"reached termination condition with end state {states}, current goal: {stage.description}")
             print(f"Final roll {np.rad2deg(aircraft.phi(states[i]))}")
             data = TrajectoryData(np.array(state_progression[0][:, :iteration]), np.array(control_progression[0][:, :iteration]), t)
             plotter.plot(data)
