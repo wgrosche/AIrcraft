@@ -396,9 +396,9 @@ class Aircraft(SixDOF):
         forces = self._coefficients[:3] * self._qbar * self.S
 
         # antialign drag and velocity
-        forces[0] = ca.sign(self._v_frd_rel[0])*forces[0]
+        forces[0] = ca.sign(self._v_frd_rel[0])*forces[0] #
 
-        # forces += self._thrust
+        forces += self._thrust
 
         speed_threshold = 80.0  # m/s
         penalty_factor = 10.0  # Scale factor for additional drag

@@ -115,7 +115,8 @@ class PlotAxes:
                 self.thrust, 
                 self.forces, 
                 self.progress, 
-                self.convergence]
+                self.convergence,
+                self.moments]
     
     def clear(self):
         for ax in self():

@@ -13,17 +13,18 @@ import matplotlib.pyplot as plt
 from aircraft.plotting.plotting import TrajectoryPlotter, TrajectoryData
 
 
-class Controller(AircraftControl, SaveMixin):
-    def __init__(self, *, aircraft, num_nodes=30, dt=.1, opts = {}, filepath:str = '', **kwargs):
+class Controller(AircraftControl, SaveMixin, VariableTimeMixin):
+    def __init__(self, *, aircraft, num_nodes=200, dt=.01, opts = {}, filepath:str = '', **kwargs):
         super().__init__(aircraft=aircraft, num_nodes=num_nodes, opts = opts, dt = dt)
         if filepath:
             self.save_path = filepath
         SaveMixin._init_saving(self, self.save_path, force_overwrite=True)
         self.plotter = TrajectoryPlotter(aircraft)
-        VariableTimeMixin._init_variable_time(self, self.opti, self.num_nodes, self.dt)
+        # VariableTimeMixin._init_variable_time(self, self.opti, self.num_nodes, self.dt)
 
     def loss(self, nodes, time):
-        return ca.sumsqr(nodes[-1].state[:3] - [50, 30, -190])
+        self.constraint(ca.sumsqr(nodes[-1].state[:3] - [0, 100, -180])==0)
+        return time**2#ca.sumsqr(nodes[-1].state[:3] - [0, 100, -180])
     
     def initialise(self, initial_state):
         """
@@ -31,13 +32,15 @@ class Controller(AircraftControl, SaveMixin):
         """
         guess = np.zeros((self.state_dim + self.control_dim, self.num_nodes + 1))
         guess[:self.state_dim, 0] = initial_state.toarray().flatten()
-        
+        dt_initial = 2 / self.num_nodes
+        self.opti.set_initial(self.time, 2)
         # Propagate forward using nominal dynamics
         for i in range(self.num_nodes):
             guess[:self.state_dim, i + 1] = self.dynamics(
                 guess[:self.state_dim, i],
                 guess[self.state_dim:, i],
-                self.dt
+                dt_initial 
+                
             ).toarray().flatten()
 
 
@@ -73,7 +76,7 @@ def main():
     opts = AircraftOpts(poly_path=poly_path, aircraft_config=aircraft_config, physical_integration_substeps=1)
 
     aircraft = Aircraft(opts = opts)
-    aircraft.STEPS = 10
+    aircraft.STEPS = 1
     trim_state_and_control = [0, 0, -200, 50, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
     aircraft.com = np.array(trim_state_and_control[-3:])
     filepath = Path(DATAPATH) / 'trajectories' / 'basic_test.h5'

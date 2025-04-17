@@ -125,11 +125,11 @@ class VariableTimeMixin:
         self.timescale_parameter = opti.parameter()
         opti.set_value(self.timescale_parameter, self._timescale)
 
-        self.time = self.timescale_parameter * opti.variable()
-        opti.subject_to(self.time > 0)
+        self.time =  opti.variable() #* self.timescale_parameter
+        self.constraint(self.time >= 1e-3, description="positive time constraint")
 
-        if hasattr(self, "constraint_descriptions"):
-            self.constraint_descriptions.append("positive time constraint")
+        # if hasattr(self, "constraint_descriptions"):
+        #     self.constraint_descriptions.append("positive time constraint")
 
         self._dt = self.time / self._num_nodes
 
@@ -203,7 +203,11 @@ class ControlProblem(ABC):
         self.num_nodes = num_nodes
         self.verbose = opts.get('verbose', False)
         self.dynamics = dynamics
-        if not hasattr(self, "dt"):
+        self.constraint_descriptions = []
+        if hasattr(self, "_init_variable_time"):
+            self._init_variable_time(self.opti, self.num_nodes, kwargs.get('timescale', 1))
+            self.constraint(self.time >= 1e-3)
+        else:
             self.dt = dt
             self.time = dt * num_nodes
         self.scale_state = opts.get('scale_state', None)
@@ -224,7 +228,7 @@ class ControlProblem(ABC):
         self.sol_state_list = []
         self.sol_control_list = []
         self.final_times = []
-        self.constraint_descriptions = []
+        
         super().__init__(**kwargs)
 
     def _scale_variable(self, var, scale):
@@ -412,7 +416,7 @@ class ControlProblem(ABC):
 
         self.logger.info(f"Iteration {iteration}")
         if hasattr(self, "_init_variable_time"):
-            self.logger.info(f"Final time: {self.opti.debug.value(self.time)[-1]}")
+            self.logger.info(f"Final time: {self.opti.debug.value(self.time)}")
         self.logger.info(f"Final position: {self.opti.debug.value(self.state)[:, -1]}")
         self.logger.info(f"Final velocity: {self.opti.debug.value(self.state)[2, -1]}")
         self.logger.info(f"Final control: {self.opti.debug.value(self.control)[:, -1]}")

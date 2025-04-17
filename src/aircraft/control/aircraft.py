@@ -176,8 +176,9 @@ class AircraftControl(ControlProblem):
 
     def state_constraint(self, node: ControlNode, next: ControlNode, dt: ca.MX):
         super().state_constraint(node, next, dt)
+        v_rel = self.aircraft.v_frd_rel(node.state, node.control)
         self.constraint(
-            self.opti.bounded(20, self.aircraft.airspeed(node.state, node.control), 80), 
+            self.opti.bounded(20**2, ca.dot(v_rel, v_rel), 80**2), 
             description="Speed constraint")
         self.constraint(
             self.opti.bounded(-np.deg2rad(90), self.aircraft.phi(node.state), np.deg2rad(90)), 

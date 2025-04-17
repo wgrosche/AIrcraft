@@ -36,12 +36,50 @@ class SixDOF(ABC):
     """
     Baseclass for 6DOF Dynamics Simulation in a NED system
     """
-    def __init__(self, opts:Optional[SixDOFOpts] = SixDOFOpts()):
+    def __init__(self, opts:Optional[SixDOFOpts] = SixDOFOpts(), LQR:bool = False, setpoint:Optional[np.ndarray]=None):
         self.gravity = opts.gravity
         self.dt_sym = ca.MX.sym('dt')
         self.epsilon = opts.epsilon
         self.mass = opts.mass
         self.com = None
+        self.LQR = LQR
+        if self.LQR:
+            assert setpoint is not None, "Cannot perform LQR without a valid setpoint"
+            self.setpoint = setpoint
+
+    def _initialise_LQR(self, setpoint:np.ndarray):
+        """
+        LQR around steady state setpoint
+        """
+        from scipy import linalg
+        if self.LQR and not hasattr(self, 'LQR_mat'):
+            x = self.state
+            u = self.control
+            f = self.state_update(x, u)
+            A = ca.Function("A", [x, u], [ca.jacobian(f, x)])
+            B = ca.Function("B", [x, u], [ca.jacobian(f, u)])
+            self.x_ss = setpoint[:self.num_states]
+            self.u_ss = setpoint[self.num_states:self.num_states+self.num_controls]
+            A_ss = A(self.x_ss, self.u_ss)
+            B_ss = B(self.x_ss, self.u_ss)
+            Q = np.eye(self.num_states)
+            R = np.eye(self.num_controls)
+
+            P = linalg.solve_continuous_are(A_ss, B_ss, Q, R)
+            self.K = np.linalg.inv(R) @ B_ss.T @ P
+
+    @property
+    def state_update_LQR(self, setpoint:np.ndarray):
+        if not hasattr(self, 'K'):
+            self._initialise_LQR(setpoint=setpoint)
+        u_lqr = self.control -self.K @ (self.state - self.x_ss) + self.u_ss
+        dt = self.dt_sym
+        res = self.state_update(self.state, u_lqr, dt)
+        return ca.Function(
+            'state_update', 
+            [self.state, self.control, dt], 
+            [res]
+            )
 
     def _ensure_initialized(self, *properties):
         """Ensure properties are initialized by calling them"""
