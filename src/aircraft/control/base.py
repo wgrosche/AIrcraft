@@ -179,7 +179,7 @@ class ControlProblem(ABC):
         constraint(expr, description): Register constraint with optional description.
     """
 
-    def __init__(self, *, dynamics:ca.Function, dt:float = 0.01, num_nodes:int, opts:Optional[dict] = {}, **kwargs):
+    def __init__(self, *, dynamics:ca.Function, dt:float = 0.01, num_nodes:int, opts:Optional[dict] = {}, x_dot = None, **kwargs):
         """
         Initialize the control problem.
 
@@ -212,6 +212,9 @@ class ControlProblem(ABC):
             self.time = dt * num_nodes
         self.scale_state = opts.get('scale_state', None)
         self.scale_control = opts.get('scale_control', None)
+
+        if x_dot:
+            self.x_dot = x_dot
 
         self.state_guess_parameter = self.opti.parameter(self.state_dim, self.num_nodes + 1)
         self.control_guess_parameter = self.opti.parameter(self.control_dim, self.num_nodes + 1)
@@ -282,7 +285,15 @@ class ControlProblem(ABC):
         pass
 
     def state_constraint(self, node:ControlNode, next:ControlNode, dt:ca.MX) -> None:
-        self.constraint(next.state - self.dynamics(node.state, node.control, dt) == 0, description=f"state dynamics constraint at node {node.index}")
+        
+
+        if self.x_dot:
+            # implicit constraint:
+            self.constraint(next.state - node.state - dt * self.x_dot(next.state, node.control) == 0, description=f"implicit state dynamics constraint at node {node.index}")
+            self.constraint(ca.sumsqr(node.state[6:10])==1)
+
+        else:
+            self.constraint(next.state - self.dynamics(node.state, node.control, dt) == 0, description=f"state dynamics constraint at node {node.index}")
 
     @abstractmethod
     def loss(self, nodes:List[ControlNode], time:Optional[ca.MX] = None) -> ca.MX:

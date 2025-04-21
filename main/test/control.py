@@ -15,7 +15,7 @@ from aircraft.plotting.plotting import TrajectoryPlotter, TrajectoryData
 
 class Controller(AircraftControl, SaveMixin, VariableTimeMixin):
     def __init__(self, *, aircraft, num_nodes=200, dt=.01, opts = {}, filepath:str = '', **kwargs):
-        super().__init__(aircraft=aircraft, num_nodes=num_nodes, opts = opts, dt = dt)
+        super().__init__(aircraft=aircraft, num_nodes=num_nodes, opts = opts, dt = dt, **kwargs)
         if filepath:
             self.save_path = filepath
         SaveMixin._init_saving(self, self.save_path, force_overwrite=True)
@@ -48,6 +48,7 @@ class Controller(AircraftControl, SaveMixin, VariableTimeMixin):
     
 
     def callback(self, iteration: int):
+        return None
         super().callback(iteration)
         print(f"Iteration: {iteration}")
         # if self.plotter and iteration %  == 5:
@@ -80,7 +81,7 @@ def main():
     trim_state_and_control = [0, 0, -200, 50, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
     aircraft.com = np.array(trim_state_and_control[-3:])
     filepath = Path(DATAPATH) / 'trajectories' / 'basic_test.h5'
-    controller = Controller(aircraft=aircraft, filepath=filepath)
+    controller = Controller(aircraft=aircraft, filepath=filepath, implicit=True)
     guess = controller.initialise(ca.DM(trim_state_and_control[:aircraft.num_states]))
     controller.setup(guess)
     controller.solve()

@@ -150,14 +150,17 @@ class AircraftControl(ControlProblem):
     Class that implements constraints upon state and control for and aircraft
     """
 
-    def __init__(self, *, aircraft: Aircraft, **kwargs):
+    def __init__(self, *, aircraft: Aircraft, implicit:bool = False, **kwargs):
         dynamics = aircraft.state_update
+        if implicit:
+            self.x_dot = aircraft.state_derivative
         self.aircraft = aircraft
         self.plotter = TrajectoryPlotter(aircraft)
 
         self.current_waypoint_idx = 0
         self.control_limits = kwargs.get('control_limits', {"aileron": [-3, 3], "elevator": [-3, 3], "rudder": [-3, 3]})
         super().__init__(dynamics=dynamics, **kwargs)
+        
         
 
         
