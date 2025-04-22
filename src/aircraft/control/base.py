@@ -103,39 +103,10 @@ class SaveMixin:
     #         print(f"[SaveMixin] Error saving progress: {e}")
 
 
-class VariableTimeMixin:
-    """
-    A mixin that enables optimization over variable total time.
 
-    Attributes:
-        _variable_time_enabled (bool): Whether variable time is enabled.
-        timescale_parameter (ca.MX): CasADi parameter for scaling time.
-        time (ca.MX): Symbolic total time variable.
-        _dt (ca.MX): Time step duration, computed as time / num_nodes.
+    
 
-    Methods:
-        _init_variable_time(opti, num_nodes, timescale): Setup symbolic variable time.
-        dt: Property returning symbolic time step size.
-    """
-    def _init_variable_time(self, opti: ca.Opti, num_nodes: int, timescale: float = 1.0):
-        self._variable_time_enabled = True
-        self._num_nodes = num_nodes
-        self._timescale = timescale
 
-        self.timescale_parameter = opti.parameter()
-        opti.set_value(self.timescale_parameter, self._timescale)
-
-        self.time =  opti.variable() #* self.timescale_parameter
-        self.constraint(self.time >= 1e-3, description="positive time constraint")
-
-        # if hasattr(self, "constraint_descriptions"):
-        #     self.constraint_descriptions.append("positive time constraint")
-
-        self._dt = self.time / self._num_nodes
-
-    @property
-    def dt(self):
-        return self._dt
 
 
 
@@ -204,12 +175,12 @@ class ControlProblem(ABC):
         self.verbose = opts.get('verbose', False)
         self.dynamics = dynamics
         self.constraint_descriptions = []
-        if hasattr(self, "_init_variable_time"):
-            self._init_variable_time(self.opti, self.num_nodes, kwargs.get('timescale', 1))
-            self.constraint(self.time >= 1e-3)
-        else:
-            self.dt = dt
-            self.time = dt * num_nodes
+        # if hasattr(self, "_init_variable_time"):
+        #     self._init_variable_time(self.opti, self.num_nodes, kwargs.get('timescale', 1))
+        #     # self.constraint(self.time >= 1e-3)
+        # else:
+        #     self.dt = dt
+        #     self.time = dt * num_nodes
         self.scale_state = opts.get('scale_state', None)
         self.scale_control = opts.get('scale_control', None)
 
@@ -283,14 +254,31 @@ class ControlProblem(ABC):
         Should be implemented in subclasses.
         """
         pass
-
-    def state_constraint(self, node:ControlNode, next:ControlNode, dt:ca.MX) -> None:
         
+    
+    def state_constraint(self, node: ControlNode, next: ControlNode, dt: Optional[ca.MX] = None) -> None:
+        if getattr(self, "_use_progress_time", False):
+            return self.progress_state_constraint(node, next, dt)
+        if dt is None and getattr(self, "_variable_time_enabled", False):
+            dt = self.get_dt(node.index)
 
-        if self.x_dot:
+
+        if hasattr(self, 'x_dot'):
             # implicit constraint:
             self.constraint(next.state - node.state - dt * self.x_dot(next.state, node.control) == 0, description=f"implicit state dynamics constraint at node {node.index}")
-            self.constraint(ca.sumsqr(node.state[6:10])==1)
+            # x_dot_q = self.x_dot(node.state, node.control)[6:10]
+            # phi_dot = 2 * ca.dot(node.state[6:10], x_dot_q)
+
+            # alpha = 2.0  # damping
+            # beta = 2.0   # stiffness
+
+            # phi = ca.dot(node.state[6:10], node.state[6:10]) - 1
+            # stabilized_phi = 2 * alpha * phi_dot + beta**2 * phi
+
+            # self.constraint(stabilized_phi == 0, description="Baumgarte quaternion normalization")
+
+
+            self.constraint(ca.sumsqr(node.state[6:10])==1, description=f"quaternion norm constraint at node {node.index}")
 
         else:
             self.constraint(next.state - self.dynamics(node.state, node.control, dt) == 0, description=f"state dynamics constraint at node {node.index}")
@@ -321,7 +309,7 @@ class ControlProblem(ABC):
 
         state_guess = guess[:self.state_dim, index]
         control_guess = guess[self.state_dim:self.state_dim + self.control_dim, index]
-        self.state_constraint(current_node, next_node, self.dt)
+        self.state_constraint(current_node, next_node, index)#self.dt)
         self.control_constraint(current_node)
         
         opti.set_initial(next_node.state, state_guess)
@@ -445,3 +433,5 @@ class ControlProblem(ABC):
             "control": sol.value(self.control),
             "time": sol.value(self.time) if hasattr(self, 'time') else None
         }
+
+

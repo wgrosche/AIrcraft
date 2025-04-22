@@ -7,24 +7,27 @@ from tqdm import tqdm
 import casadi as ca
 import json
 from aircraft.control.aircraft import AircraftControl, WaypointControl
-from aircraft.control.base import SaveMixin, VariableTimeMixin
+from aircraft.control.base import SaveMixin#, VariableTimeMixin
+
+from aircraft.control.variable_time import ProgressTimeMixin
 from aircraft.config import DATAPATH
 import matplotlib.pyplot as plt
 from aircraft.plotting.plotting import TrajectoryPlotter, TrajectoryData
 
 
-class Controller(AircraftControl, SaveMixin, VariableTimeMixin):
-    def __init__(self, *, aircraft, num_nodes=200, dt=.01, opts = {}, filepath:str = '', **kwargs):
+class Controller(AircraftControl, SaveMixin, ProgressTimeMixin):
+    def __init__(self, *, aircraft, num_nodes=300, dt=.01, opts = {}, filepath:str = '', **kwargs):
         super().__init__(aircraft=aircraft, num_nodes=num_nodes, opts = opts, dt = dt, **kwargs)
         if filepath:
             self.save_path = filepath
         SaveMixin._init_saving(self, self.save_path, force_overwrite=True)
+        ProgressTimeMixin._init_progress_time(self, self.opti, num_nodes)
         self.plotter = TrajectoryPlotter(aircraft)
-        # VariableTimeMixin._init_variable_time(self, self.opti, self.num_nodes, self.dt)
+        
 
     def loss(self, nodes, time):
-        self.constraint(ca.sumsqr(nodes[-1].state[:3] - [0, 100, -180])==0)
-        return time**2#ca.sumsqr(nodes[-1].state[:3] - [0, 100, -180])
+        # self.constraint(ca.sumsqr(nodes[-1].state[:3] - [0, 30, -180])==0)
+        return self.total_time + 1000*ca.sumsqr(nodes[-1].state[:3] - [0, 30, -180])# + time**2
     
     def initialise(self, initial_state):
         """
@@ -32,8 +35,9 @@ class Controller(AircraftControl, SaveMixin, VariableTimeMixin):
         """
         guess = np.zeros((self.state_dim + self.control_dim, self.num_nodes + 1))
         guess[:self.state_dim, 0] = initial_state.toarray().flatten()
-        dt_initial = 2 / self.num_nodes
-        self.opti.set_initial(self.time, 2)
+        # dt_initial = self.dt
+        dt_initial = 0.01#2 / self.num_nodes
+        # self.opti.set_initial(self.time, 2)
         # Propagate forward using nominal dynamics
         for i in range(self.num_nodes):
             guess[:self.state_dim, i + 1] = self.dynamics(
@@ -48,23 +52,26 @@ class Controller(AircraftControl, SaveMixin, VariableTimeMixin):
     
 
     def callback(self, iteration: int):
-        return None
-        super().callback(iteration)
+        # J = self.opti.debug.value(ca.jacobian(self.opti.g, self.opti.x))
+        # plt.spy(J)
+        # plt.show(block = True)
+        # return None
+        # super().callback(iteration)
         print(f"Iteration: {iteration}")
-        # if self.plotter and iteration %  == 5:
-        print("plotting")
-        # if iteration==0:
-        trajectory_data = TrajectoryData(
-            state=np.array(self.opti.debug.value(self.state))[:, 1:],
-            control=np.array(self.opti.debug.value(self.control)),
-            time=np.array(self.opti.debug.value(self.time))
-        )
-        self.plotter.plot(trajectory_data=trajectory_data)
-        plt.draw()
-        self.plotter.figure.canvas.start_event_loop(0.0002)
-        plt.show()
+        if self.plotter and iteration % 50 == 0:
+            print("plotting")
+            # if iteration==0:
+            trajectory_data = TrajectoryData(
+                state=np.array(self.opti.debug.value(self.state))[:, 1:],
+                control=np.array(self.opti.debug.value(self.control)),
+                time=np.array(self.opti.debug.value(self.total_time))
+            )
+            self.plotter.plot(trajectory_data=trajectory_data)
+            plt.draw()
+            self.plotter.figure.canvas.start_event_loop(0.0002)
+            plt.show()
     
-        super().callback(iteration)
+            super().callback(iteration)
 
 def main():
     traj_dict = json.load(open('data/glider/problem_definition.json'))
@@ -84,7 +91,9 @@ def main():
     controller = Controller(aircraft=aircraft, filepath=filepath, implicit=True)
     guess = controller.initialise(ca.DM(trim_state_and_control[:aircraft.num_states]))
     controller.setup(guess)
+    
     controller.solve()
+    plt.show(block = True)
 
     
     
