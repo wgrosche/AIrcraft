@@ -31,6 +31,7 @@ class ControlNode:
     index:Optional[int] = None
     state:Optional[ca.MX] = None
     control:Optional[ca.MX] = None
+    progress:Optional[Union[ca.MX, float]] = 0.01
 
 class SaveMixin:
     """
@@ -150,7 +151,8 @@ class ControlProblem(ABC):
         constraint(expr, description): Register constraint with optional description.
     """
 
-    def __init__(self, *, dynamics:ca.Function, dt:float = 0.01, num_nodes:int, opts:Optional[dict] = {}, x_dot = None, **kwargs):
+    def __init__(self, *, dynamics:ca.Function, dt:float = 0.01, num_nodes:int, 
+                 opts:Optional[dict] = {}, x_dot = None, progress:bool = False, **kwargs):
         """
         Initialize the control problem.
 
@@ -175,12 +177,11 @@ class ControlProblem(ABC):
         self.verbose = opts.get('verbose', False)
         self.dynamics = dynamics
         self.constraint_descriptions = []
-        # if hasattr(self, "_init_variable_time"):
-        #     self._init_variable_time(self.opti, self.num_nodes, kwargs.get('timescale', 1))
-        #     # self.constraint(self.time >= 1e-3)
-        # else:
-        #     self.dt = dt
-        #     self.time = dt * num_nodes
+        self.progress = progress
+        self.dt = dt
+        if not progress:
+            
+            self.time = dt * num_nodes
         self.scale_state = opts.get('scale_state', None)
         self.scale_control = opts.get('scale_control', None)
 
@@ -257,15 +258,9 @@ class ControlProblem(ABC):
         
     
     def state_constraint(self, node: ControlNode, next: ControlNode, dt: Optional[ca.MX] = None) -> None:
-        if getattr(self, "_use_progress_time", False):
-            return self.progress_state_constraint(node, next, dt)
-        if dt is None and getattr(self, "_variable_time_enabled", False):
-            dt = self.get_dt(node.index)
-
-
         if hasattr(self, 'x_dot'):
             # implicit constraint:
-            self.constraint(next.state - node.state - dt * self.x_dot(next.state, node.control) == 0, description=f"implicit state dynamics constraint at node {node.index}")
+            self.constraint(next.state - node.state - 1 / node.progress * self.x_dot(next.state, node.control) == 0, description=f"implicit state dynamics constraint at node {node.index}")
             # x_dot_q = self.x_dot(node.state, node.control)[6:10]
             # phi_dot = 2 * ca.dot(node.state[6:10], x_dot_q)
 
@@ -281,7 +276,7 @@ class ControlProblem(ABC):
             self.constraint(ca.sumsqr(node.state[6:10])==1, description=f"quaternion norm constraint at node {node.index}")
 
         else:
-            self.constraint(next.state - self.dynamics(node.state, node.control, dt) == 0, description=f"state dynamics constraint at node {node.index}")
+            self.constraint(next.state - self.dynamics(node.state, node.control, 1 / node.progress) == 0, description=f"state dynamics constraint at node {node.index}")
 
     @abstractmethod
     def loss(self, nodes:List[ControlNode], time:Optional[ca.MX] = None) -> ca.MX:
@@ -305,7 +300,12 @@ class ControlProblem(ABC):
             index=0,
             state=self._scale_variable(opti.variable(self.state_dim), self.scale_state),
             control=self._scale_variable(opti.variable(self.control_dim), self.scale_control),
+            progress = opti.variable() if self.progress else 1 / self.dt
             )
+        
+        if self.progress:
+            opti.set_initial(next_node.progress, 1/self.dt)
+            self.constraint(opti.bounded(1e0, next_node.progress, 1e5), description=f"positive progress rate at node {index}")
 
         state_guess = guess[:self.state_dim, index]
         control_guess = guess[self.state_dim:self.state_dim + self.control_dim, index]
@@ -323,8 +323,13 @@ class ControlProblem(ABC):
             index=0,
             state=self._scale_variable(opti.variable(self.state_dim), self.scale_state),
             control=self._scale_variable(opti.variable(self.control_dim), self.scale_control),
+            progress = opti.variable() if self.progress else 1 / self.dt
+
             )
 
+        if self.progress:
+            opti.set_initial(current_node.progress, 1/self.dt)
+            self.constraint(opti.bounded(1e0, current_node.progress, 1e5), description=f"positive progress rate at node {0}")
         state_guess = guess[:self.state_dim, 0]
         control_guess = guess[self.state_dim:self.state_dim + self.control_dim, 0]
 
@@ -338,6 +343,7 @@ class ControlProblem(ABC):
     def _setup_variables(self, nodes:List[ControlNode]) -> None:
         self.state = ca.hcat([nodes[i].state for i in range(self.num_nodes + 1)])
         self.control = ca.hcat([nodes[i].control for i in range(self.num_nodes)])
+        self.time = ca.sumsqr(ca.vertcat(*[1.0 / nodes[i].progress for i in range(self.num_nodes)]))
 
         if self.verbose:
             print("State Shape: ", self.state.shape)

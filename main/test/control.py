@@ -15,19 +15,19 @@ import matplotlib.pyplot as plt
 from aircraft.plotting.plotting import TrajectoryPlotter, TrajectoryData
 
 
-class Controller(AircraftControl, SaveMixin, ProgressTimeMixin):
+class Controller(AircraftControl, SaveMixin):#, ProgressTimeMixin):
     def __init__(self, *, aircraft, num_nodes=300, dt=.01, opts = {}, filepath:str = '', **kwargs):
         super().__init__(aircraft=aircraft, num_nodes=num_nodes, opts = opts, dt = dt, **kwargs)
         if filepath:
             self.save_path = filepath
         SaveMixin._init_saving(self, self.save_path, force_overwrite=True)
-        ProgressTimeMixin._init_progress_time(self, self.opti, num_nodes)
+        # ProgressTimeMixin._init_progress_time(self, self.opti, num_nodes)
         self.plotter = TrajectoryPlotter(aircraft)
         
 
     def loss(self, nodes, time):
-        # self.constraint(ca.sumsqr(nodes[-1].state[:3] - [0, 30, -180])==0)
-        return self.total_time + 1000*ca.sumsqr(nodes[-1].state[:3] - [0, 30, -180])# + time**2
+        self.constraint(ca.sumsqr(nodes[-1].state[:3] - [0, 30, -180])==0)
+        return time# + 1000*ca.sumsqr(nodes[-1].state[:3] - [0, 30, -180])# + time**2
     
     def initialise(self, initial_state):
         """
@@ -36,14 +36,14 @@ class Controller(AircraftControl, SaveMixin, ProgressTimeMixin):
         guess = np.zeros((self.state_dim + self.control_dim, self.num_nodes + 1))
         guess[:self.state_dim, 0] = initial_state.toarray().flatten()
         # dt_initial = self.dt
-        dt_initial = 0.01#2 / self.num_nodes
+        # dt_initial = 0.01#2 / self.num_nodes
         # self.opti.set_initial(self.time, 2)
         # Propagate forward using nominal dynamics
         for i in range(self.num_nodes):
             guess[:self.state_dim, i + 1] = self.dynamics(
                 guess[:self.state_dim, i],
                 guess[self.state_dim:, i],
-                dt_initial 
+                self.dt 
                 
             ).toarray().flatten()
 
@@ -64,7 +64,7 @@ class Controller(AircraftControl, SaveMixin, ProgressTimeMixin):
             trajectory_data = TrajectoryData(
                 state=np.array(self.opti.debug.value(self.state))[:, 1:],
                 control=np.array(self.opti.debug.value(self.control)),
-                time=np.array(self.opti.debug.value(self.total_time))
+                time=np.array(self.opti.debug.value(self.time))
             )
             self.plotter.plot(trajectory_data=trajectory_data)
             plt.draw()
@@ -88,7 +88,7 @@ def main():
     trim_state_and_control = [0, 0, -200, 50, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
     aircraft.com = np.array(trim_state_and_control[-3:])
     filepath = Path(DATAPATH) / 'trajectories' / 'basic_test.h5'
-    controller = Controller(aircraft=aircraft, filepath=filepath, implicit=True)
+    controller = Controller(aircraft=aircraft, filepath=filepath, implicit=False, progress = True)
     guess = controller.initialise(ca.DM(trim_state_and_control[:aircraft.num_states]))
     controller.setup(guess)
     
