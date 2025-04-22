@@ -300,7 +300,7 @@ class ControlProblem(ABC):
             index=0,
             state=self._scale_variable(opti.variable(self.state_dim), self.scale_state),
             control=self._scale_variable(opti.variable(self.control_dim), self.scale_control),
-            progress = opti.variable() if self.progress else 1 / self.dt
+            progress = self._scale_variable(opti.variable(), 1 / self.dt) if self.progress else 1 / self.dt
             )
         
         if self.progress:
@@ -323,7 +323,7 @@ class ControlProblem(ABC):
             index=0,
             state=self._scale_variable(opti.variable(self.state_dim), self.scale_state),
             control=self._scale_variable(opti.variable(self.control_dim), self.scale_control),
-            progress = opti.variable() if self.progress else 1 / self.dt
+            progress = self._scale_variable(opti.variable(), 1 / self.dt) if self.progress else 1 / self.dt
 
             )
 
