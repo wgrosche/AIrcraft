@@ -1,6 +1,7 @@
 import numpy as np
 import dubins # https://github.com/AgRoboticsResearch/pydubins.git
 from aircraft.utils.utils import TrajectoryConfiguration
+from scipy.interpolate import CubicSpline
 
 import numpy as np
 from scipy.spatial.transform import Rotation as R
@@ -94,7 +95,7 @@ def transform_heading_to_plane(theta, plane_normal, u_axis):
                         np.dot(heading_vector_on_plane, u_axis))
     return u_angle
 
-def sample_dubins_path(path, min_interval=0.1, max_interval=10.0, curvature_factor=1.0, r_min=10.0, vel=30):
+def sample_dubins_path(path, min_interval=0.001, max_interval=0.1, curvature_factor=1.0, r_min=10.0, vel=30):
     """Sample a Dubins path at intervals based on curvature."""
     # Path type mapping
     PATH_TYPES = {
@@ -162,7 +163,7 @@ def generate_3d_dubins_path(waypoints, r_min, sample_dist=0.01):
         # path_2d, _ = dubins.shortest_path(start_2d, end_2d, r_min).sample_many(sample_dist)
 
         path_2d, time_intervals = sample_dubins_path(dubins.shortest_path(start_2d, end_2d, r_min))
-
+        
         # Convert back to 3D in the plane's coordinate system
         path_segment = []
         for u, v, _ in path_2d:
@@ -171,8 +172,8 @@ def generate_3d_dubins_path(waypoints, r_min, sample_dist=0.01):
 
         path_points.extend(path_segment)
         all_time_intervals.extend(time_intervals)
-
-    print("!!!", len(path_points), len(time_intervals))
+    print(time_intervals)
+    print("!!!", len(path_points), len(all_time_intervals))
 
     return path_points, all_time_intervals
 
@@ -218,39 +219,6 @@ def setup_waypoints(x_initial, waypoints):
         ))
     
     return waypoints_with_dubins
-
-
-
-# def visualize_3d_dubins_path(waypoints, trajectory):
-#     """
-#     Visualizes the 3D Dubins-like path and waypoints.
-    
-#     :param waypoints: List of waypoints [(x, y, z, theta)].
-#     :param trajectory: List of (x, y, z) points representing the 3D Dubins path.
-#     """
-#     fig = plt.figure(figsize=(12, 8))
-#     ax = fig.add_subplot(111, projection='3d')
-
-#     # Plot the waypoints
-#     waypoints_x = [p[0] for p in waypoints]
-#     waypoints_y = [p[1] for p in waypoints]
-#     waypoints_z = [p[2] for p in waypoints]
-#     ax.scatter(waypoints_x, waypoints_y, waypoints_z, color='red', label='Waypoints', s=50)
-
-#     # Plot the trajectory
-#     traj_x = [p[0] for p in trajectory]
-#     traj_y = [p[1] for p in trajectory]
-#     traj_z = [p[2] for p in trajectory]
-#     ax.plot(traj_x, traj_y, traj_z, color='blue', label='3D Dubins Path', linewidth=2)
-
-#     # Customize the plot
-#     ax.set_title('3D Dubins-like Path Visualization')
-#     ax.set_xlabel('X')
-#     ax.set_ylabel('Y')
-#     ax.set_zlabel('Z')
-#     ax.legend()
-#     ax.grid(True)
-#     plt.show()
 
 def visualize_3d_dubins_path(waypoints, trajectory, orientations=None):
     """
@@ -298,8 +266,7 @@ def visualize_3d_dubins_path(waypoints, trajectory, orientations=None):
     ax.set_zlabel('Z')
     ax.legend()
     ax.grid(True)
-    plt.show()
-
+    plt.show(block = True)
 
 def compute_angular_velocity(quaternions, time_intervals):
     """Compute angular velocity from a list of quaternions and time intervals.
@@ -359,13 +326,6 @@ def apply_roll_to_quaternion(base_quaternion, velocity_vector, roll_angle):
     new_orientation = roll_rotation * base_quaternion
     return new_orientation
 
-# # Assume we have a list of positions and quaternions for a 3D Dubins path
-# positions = np.array([...])  # List of (x, y, z) positions
-# quaternions = [R.from_quat([...]) for _ in range(len(positions))]  # List of quaternions
-# velocity = 15.0  # m/s
-
-
-
 def get_velocity_directions(path_points):
     """Get velocity directions from 3D path points"""
     velocity_vectors = []
@@ -377,7 +337,6 @@ def get_velocity_directions(path_points):
     # Add final velocity (same as last segment)
     velocity_vectors.append(velocity_vectors[-1])
     return velocity_vectors
-
 
 class DubinsInitialiser:
     """
@@ -394,6 +353,7 @@ class DubinsInitialiser:
         self.waypoints = trajectory.waypoints.waypoints
         initial_state = trajectory.waypoints.initial_state
         self.cumulative_distances = cumulative_distances(self.waypoints)
+
         print(self.cumulative_distances )
         print(self.waypoints)
 
@@ -406,9 +366,15 @@ class DubinsInitialiser:
         self.dubins_path, time_intervals = generate_3d_dubins_path(self.dubins_waypoints, trajectory.aircraft.r_min)
         print(len(self.dubins_path))
         vel_directions = get_velocity_directions(self.dubins_path)
-        rotations = [R.align_vectors(vel_dir, [1, 0, 0])[0] for vel_dir in vel_directions]
-        roll_angles = []
-        new_orientations = []
+        rotations = []
+        for vel_dir in vel_directions:
+            rot = R.align_vectors([vel_dir], [[1, 0, 0]])[0]
+            rotations.append(rot)
+        rotations = R.from_quat([r.as_quat() for r in rotations])
+
+        velocities = np.array(vel_directions) * np.linalg.norm(trajectory.waypoints.initial_state[3:6])
+        roll_angles = [0]
+        new_orientations = [R.from_quat(trajectory.waypoints.initial_state[6:10])]
         for i in range(1, len(self.dubins_path) - 1):
             # Approximate curvature using finite differences
             r1 = np.array(self.dubins_path[i - 1])
@@ -424,7 +390,11 @@ class DubinsInitialiser:
             velocity_vector = (r3 - r1) / np.linalg.norm(r3 - r1)  # Approximate velocity direction
             new_orientation = apply_roll_to_quaternion(rotations[i], velocity_vector, roll_angle)
             new_orientations.append(new_orientation)
+
+        new_orientations.append(new_orientations[-1]) # assume we don't need to change orientation for last waypoint
+
         print(len(time_intervals))
+        self.time_intervals = time_intervals
         print(len(new_orientations))
         angular_velocities = compute_angular_velocity(new_orientations, time_intervals)
 
@@ -433,9 +403,20 @@ class DubinsInitialiser:
         # print("Orientations: ", new_orientations)
         self.orientations = [orientation.as_quat() for orientation in new_orientations]
 
-        print(len(self.orientations))
-        print(len(self.dubins_path))
+        print("final", len(self.orientations))
+        print("final", len(self.dubins_path))
         # compute orientations, velocities and angular velocities
+        # convert to arrays
+        orientations = np.array(self.orientations)
+        # velocities = np.array(velocities)
+        angular_velocities = np.zeros_like(velocities)
+        positions = np.array(self.dubins_path)
+        print(positions.shape)
+        print(velocities.shape)
+        print(orientations.shape)
+        print(angular_velocities.shape)
+        self.guess = np.concatenate((positions, velocities, orientations, angular_velocities), axis = 1)
+        print(self.guess.shape)
 
     def waypoint_variable_guess(self):
 
@@ -459,88 +440,98 @@ class DubinsInitialiser:
 
         return (lambda_guess, mu_guess, nu_guess)
 
-    @property
-    def trajectory(self):
-        pass
+    # def trajectory(self, s):
+    #     """
+    #     Smooth trajectory interpolated from dubins path
+    #     """
+    #     s_values = np.linspace(0, 1, num=len(self.dubins_path))
+    #     x_values = [i[0] for i in self.dubins_path]
+    #     y_values = [i[1] for i in self.dubins_path]
+    #     z_values = [i[2] for i in self.dubins_path]
+    #     # Fit cubic splines for each coordinate
+    #     Px = CubicSpline(s_values, x_values, bc_type='clamped')
+    #     Py = CubicSpline(s_values, y_values, bc_type='clamped')
+    #     Pz = CubicSpline(s_values, z_values, bc_type='clamped')
 
+    #     return np.array([Px(s), Py(s), Pz(s)])
+    
+    def linear_interp(self, s, s_vals, y_vals):
+        """Returns a CasADi SX symbolic expression for piecewise linear interpolation."""
+        import casadi as ca
+        
+        expr = 0
+        for i in range(len(s_vals) - 1):
+            # Use CasADi's logical operators instead of Python's and/or
+            condition = ca.logic_and(s >= s_vals[i], s <= s_vals[i+1])
+            
+            # Calculate the weight when the condition is true
+            weight = (s_vals[i+1] - s) / (s_vals[i+1] - s_vals[i])
+            
+            # Use if_else to apply the weight only when the condition is true
+            w = ca.if_else(condition, weight, 0)
+            
+            # Add the weighted contribution to the expression
+            expr += w * y_vals[i] + (1 - w) * y_vals[i+1]
+        
+        return expr
+
+
+    def length(self, N=100):
+        import casadi as ca
+
+        s = ca.MX.sym("s")
+        pos = self.trajectory(s)
+        dpos_ds = ca.jacobian(pos, s)  # ∂trajectory/∂s
+        speed = ca.norm_2(dpos_ds)
+
+        # Build integrator over s ∈ [0,1]
+        integrand = ca.Function('integrand', [s], [speed])
+        s_grid = np.linspace(0, 1, N)
+        ds = 1 / (N - 1)
+        length = 0.0
+        for i in range(N - 1):
+            si = s_grid[i]
+            si1 = s_grid[i + 1]
+            # Trapezoidal integration
+            length += 0.5 * ds * (integrand(si) + integrand(si1))
+        
+        return float(length)
+
+
+    def trajectory(self, s):
+        import casadi as ca
+        s_values = np.linspace(0, 1, num=len(self.dubins_path))
+        x_values = [i[0] for i in self.dubins_path]
+        y_values = [i[1] for i in self.dubins_path]
+        z_values = [i[2] for i in self.dubins_path]
+
+        Px = ca.interpolant('Px', 'bspline', [s_values], x_values)
+        Py = ca.interpolant('Py', 'bspline', [s_values], y_values)
+        Pz = ca.interpolant('Pz', 'bspline', [s_values], z_values)
+
+        return ca.vertcat(Px(s), Py(s), Pz(s))
+
+    # def trajectory(self, s):
+    #     import casadi as ca
+        
+    #     s_values = np.linspace(0, 1, num=len(self.dubins_path))
+    #     x_values = [i[0] for i in self.dubins_path]
+    #     y_values = [i[1] for i in self.dubins_path]
+    #     z_values = [i[2] for i in self.dubins_path]
+    #     # # Fit cubic splines for each coordinate
+    #     # Px = ca.interpolant('Px', 'bspline', [s_values], x_values)
+    #     # Py = ca.interpolant('Py', 'bspline', [s_values], y_values)
+    #     # Pz = ca.interpolant('Pz', 'bspline', [s_values], z_values)
+
+    #     return ca.vertcat(
+    #             self.linear_interp(s, s_values, x_values),
+    #             self.linear_interp(s, s_values, y_values),
+    #             self.linear_interp(s, s_values, z_values)
+    #         )
 
     def visualise(self):
         # Visualize the generated 3D Dubins path
         visualize_3d_dubins_path(self.dubins_waypoints, self.dubins_path, orientations = self.orientations)
-
-# import json
-# traj_dict = json.load(open('data/glider/problem_definition.json'),)
-# config = TrajectoryConfiguration(traj_dict)
-# dubins_init = DubinsInitialiser(config)
-# dubins_init.visualise()
-
-# from aircraft.dynamics.dynamics import Aircraft, AircraftOpts
-# from pathlib import Path
-# def default_initialiser(aircraft:Aircraft, initial_state:Optional[np.ndarray] = None, mode:int = 1):
-
-#     mode = 1
-#     traj_dict = json.load(open('data/glider/problem_definition.json'))
-
-#     trajectory_config = TrajectoryConfiguration(traj_dict)
-
-#     aircraft_config = trajectory_config.aircraft
-
-#     if mode == 0:
-#         model_path = Path(NETWORKPATH) / 'model-dynamics.pth'
-#         opts = AircraftOpts(nn_model_path=model_path, aircraft_config=aircraft_config)
-#     elif mode == 1:
-#         poly_path = Path(NETWORKPATH) / 'fitted_models_casadi.pkl'
-#         opts = AircraftOpts(poly_path=poly_path, aircraft_config=aircraft_config, physical_integration_substeps=1)
-#     elif mode == 2:
-#         linear_path = Path(DATAPATH) / 'glider' / 'linearised.csv'
-#         opts = AircraftOpts(linear_path=linear_path, aircraft_config=aircraft_config)
-
-#     aircraft = Aircraft(opts = opts)
-
-#     perturbation = False
-    
-#     trim_state_and_control = [0, 0, 0, 30, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
-
-#     if trim_state_and_control is not None:
-#         state = ca.vertcat(trim_state_and_control[:aircraft.num_states])
-#         control = np.zeros(aircraft.num_controls)
-#         control[:3] = trim_state_and_control[aircraft.num_states:-3]
-#         control[0] = 0
-#         control[1] = 0
-#         aircraft.com = np.array(trim_state_and_control[-3:])
-#     else:
-#         x0 = np.zeros(3)
-#         v0 = ca.vertcat([60, 0, 0])
-#         # would be helpful to have a conversion here between actual pitch, roll and yaw angles and the Quaternion q0, so we can enter the angles in a sensible way.
-#         q0 = Quaternion(ca.vertcat(0, 0, 0, 1))
-#         omega0 = np.array([0, 0, 0])
-#         state = ca.vertcat(x0, v0, q0, omega0)
-#         control = np.zeros(aircraft.num_controls)
-#         control[0] = +0
-#         control[1] = 5
-
-#     dyn = aircraft.state_update
-#     dt = .01
-#     tf = 5
-#     state_list = np.zeros((aircraft.num_states, int(tf / dt)))
-#     t = 0
-#     ele_pos = True
-#     ail_pos = True
-#     control_list = np.zeros((aircraft.num_controls, int(tf / dt)))
-#     for i in tqdm(range(int(tf / dt)), desc = 'Simulating Trajectory:'):
-#         if np.isnan(state[0]):
-#             print('Aircraft crashed')
-#             break
-#         else:
-#             state_list[:, i] = state.full().flatten()
-#             control_list[:, i] = control
-#             state = dyn(state, control, dt)
-                    
-#             t += 1
-            
-
-
-
 
     def state_guess(self, trajectory:TrajectoryConfiguration):
         """
@@ -646,22 +637,26 @@ class DubinsInitialiser:
         # x_guess = self.smooth_trajectory(x_guess)
 
         time_guess = distance[-1] / velocity_guess
-        # if self.VERBOSE:
-        #     print("State Guess: ", x_guess)
-        #     plotter = TrajectoryPlotter(self.aircraft)
-        #     trajectory_data = TrajectoryData(
-        #         state = np.array(x_guess),
-        #         # time = np.array(time_guess)
-        #     )
-            
-        #     plotter.plot(trajectory_data = trajectory_data)
-        #     plt.pause(0.001)
-        #     # fig = plt.figure()
-        #     # ax = fig.add_subplot(111, projection = '3d')
-        #     # ax.plot(x_guess[4, :], x_guess[5, :], x_guess[6, :])
-            
-        #     plt.show(block = True)
+        #
         
         
         return x_guess, time_guess
+    
+    def render(self):
+        from aircraft.plotting.plotting import TrajectoryData, TrajectoryPlotter
+        if self.VERBOSE:
+            print("State Guess: ", x_guess)
+            plotter = TrajectoryPlotter(self.aircraft)
+            trajectory_data = TrajectoryData(
+                state = np.array(x_guess),
+                # time = np.array(time_guess)
+            )
+            
+            plotter.plot(trajectory_data = trajectory_data)
+            plt.pause(0.001)
+            # fig = plt.figure()
+            # ax = fig.add_subplot(111, projection = '3d')
+            # ax.plot(x_guess[4, :], x_guess[5, :], x_guess[6, :])
+            
+            plt.show(block = True)
     

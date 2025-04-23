@@ -36,12 +36,50 @@ class SixDOF(ABC):
     """
     Baseclass for 6DOF Dynamics Simulation in a NED system
     """
-    def __init__(self, opts:Optional[SixDOFOpts] = SixDOFOpts()):
+    def __init__(self, opts:Optional[SixDOFOpts] = SixDOFOpts(), LQR:bool = False, setpoint:Optional[np.ndarray]=None):
         self.gravity = opts.gravity
         self.dt_sym = ca.MX.sym('dt')
         self.epsilon = opts.epsilon
         self.mass = opts.mass
         self.com = None
+        self.LQR = LQR
+        if self.LQR:
+            assert setpoint is not None, "Cannot perform LQR without a valid setpoint"
+            self.setpoint = setpoint
+
+    def _initialise_LQR(self, setpoint:np.ndarray):
+        """
+        LQR around steady state setpoint
+        """
+        from scipy import linalg
+        if self.LQR and not hasattr(self, 'LQR_mat'):
+            x = self.state
+            u = self.control
+            f = self.state_update(x, u)
+            A = ca.Function("A", [x, u], [ca.jacobian(f, x)])
+            B = ca.Function("B", [x, u], [ca.jacobian(f, u)])
+            self.x_ss = setpoint[:self.num_states]
+            self.u_ss = setpoint[self.num_states:self.num_states+self.num_controls]
+            A_ss = A(self.x_ss, self.u_ss)
+            B_ss = B(self.x_ss, self.u_ss)
+            Q = np.eye(self.num_states)
+            R = np.eye(self.num_controls)
+
+            P = linalg.solve_continuous_are(A_ss, B_ss, Q, R)
+            self.K = np.linalg.inv(R) @ B_ss.T @ P
+
+    @property
+    def state_update_LQR(self, setpoint:np.ndarray):
+        if not hasattr(self, 'K'):
+            self._initialise_LQR(setpoint=setpoint)
+        u_lqr = self.control -self.K @ (self.state - self.x_ss) + self.u_ss
+        dt = self.dt_sym
+        res = self.state_update(self.state, u_lqr, dt)
+        return ca.Function(
+            'state_update', 
+            [self.state, self.control, dt], 
+            [res]
+            )
 
     def _ensure_initialized(self, *properties):
         """Ensure properties are initialized by calling them"""
@@ -255,31 +293,50 @@ class SixDOF(ABC):
         q_frd_ned = Quaternion(self._q_frd_ned)
         omega_frd_ned = self._omega_frd_ned  # Assume this is a 3D vector
 
-        # Angular velocity magnitude
-        theta = ca.norm_2(omega_frd_ned)  
-        half_theta = 0.5 * dt * theta
+        # Compute the exponential map using the Rodrigues' rotation formula
+        half_theta = 0.5 * dt * ca.norm_fro(omega_frd_ned)
+        sin_half_theta = ca.sin(half_theta)
+        cos_half_theta = ca.cos(half_theta)
 
-        # Use Taylor series expansion for small angles to improve stability
-        sin_half_theta = ca.if_else(theta > 1e-6, 
-                                    ca.sin(half_theta), 
-                                    half_theta)  # Approximate sin(x) ≈ x for small x
-        cos_half_theta = ca.if_else(theta > 1e-6, 
-                                    ca.cos(half_theta), 
-                                    1 - (half_theta ** 2) / 2)  # Approximate cos(x) ≈ 1 - x^2/2
+        # Compute the exponential map terms (quaternion)
+        exp_q = ca.vertcat(sin_half_theta * omega_frd_ned, cos_half_theta)
 
-        # Normalized axis of rotation (handle division by zero safely)
-        axis = ca.if_else(theta > 1e-6, 
-                        omega_frd_ned / theta, 
-                        ca.MX.zeros(3, 1))
-
-        # Compute exponential map terms (quaternion)
-        exp_q = ca.vertcat(sin_half_theta * axis, cos_half_theta)
-
-        # Compute the updated quaternion and normalize it
+        # Compute the updated quaternion
         q_next = Quaternion.product(exp_q, q_frd_ned.coeffs())
-        q_next = q_next / ca.norm_2(q_next)  # Ensure unit norm
 
         return ca.Function('q_frd_ned_update', [self.state, self.control, dt], [q_next])
+    
+    # @property
+    # def q_frd_ned_update(self):
+    #     dt = self.dt_sym
+    #     q_frd_ned = Quaternion(self._q_frd_ned)
+    #     omega_frd_ned = self._omega_frd_ned  # Assume this is a 3D vector
+
+    #     # Angular velocity magnitude
+    #     theta = ca.norm_2(omega_frd_ned)  
+    #     half_theta = 0.5 * dt * theta
+
+    #     # Use Taylor series expansion for small angles to improve stability
+    #     sin_half_theta = ca.if_else(theta > 1e-6, 
+    #                                 ca.sin(half_theta), 
+    #                                 half_theta)  # Approximate sin(x) ≈ x for small x
+    #     cos_half_theta = ca.if_else(theta > 1e-6, 
+    #                                 ca.cos(half_theta), 
+    #                                 1 - (half_theta ** 2) / 2)  # Approximate cos(x) ≈ 1 - x^2/2
+
+    #     # Normalized axis of rotation (handle division by zero safely)
+    #     axis = ca.if_else(theta > 1e-6, 
+    #                     omega_frd_ned / theta, 
+    #                     ca.MX.zeros(3, 1))
+
+    #     # Compute exponential map terms (quaternion)
+    #     exp_q = ca.vertcat(sin_half_theta * axis, cos_half_theta)
+
+    #     # Compute the updated quaternion and normalize it
+    #     q_next = Quaternion.product(exp_q, q_frd_ned.coeffs())
+    #     q_next = q_next / ca.norm_2(q_next)  # Ensure unit norm
+
+    #     return ca.Function('q_frd_ned_update', [self.state, self.control, dt], [q_next])
 
 
 
@@ -375,7 +432,7 @@ class SixDOF(ABC):
         state = state + sixth_dt * (k1 + 2 * k2 + 2 * k3 + k4)
 
         # Quaternion update to maintain unit norm
-        state[6:10] = self.q_frd_ned_update(state, control, dt_scaled)
+        # state[6:10] = self.q_frd_ned_update(state, control, dt_scaled)
         state[6:10] = Quaternion(state[6:10]).normalize()
 
         return state
@@ -390,19 +447,19 @@ class SixDOF(ABC):
         dt = self.dt_sym
         state = self.state
         control_sym = self.control
-        num_steps = 100# self.STEPS
+        num_steps = self.STEPS
 
-        # if num_steps == 1:
-        #     state = self.state_step(state, control_sym, dt)
-        # else:
+        if num_steps == 1:
+            state = self.state_step(state, control_sym, dt)
+        else:
 
-        dt_scaled = dt / num_steps
-        input_to_fold = ca.vertcat(self.state, self.control, dt)
-        fold_output = ca.vertcat(self.state_step(state, control_sym, dt_scaled), control_sym, dt)
-        folded_update = ca.Function('folder', [input_to_fold], [fold_output])
-        
-        F = folded_update.fold(num_steps)
-        state = F(input_to_fold)[:self.num_states]
+            dt_scaled = dt / num_steps
+            input_to_fold = ca.vertcat(self.state, self.control, dt)
+            fold_output = ca.vertcat(self.state_step(state, control_sym, dt_scaled), control_sym, dt)
+            folded_update = ca.Function('folder', [input_to_fold], [fold_output])
+            
+            F = folded_update.fold(num_steps)
+            state = F(input_to_fold)[:self.num_states]
 
         return ca.Function(
             'state_update', 

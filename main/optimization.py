@@ -12,7 +12,7 @@ import os
 
 BASEPATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__))).split('AIrcraft', 1)[0] + 'AIrcraft/'
 sys.path.append(BASEPATH)
-from aircraft.dynamics.dynamics import Aircraft, AircraftOpts
+from aircraft.dynamics.aircraft import Aircraft, AircraftOpts
 from aircraft.planner import Planner
 from aircraft.utils.utils import TrajectoryConfiguration
 from aircraft.plotting_minimal import TrajectoryPlotter, TrajectoryData

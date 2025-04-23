@@ -171,11 +171,13 @@ class Aircraft(SixDOF):
         if not hasattr(self, '_control_initialized') or not self._control_initialized:
             self._aileron = ca.MX.sym('aileron')
             self._elevator = ca.MX.sym('elevator')
+            self._rudder = ca.MX.sym('rudder')
             self._thrust = ca.MX.sym('thrust', 3)
 
             self._control = ca.vertcat(
             self._aileron, 
             self._elevator,
+            self._rudder,
             self._thrust
             )
             self.num_controls = self._control.size()[0]
@@ -376,7 +378,7 @@ class Aircraft(SixDOF):
         outputs[2] *= beta_scaling
 
         outputs[4] *= alpha_scaling
-        outputs[4] *= beta_scaling
+        # outputs[4] *= beta_scaling
 
 
         self._coefficients = outputs
@@ -394,9 +396,9 @@ class Aircraft(SixDOF):
         forces = self._coefficients[:3] * self._qbar * self.S
 
         # antialign drag and velocity
-        forces[0] = ca.sign(self._v_frd_rel[0])*forces[0]
+        forces[0] = ca.sign(self._v_frd_rel[0])*forces[0] #
 
-        # forces += self._thrust
+        forces += self._thrust
 
         speed_threshold = 80.0  # m/s
         penalty_factor = 10.0  # Scale factor for additional drag
@@ -414,6 +416,14 @@ class Aircraft(SixDOF):
         self._ensure_initialized('coefficients', 'qbar')
         moments_aero = (self._coefficients[3:] * self._qbar * self.S 
                         * ca.vertcat(self.b, self.c, self.b))
+        
+        # simplified rudder added in
+        C_n_delta_r = -0.01
+        delta_r = self._rudder
+        N_rudder = C_n_delta_r * delta_r * self._qbar * self.S * self.b
+
+        moments_aero[2] += N_rudder
+
 
         return moments_aero
 
@@ -429,55 +439,6 @@ class AircraftLinear(SixDOF):
 
         self._coefficients = None
         return ca.Function('coefficients', [self.state, self.control], [self._coefficients])
-    
-class Quadrotor(SixDOF):
-    def __init__(self):
-        super().__init__()
-
-    @property
-    def control(self):
-        if not hasattr(self, '_control_initialized') or not self._control_initialized:
-            self._thrust = ca.MX.sym('thrust', 4)
-
-            self._control = ca.vertcat(
-            self._thrust
-            )
-            self.num_controls = self._control.size()[0]
-
-            self._control_initialized = True
-
-        return self._control
-    
-    @property
-    def _forces_frd(self):
-        self._ensure_initialized('coefficients', 'qbar')
-
-        forces = self._coefficients[:3] * self._qbar * self.S
-
-        # antialign drag and velocity
-        forces[0] = ca.sign(self._v_frd_rel[0])*forces[0]
-
-        # forces += self._thrust
-
-        speed_threshold = 80.0  # m/s
-        penalty_factor = 10.0  # Scale factor for additional drag
-
-        # Smooth penalty function for increased drag
-        excess_speed = self._airspeed - speed_threshold
-        additional_drag = penalty_factor * ca.fmax(0, excess_speed)**2  # Quadratic penalty for smoothness
-
-        # Apply the additional drag along the x-axis (forward direction)
-        forces[0] -= additional_drag
-        return forces
-    
-    @property
-    def _moments_aero_frd(self):
-        self._ensure_initialized('coefficients', 'qbar')
-        moments_aero = (self._coefficients[3:] * self._qbar * self.S 
-                        * ca.vertcat(self.b, self.c, self.b))
-
-        return moments_aero
-    
 
 
 
@@ -545,91 +506,4 @@ class AircraftTrim(Aircraft):
         return inertia_tensor
     
 
-def main():
-    from aircraft.plotting.plotting import TrajectoryPlotter
 
-    mode = 1
-    model = load_model()
-    traj_dict = json.load(open('data/glider/problem_definition.json'))
-
-    trajectory_config = TrajectoryConfiguration(traj_dict)
-
-    aircraft_config = trajectory_config.aircraft
-
-    if mode == 0:
-        model_path = Path(NETWORKPATH) / 'model-dynamics.pth'
-        opts = AircraftOpts(nn_model_path=model_path, aircraft_config=aircraft_config)
-    elif mode == 1:
-        poly_path = Path(NETWORKPATH) / 'fitted_models_casadi.pkl'
-        opts = AircraftOpts(poly_path=poly_path, aircraft_config=aircraft_config, physical_integration_substeps=1)
-    elif mode == 2:
-        linear_path = Path(DATAPATH) / 'glider' / 'linearised.csv'
-        opts = AircraftOpts(linear_path=linear_path, aircraft_config=aircraft_config)
-
-    aircraft = Aircraft(opts = opts)
-
-    perturbation = False
-    
-    trim_state_and_control = [0, 0, 0, 50, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
-    # trim_state_and_control = [0, 0, 0, 30, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
-
-    if trim_state_and_control is not None:
-        state = ca.vertcat(trim_state_and_control[:aircraft.num_states])
-        control = np.zeros(aircraft.num_controls)
-        control[:3] = trim_state_and_control[aircraft.num_states:-3]
-        control[0] = 0
-        control[1] = 0
-        aircraft.com = np.array(trim_state_and_control[-3:])
-    else:
-        x0 = np.zeros(3)
-        v0 = ca.vertcat([60, 0, 0])
-        # would be helpful to have a conversion here between actual pitch, roll and yaw angles and the Quaternion q0, so we can enter the angles in a sensible way.
-        q0 = Quaternion(ca.vertcat(0, 0, 0, 1))
-        omega0 = np.array([0, 0, 0])
-        state = ca.vertcat(x0, v0, q0, omega0)
-        control = np.zeros(aircraft.num_controls)
-        control[0] = +0
-        control[1] = 5
-
-    dyn = aircraft.state_update
-    jacobian_elevator = ca.jacobian(aircraft.state_derivative(aircraft.state, aircraft.control), aircraft.control[1])
-    jacobian_func = ca.Function('jacobian_func', [aircraft.state, aircraft.control], [jacobian_elevator])
-    jacobian_elevator_val = jacobian_func(state, control)
-
-    print("Jacobian of state derivatives w.r.t. elevator:")
-    print(jacobian_elevator_val)
-    dt = .1
-    tf = 5
-    state_list = np.zeros((aircraft.num_states, int(tf / dt)))
-    t = 0
-    ele_pos = True
-    ail_pos = True
-    control_list = np.zeros((aircraft.num_controls, int(tf / dt)))
-    for i in tqdm(range(int(tf / dt)), desc = 'Simulating Trajectory:'):
-        if np.isnan(state[0]):
-            print('Aircraft crashed')
-            break
-        else:
-            state_list[:, i] = state.full().flatten()
-            control_list[:, i] = control
-            state = dyn(state, control, dt)
-                    
-            t += 1
-
-    first = None
-    t -=10
-    def save(filepath):
-        with h5py.File(filepath, "a") as h5file:
-            grp = h5file.create_group('iteration_0')
-            grp.create_dataset('state', data=state_list[:, :t])
-            grp.create_dataset('control', data=control_list[:, :t])
-    
-    
-    filepath = os.path.join("data", "trajectories", "simulation.h5")
-    if os.path.exists(filepath):
-        os.remove(filepath)
-    save(filepath)
-
-    plotter = TrajectoryPlotter(aircraft)
-    plotter.plot(filepath=filepath)
-    plt.show(block = True)

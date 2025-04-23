@@ -12,47 +12,186 @@ from datetime import datetime
 from pathlib import Path
 import time
 from aircraft.config import default_solver_options, BASEPATH, NETWORKPATH, DATAPATH, DEVICE, rng
-
+from abc import ABC, abstractmethod
 
 plt.ion()
 
+__all__ = ['ControlNode', 'SaveMixin', 'ControlProblem', 'VariableTimeMixin']
+
 @dataclass
 class ControlNode:
+    """
+    A data structure representing a single node in the control horizon.
+
+    Attributes:
+        index (Optional[int]): Index of the node in the trajectory.
+        state (Optional[ca.MX]): Symbolic representation of the state at this node.
+        control (Optional[ca.MX]): Symbolic representation of the control at this node.
+    """
     index:Optional[int] = None
     state:Optional[ca.MX] = None
     control:Optional[ca.MX] = None
+    progress:Optional[Union[ca.MX, float]] = 0.01
 
-
-def plot_convergence(self, ax:plt.axes, sol:ca.OptiSol):
-    ax.semilogy(sol.stats()['iterations']['inf_du'], label="Dual infeasibility")
-    ax.semilogy(sol.stats()['iterations']['inf_pr'], label="Primal infeasibility")
-
-    ax.set_xlabel('Iterations')
-    ax.set_ylabel('Infeasibility (log scale)')
-    ax.grid(True)
-    ax.legend()
-
-    plt.tight_layout()
-    plt.show(block = True)
-
-class ControlProblem:
+class SaveMixin:
     """
-    Control Problem parent class
+    A mixin that enables saving progress of an optimization problem to an HDF5 file.
+
+    Methods:
+        _init_saving(filepath, force_overwrite): Initializes saving and opens the file.
+        _save_progress(iteration, states, controls, times): Writes a snapshot of the latest progress to the HDF5 file.
+    """
+    def _init_saving(self, filepath: Optional[str], force_overwrite: bool = True):
+        self._save_enabled = filepath is not None
+        self._save_interval = 10  # can expose as parameter later
+
+        self.h5file = None
+        self._save_path = filepath
+
+        if self._save_enabled:
+            if force_overwrite and Path(filepath).exists():
+                Path(filepath).unlink()
+
+            self.h5file = h5py.File(filepath, "a")
+    def _save_progress(
+        self,
+        iteration: int,
+        states: list,
+        controls: list,
+        times: list
+    ):
+        if not self._save_enabled or self.h5file is None:
+            return
+
+        try:
+            for i, (state, control, time_val) in enumerate(zip(states[-10:], controls[-10:], times[-10:])):
+                grp_name = f'iteration_{iteration - 10 + i}'
+                grp = self.h5file.require_group(grp_name)
+                grp.attrs['timestamp'] = time.time()
+
+                for name, data in zip(['state', 'control', 'time'], [state, control, time_val]):
+                    if name in grp:
+                        del grp[name]
+                    # Only use compression for non-scalar data
+                    if hasattr(data, 'size') and data.size > 1:
+                        grp.create_dataset(name, data=data, compression='gzip')
+                    else:
+                        grp.create_dataset(name, data=data)
+        except Exception as e:
+            print(f"[SaveMixin] Error saving progress: {e}")
+
+    # def _save_progress(
+    #     self,
+    #     iteration: int,
+    #     states: list,
+    #     controls: list,
+    #     times: list
+    # ):
+    #     if not self._save_enabled or self.h5file is None:
+    #         return
+
+    #     try:
+    #         for i, (state, control, time_val) in enumerate(zip(states[-10:], controls[-10:], times[-10:])):
+    #             grp_name = f'iteration_{iteration - 10 + i}'
+    #             grp = self.h5file.require_group(grp_name)
+    #             grp.attrs['timestamp'] = time.time()
+
+    #             for name, data in zip(['state', 'control', 'time'], [state, control, time_val]):
+    #                 if name in grp:
+    #                     del grp[name]
+    #                 grp.create_dataset(name, data=data, compression='gzip')
+    #     except Exception as e:
+    #         print(f"[SaveMixin] Error saving progress: {e}")
+
+
+
+    
+
+
+
+
+
+
+class ControlProblem(ABC):
+    """
+    Abstract base class for defining optimal control problems using CasADi's Opti framework.
+
+    This class provides a generic structure for setting up, solving, and managing trajectory 
+    optimization or model predictive control problems involving continuous dynamics. It supports
+    scaling, logging, parameterization, and flexible constraint/variable setup over a discrete time horizon.
+
+    Subclasses must implement:
+        - `control_constraint(node)`: Enforce control-specific constraints (e.g., bounds).
+        - `loss(nodes, time)`: Define the cost function to minimize.
+
+    Attributes:
+        opti (ca.Opti): CasADi optimization problem object.
+        dynamics (ca.Function): Dynamics function f(x, u, dt).
+        num_nodes (int): Number of time steps in the horizon.
+        state_dim (int): Dimension of the system state.
+        control_dim (int): Dimension of the control input.
+        dt (ca.MX or float): Time step size (symbolic if time is optimized).
+        time (ca.MX): Total horizon time (if variable time enabled).
+        verbose (bool): Verbose setup output.
+        solver_opts (dict): IPOPT or other solver options.
+        scale_state (Optional[list[float]]): Optional scaling for state variables.
+        scale_control (Optional[list[float]]): Optional scaling for control variables.
+        constraint_descriptions (list): Text descriptions of constraints.
+        sol_state_list (list): History of solved state trajectories.
+        sol_control_list (list): History of solved control trajectories.
+        final_times (list): Solved final time values.
+        h5file (Optional[h5py.File]): Handle to HDF5 file if saving is enabled.
+
+    Methods:
+        setup(guess): Build and initialize problem from an initial guess.
+        solve(): Solve the control problem.
+        get_solution(sol): Extract values from a CasADi solution.
+        log(iteration): Log iteration data to file.
+        callback(iteration): Store data and trigger logging.
+        constraint(expr, description): Register constraint with optional description.
     """
 
-    def __init__(self, dynamics:ca.Function, num_nodes:int, opts:Optional[dict] = {}):
+    def __init__(self, *, dynamics:ca.Function, dt:float = 0.01, num_nodes:int, 
+                 opts:Optional[dict] = {}, x_dot = None, progress:bool = False, **kwargs):
+        """
+        Initialize the control problem.
 
-        self.opti = ca.Opti()
+        Args:
+            dynamics (ca.Function): Dynamics function f(x, u, dt).
+            num_nodes (int): Number of control nodes (time steps).
+            opts (dict, optional): Dictionary of configuration options:
+                - 'verbose' (bool): Enable debug output.
+                - 'scale_state' (list): Scaling for state variables.
+                - 'scale_control' (list): Scaling for control inputs.
+                - 'initial_state' (np.ndarray): Warm start initial state.
+                - 'solver_options' (dict): IPOPT solver options.
+                - 'savefile' (str): HDF5 save path.
+        """
+
+        self.opti = ca.Opti('nlp')
+
         self.state_dim = dynamics.size1_in(0)
         self.control_dim = dynamics.size1_in(1)
+
         self.num_nodes = num_nodes
         self.verbose = opts.get('verbose', False)
         self.dynamics = dynamics
-
+        self.constraint_descriptions = []
+        self.progress = progress
+        self.dt = dt
+        if not progress:
+            
+            self.time = dt * num_nodes
         self.scale_state = opts.get('scale_state', None)
         self.scale_control = opts.get('scale_control', None)
-        self.scale_time = None
+
+        if x_dot:
+            self.x_dot = x_dot
+
+        self.state_guess_parameter = self.opti.parameter(self.state_dim, self.num_nodes + 1)
+        self.control_guess_parameter = self.opti.parameter(self.control_dim, self.num_nodes + 1)
         self.initial_state = opts.get('initial_state', None)
+
         self.solver_opts = opts.get('solver_options', default_solver_options)
 
         self.filepath = opts.get('savefile', None)
@@ -64,128 +203,188 @@ class ControlProblem:
         self.sol_state_list = []
         self.sol_control_list = []
         self.final_times = []
+        
+        super().__init__(**kwargs)
 
+    def _scale_variable(self, var, scale):
+        return ca.DM(scale) * var if scale else var
+
+    def constraint(self, expr, description=None) -> None:
+        """
+        Wrapper for adding constraints to the opti stack with optional auto-description.
+
+        Args:
+            expr: Constraint expression (scalar or vector). Can be bounded, equality, or inequality.
+            description: Optional human-readable description string.
+        """
+        self.opti.subject_to(expr)
+        num_constraints = expr.numel()
+        # Auto-generate a fallback description if not provided
+        if description is None:
+            # Try to infer the type
+            if hasattr(expr, 'is_equal') and expr.is_equal():  # CasADi equality
+                inferred_type = "equality"
+            elif hasattr(expr, 'is_lte') and expr.is_lte():    # CasADi less-than
+                inferred_type = "inequality"
+            else:
+                inferred_type = "constraint"
+
+            # Use the symbolic expression as a fallback string
+            raw_str = str(expr)
+
+            # Limit to 1 line and truncate if too long
+            if "\n" in raw_str:
+                raw_str = raw_str.split("\n")[0]
+            if len(raw_str) > 80:
+                raw_str = raw_str[:77] + "..."
+
+            description = f"{inferred_type}: {raw_str}"
+
+        # Expand descriptions if vector-valued
+        if num_constraints == 1:
+            self.constraint_descriptions.append(description)
+        else:
+            self.constraint_descriptions.extend(
+                [f"{description} (dim {i})" for i in range(num_constraints)]
+            )
+
+    @abstractmethod
     def control_constraint(self, node:ControlNode):
         """
-        Does nothing in base class
+        Abstract method for applying control-related constraints.
+        Should be implemented in subclasses.
         """
         pass
+        
+    
+    def state_constraint(self, node: ControlNode, next: ControlNode, dt: Optional[ca.MX] = None) -> None:
+        if hasattr(self, 'x_dot'):
+            # implicit constraint:
+            self.constraint(next.state - node.state - 1 / node.progress * self.x_dot(next.state, node.control) == 0, description=f"implicit state dynamics constraint at node {node.index}")
+            # x_dot_q = self.x_dot(node.state, node.control)[6:10]
+            # phi_dot = 2 * ca.dot(node.state[6:10], x_dot_q)
 
-    def state_constraint(self, node:ControlNode, next:ControlNode, dt:ca.MX):
-        opti = self.opti
-        dynamics = self.dynamics
-        opti.subject_to(ca.norm_2(node.state[6:10]) == 1)
-        opti.subject_to(next.state == dynamics(node.state, node.control, dt))
+            # alpha = 2.0  # damping
+            # beta = 2.0   # stiffness
 
-    def loss(self, time:Optional[ca.MX] = None):
-        return time
+            # phi = ca.dot(node.state[6:10], node.state[6:10]) - 1
+            # stabilized_phi = 2 * alpha * phi_dot + beta**2 * phi
+
+            # self.constraint(stabilized_phi == 0, description="Baumgarte quaternion normalization")
+
+
+            self.constraint(ca.sumsqr(node.state[6:10])==1, description=f"quaternion norm constraint at node {node.index}")
+
+        else:
+            self.constraint(next.state - self.dynamics(node.state, node.control, 1 / node.progress) == 0, description=f"state dynamics constraint at node {node.index}")
+
+    @abstractmethod
+    def loss(self, nodes:List[ControlNode], time:Optional[ca.MX] = None) -> ca.MX:
+        """
+        Abstract method for defining the objective function.
+        Should return the scalar loss to minimize.
+
+        Args:
+            nodes (List[ControlNode]): List of control nodes.
+            time (Optional[ca.MX]): Optional total time variable.
+
+        Returns:
+            ca.MX: Symbolic expression for the loss.
+        """
+        pass
 
     def _setup_step(self, index:int, current_node:ControlNode, guess:np.ndarray):
         opti = self.opti
 
-        if self.scale_state and self.scale_control:
-            next_node = ControlNode(
-                index=0,
-                state=ca.DM(self.scale_state) * opti.variable(self.state_dim),
-                control=ca.DM(self.scale_control) * opti.variable(self.control_dim),
+        next_node = ControlNode(
+            index=0,
+            state=self._scale_variable(opti.variable(self.state_dim), self.scale_state),
+            control=self._scale_variable(opti.variable(self.control_dim), self.scale_control),
+            progress = self._scale_variable(opti.variable(), 1 / self.dt) if self.progress else 1 / self.dt
             )
-        else:
-            next_node = ControlNode(
-                index=0,
-                state=opti.variable(self.state_dim),
-                control=opti.variable(self.control_dim),
-            )
-            
-        self.state_constraint(current_node, next_node, self.dt)
+        
+        if self.progress:
+            opti.set_initial(next_node.progress, 1/self.dt)
+            self.constraint(opti.bounded(1e0, next_node.progress, 1e5), description=f"positive progress rate at node {index}")
+
+        state_guess = guess[:self.state_dim, index]
+        control_guess = guess[self.state_dim:self.state_dim + self.control_dim, index]
+        self.state_constraint(current_node, next_node, index)#self.dt)
         self.control_constraint(current_node)
-
-        opti.set_initial(next_node.state, guess[:self.state_dim, index])
-        opti.set_initial(next_node.control, guess[self.state_dim:, index])
+        
+        opti.set_initial(next_node.state, state_guess)
+        opti.set_initial(next_node.control, control_guess)
         return next_node
-    
-    def _setup_time(self):
+
+    def _setup_initial_node(self, guess:np.ndarray) -> ControlNode:
         opti = self.opti
-        if not self.scale_time:
-            self.scale_time = 1
-        self.time = self.scale_time * opti.variable()
 
-        opti.subject_to(self.time > 0)
-        opti.set_initial(self.time, self.scale_time)
+        current_node = ControlNode(
+            index=0,
+            state=self._scale_variable(opti.variable(self.state_dim), self.scale_state),
+            control=self._scale_variable(opti.variable(self.control_dim), self.scale_control),
+            progress = self._scale_variable(opti.variable(), 1 / self.dt) if self.progress else 1 / self.dt
 
-        self.dt = self.time / self.num_nodes
-
-    def _setup_initial_node(self, guess:np.ndarray):
-        opti = self.opti
-        if self.scale_state and self.scale_control:
-            current_node = ControlNode(
-                index=0,
-                state=ca.DM(self.scale_state) * opti.variable(self.state_dim),
-                control=ca.DM(self.scale_control) * opti.variable(self.control_dim),
-            )
-        else:
-            current_node = ControlNode(
-                index=0,
-                state=opti.variable(self.state_dim),
-                control=opti.variable(self.control_dim),
             )
 
-        opti.subject_to(current_node.state == guess[:self.state_dim, 0])
-        opti.set_initial(current_node.state, guess[:self.state_dim, 0])
-        opti.set_initial(current_node.control, guess[self.state_dim:, 0])
+        if self.progress:
+            opti.set_initial(current_node.progress, 1/self.dt)
+            self.constraint(opti.bounded(1e0, current_node.progress, 1e5), description=f"positive progress rate at node {0}")
+        state_guess = guess[:self.state_dim, 0]
+        control_guess = guess[self.state_dim:self.state_dim + self.control_dim, 0]
+
+        self.constraint(current_node.state == self.state_guess_parameter[:, 0])
+
+        opti.set_initial(current_node.state, state_guess)
+        opti.set_initial(current_node.control, control_guess)
 
         return current_node
     
-    def _setup_variables(self, nodes:List[ControlNode]):
+    def _setup_variables(self, nodes:List[ControlNode]) -> None:
         self.state = ca.hcat([nodes[i].state for i in range(self.num_nodes + 1)])
         self.control = ca.hcat([nodes[i].control for i in range(self.num_nodes)])
+        self.time = ca.sumsqr(ca.vertcat(*[1.0 / nodes[i].progress for i in range(self.num_nodes)]))
 
         if self.verbose:
             print("State Shape: ", self.state.shape)
             print("Control Shape: ", self.control.shape)
 
-    def _setup_objective(self, nodes):
-        self.opti.minimize(self.loss(time = self.time))
 
-    def setup(self, guess:np.ndarray):
-        self._setup_time()
+    def _setup_objective(self, nodes):
+        self.opti.minimize(self.loss(nodes = nodes, time = self.time))
+
+    def setup(self, guess: np.ndarray):
+        """
+        Set up the optimization problem using an initial guess.
+
+        Args:
+            guess (np.ndarray): Initial guess array of shape (state_dim + control_dim, num_nodes + 1).
+        """
+        guess = guess if guess is not None else np.zeros((self.state_dim + self.control_dim, self.num_nodes + 1))
+
+        self.opti.set_value(self.state_guess_parameter, guess[:self.state_dim, :])
+        self.opti.set_value(self.control_guess_parameter, guess[self.state_dim:self.state_dim + self.control_dim, :])
+
         current_node = self._setup_initial_node(guess)
         nodes = [current_node]
-        
+
         for index in range(1, self.num_nodes + 1):
-            current_node = self._setup_step(index, current_node, guess)
-            nodes.append(current_node)
+            nodes.append(self._setup_step(index, nodes[-1], guess))
 
         self._setup_variables(nodes)
         self._setup_objective(nodes)
 
-    def save_progress(self, iteration, states, controls, time_vals):
-        if self.h5file is not None:
-            try:
-                # Combine and iterate through the last 10 entries
-                for i, (state, control, time_val) in enumerate(zip(states[-10:], controls[-10:], time_vals[-10:])):
-                    grp_name = f'iteration_{iteration - 10 + i}'
-                    grp = self.h5file.require_group(grp_name)  # Creates or accesses the group
-                    grp.attrs['timestamp'] = time.time()
-
-                    # Create or overwrite datasets efficiently
-                    for name, data in zip(['state', 'control', 'time'], [state, control, time_val]):
-                        if name in grp:
-                            del grp[name]  # Overwrite if dataset already exists
-                        grp.create_dataset(name, data=data, compression='gzip')
-            except Exception as e:
-                print(f"Error saving progress: {e}")
-
     def callback(self, iteration: int):
-        # Save the progress every 10 iterations
-        if self.filepath is not None:
-            self.sol_state_list.append(self.opti.debug.value(self.state))
-            self.sol_control_list.append(self.opti.debug.value(self.control))
-            self.final_times.append(self.opti.debug.value(self.time))
-            if iteration % 10 == 0:
-                self.save_progress(iteration, self.sol_state_list, self.sol_control_list, self.final_times)
-                self.log(iteration)
+        self.sol_state_list.append(self.opti.debug.value(self.state))
+        self.sol_control_list.append(self.opti.debug.value(self.control))
+        self.final_times.append(self.opti.debug.value(self.time))
 
-    def solve(self, warm_start:Optional[ca.OptiSol] = None):
+        if hasattr(self, "_save_progress"):
+            self._save_progress(iteration, self.sol_state_list, self.sol_control_list, self.final_times)
+
+        self.log(iteration)
+
+    def solve(self, warm_start:Optional[ca.OptiSol] = None) -> ca.OptiSol:
         self.opti.solver('ipopt', self.solver_opts)
         self.opti.callback(lambda iteration: self.callback(iteration))
         if warm_start:
@@ -193,38 +392,52 @@ class ControlProblem:
         sol = self.opti.solve()
         return sol
     
-    def log(self, iteration):
-        # Set up logging if not already configured
+    def log(self, iteration:int):
+        """
+        Log solver progress
+
+        Args:
+            iteration (int): Current iteration number.
+        """
         if not hasattr(self, 'logger'):
-            # Create logs directory if it doesn't exist
             log_dir = Path(DATAPATH) / 'logs'
             os.makedirs(log_dir, exist_ok=True)
             
-            # Create a unique log file name with timestamp
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             log_file = Path(log_dir) / f'aircraft_control_{timestamp}.log'
             
-            # Configure logger
             self.logger = logging.getLogger('aircraft_control')
             self.logger.setLevel(logging.INFO)
             
-            # File handler
             file_handler = logging.FileHandler(log_file)
             file_handler.setLevel(logging.INFO)
             
-            # Format
             formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
             file_handler.setFormatter(formatter)
             
-            # Add handler to logger
             self.logger.addHandler(file_handler)
             
             self.logger.info("Starting optimization logging")
 
         self.logger.info(f"Iteration {iteration}")
-        self.logger.info(f"Final time: {self.opti.debug.value(self.time)[-1]}")
+        if hasattr(self, "_init_variable_time"):
+            self.logger.info(f"Final time: {self.opti.debug.value(self.time)}")
         self.logger.info(f"Final position: {self.opti.debug.value(self.state)[:, -1]}")
         self.logger.info(f"Final velocity: {self.opti.debug.value(self.state)[2, -1]}")
         self.logger.info(f"Final control: {self.opti.debug.value(self.control)[:, -1]}")
         self.logger.info(f"Final control rate: {self.opti.debug.value(self.control)[:, -1] - self.opti.debug.value(self.control)[:, -2]}")
+
+    def get_solution(self, sol: ca.OptiSol) -> dict:
+        """
+        Get the solution from the optimization problem.
+
+        Args:
+            sol (ca.OptiSol): Solution object.
+        """
+        return {
+            "state": sol.value(self.state),
+            "control": sol.value(self.control),
+            "time": sol.value(self.time) if hasattr(self, 'time') else None
+        }
+
 
