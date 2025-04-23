@@ -1,3 +1,24 @@
+"""
+Polynomial regression model for aerodynamic coefficient prediction with interactive visualization.
+
+This module provides functionality to:
+- Prepare aerodynamic datasets for training
+- Generate polynomial features 
+- Fit polynomial regression models for aerodynamic coefficients
+- Create CasADi symbolic functions for model evaluation
+- Generate an interactive 3D visualization of aerodynamic coefficients
+
+Key functions:
+- prepare_datasets: Splits data into training and testing sets
+- create_casadi_function: Converts polynomial regression models to CasADi symbolic functions
+- create_interactive_aero_plot: Generates an interactive 3D plot of aerodynamic coefficients
+- main: Orchestrates model training, function creation, and visualization
+
+Dependencies:
+- CasADi for symbolic computation
+- scikit-learn for polynomial feature generation and linear regression
+- Matplotlib for interactive plotting
+"""
 import casadi as ca
 import numpy as np
 from sklearn.preprocessing import PolynomialFeatures
@@ -28,6 +49,7 @@ DATAPATH = os.path.join(BASEPATH, 'data')
 NETWORKPATH = os.path.join(DATAPATH, 'networks')
 VISUPATH = os.path.join(DATAPATH, 'visualisation')
 
+# Batch size for training and processing data in machine learning models
 BATCH_SIZE = 256
 EPOCHS = 200
 PATIENCE = 2
