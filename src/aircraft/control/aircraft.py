@@ -279,7 +279,7 @@ class AircraftControl(ControlProblem):
     def solve(self, warm_start: Optional[ca.OptiSol] = None):
         sol = super().solve(warm_start=warm_start)
         trajectory_data = TrajectoryData(
-                state=np.array(self.opti.debug.value(self.state))[:, 1:],
+                state=np.array(self.opti.debug.value(self.state))[:, :-1],
                 control=np.array(self.opti.debug.value(self.control)),
                 time=np.array(self.opti.debug.value(self.time))
             )

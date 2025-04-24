@@ -16,7 +16,7 @@ from aircraft.plotting.plotting import TrajectoryPlotter, TrajectoryData
 
 
 class Controller(AircraftControl, SaveMixin):#, ProgressTimeMixin):
-    def __init__(self, *, aircraft, num_nodes=300, dt=.01, opts = {}, filepath:str = '', **kwargs):
+    def __init__(self, *, aircraft, num_nodes=400, dt=.01, opts = {}, filepath:str = '', **kwargs):
         super().__init__(aircraft=aircraft, num_nodes=num_nodes, opts = opts, dt = dt, **kwargs)
         if filepath:
             self.save_path = filepath
@@ -26,8 +26,9 @@ class Controller(AircraftControl, SaveMixin):#, ProgressTimeMixin):
         
 
     def loss(self, nodes, time):
-        self.constraint(ca.sumsqr(nodes[-1].state[:3] - [0, 30, -180])==0)
-        return time# + 1000*ca.sumsqr(nodes[-1].state[:3] - [0, 30, -180])# + time**2
+        control_loss = ca.sumsqr(self.control[: 1:] - self.control[:, -1])
+        # self.constraint(ca.sumsqr(nodes[-1].state[:3] - [0, 30, -180])==0)
+        return 1000*ca.sumsqr(nodes[-1].state[:3] - [0, 100, -180]) + control_loss #time
     
     def initialise(self, initial_state):
         """
@@ -93,6 +94,9 @@ def main():
     controller.setup(guess)
     
     controller.solve()
+    final_state = controller.opti.debug.value(controller.state)[:, -1]
+    final_control = controller.opti.debug.value(controller.control)[:, -1]
+    print("Final State: ", final_state, " Final Control: ", final_control, " Final Forces: ", aircraft.forces_frd(final_state, final_control))
     plt.show(block = True)
 
     

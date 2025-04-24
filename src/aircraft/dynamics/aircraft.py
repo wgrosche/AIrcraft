@@ -238,7 +238,7 @@ class Aircraft(SixDOF):
         v_frd_rel = self._v_frd_rel
         self._left_wing_alpha = ca.atan2(v_frd_rel[2] - self.b * self._omega_frd_ned[0] / 4, v_frd_rel[0] + self.EPSILON)
 
-        self._left_wing_alpha = ca.fmax(ca.fmin(self._left_wing_alpha, np.deg2rad(30)), np.deg2rad(-30))
+        # self._left_wing_alpha = ca.fmax(ca.fmin(self._left_wing_alpha, np.deg2rad(30)), np.deg2rad(-30))
         return ca.Function('left_wing_alpha', [self.state, self.control], [self._left_wing_alpha])
     
     @property
@@ -250,7 +250,7 @@ class Aircraft(SixDOF):
         v_frd_rel = self._v_frd_rel
         self._right_wing_alpha = ca.atan2(v_frd_rel[2] + self.b * self._omega_frd_ned[0] / 4, v_frd_rel[0] + self.EPSILON)
 
-        self._right_wing_alpha = ca.fmax(ca.fmin(self._right_wing_alpha, np.deg2rad(30)), np.deg2rad(-30))
+        # self._right_wing_alpha = ca.fmax(ca.fmin(self._right_wing_alpha, np.deg2rad(30)), np.deg2rad(-30))
         return ca.Function('right_wing_alpha', [self.state, self.control], [self._right_wing_alpha])
     
     @property
@@ -263,7 +263,7 @@ class Aircraft(SixDOF):
 
         airspeed = ca.sqrt(ca.sumsqr(v_frd_rel) + self.EPSILON)
         self._rudder_beta = ca.asin(v_frd_rel[1] / airspeed)
-        self._rudder_beta = ca.fmax(ca.fmin(self._rudder_beta, np.deg2rad(20)), np.deg2rad(-20))
+        # self._rudder_beta = ca.fmax(ca.fmin(self._rudder_beta, np.deg2rad(20)), np.deg2rad(-20))
         return ca.Function('rudder_beta', [self.state, self.control], [self._rudder_beta])
     
     @property
@@ -398,7 +398,7 @@ class Aircraft(SixDOF):
         # antialign drag and velocity
         forces[0] = ca.sign(self._v_frd_rel[0])*forces[0] #
 
-        forces += self._thrust
+        # forces += self._thrust
 
         speed_threshold = 80.0  # m/s
         penalty_factor = 10.0  # Scale factor for additional drag

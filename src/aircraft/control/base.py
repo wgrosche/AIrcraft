@@ -104,14 +104,6 @@ class SaveMixin:
     #         print(f"[SaveMixin] Error saving progress: {e}")
 
 
-
-    
-
-
-
-
-
-
 class ControlProblem(ABC):
     """
     Abstract base class for defining optimal control problems using CasADi's Opti framework.
@@ -179,9 +171,11 @@ class ControlProblem(ABC):
         self.constraint_descriptions = []
         self.progress = progress
         self.dt = dt
+        self.max_jump = 0.05
         if not progress:
             
             self.time = dt * num_nodes
+            print("final time: ", self.time)
         self.scale_state = opts.get('scale_state', None)
         self.scale_control = opts.get('scale_control', None)
 
@@ -258,9 +252,11 @@ class ControlProblem(ABC):
         
     
     def state_constraint(self, node: ControlNode, next: ControlNode, dt: Optional[ca.MX] = None) -> None:
+        dt_i = 1.0 / node.progress
         if hasattr(self, 'x_dot'):
+            
             # implicit constraint:
-            self.constraint(next.state - node.state - 1 / node.progress * self.x_dot(next.state, node.control) == 0, description=f"implicit state dynamics constraint at node {node.index}")
+            self.constraint(next.state - node.state - dt_i * self.x_dot(next.state, node.control) == 0, description=f"implicit state dynamics constraint at node {node.index}")
             # x_dot_q = self.x_dot(node.state, node.control)[6:10]
             # phi_dot = 2 * ca.dot(node.state[6:10], x_dot_q)
 
@@ -274,9 +270,12 @@ class ControlProblem(ABC):
 
 
             self.constraint(ca.sumsqr(node.state[6:10])==1, description=f"quaternion norm constraint at node {node.index}")
+            if self.progress:
+                self.constraint(ca.fabs(next.progress - node.progress) <= self.max_jump)
+
 
         else:
-            self.constraint(next.state - self.dynamics(node.state, node.control, 1 / node.progress) == 0, description=f"state dynamics constraint at node {node.index}")
+            self.constraint(next.state - self.dynamics(node.state, node.control, dt_i) == 0, description=f"state dynamics constraint at node {node.index}")
 
     @abstractmethod
     def loss(self, nodes:List[ControlNode], time:Optional[ca.MX] = None) -> ca.MX:
@@ -343,7 +342,8 @@ class ControlProblem(ABC):
     def _setup_variables(self, nodes:List[ControlNode]) -> None:
         self.state = ca.hcat([nodes[i].state for i in range(self.num_nodes + 1)])
         self.control = ca.hcat([nodes[i].control for i in range(self.num_nodes)])
-        self.time = ca.sumsqr(ca.vertcat(*[1.0 / nodes[i].progress for i in range(self.num_nodes)]))
+        if self.progress:
+            self.time = ca.sum1(ca.vertcat(*[1.0 / nodes[i].progress for i in range(self.num_nodes)]))
 
         if self.verbose:
             print("State Shape: ", self.state.shape)

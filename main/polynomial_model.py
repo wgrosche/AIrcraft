@@ -237,7 +237,7 @@ def main():
         casadi_functions[output] = create_casadi_function(output, fitted_models, input_features, used_features)
 
     # Create interactive plot
-    create_interactive_aero_plot(train_data, casadi_functions)
+    # create_interactive_aero_plot(train_data, casadi_functions)
 
 
     # Save the fitted models and CasADi functions
