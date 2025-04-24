@@ -273,7 +273,7 @@ class Aircraft(SixDOF):
         r = self._omega_frd_ned[2]
         new_vel = self._v_frd_rel[0] 
         new_vel[0] += self.b * r / 4
-        new_vel = ca.fmin(100, new_vel)
+        # new_vel = ca.fmin(100, new_vel)
         self._left_wing_qbar = 0.5 * 1.225 * ca.dot(new_vel, new_vel)
         return ca.Function('left_wing_qbar', [self.state, self.control], [self._left_wing_qbar])
     
@@ -285,7 +285,7 @@ class Aircraft(SixDOF):
         new_vel = self._v_frd_rel[0] 
         new_vel[0] += self.b * r / 4
 
-        new_vel = ca.fmin(100, new_vel)
+        # new_vel = ca.fmin(100, new_vel)
         self._right_wing_qbar = 0.5 * 1.225 * ca.dot(new_vel, new_vel)
         return ca.Function('right_wing_qbar', [self.state, self.control], [self._right_wing_qbar])
         
@@ -396,19 +396,24 @@ class Aircraft(SixDOF):
         forces = self._coefficients[:3] * self._qbar * self.S
 
         # antialign drag and velocity
-        forces[0] = ca.sign(self._v_frd_rel[0])*forces[0] #
+        # forces[0] = ca.sign(self._v_frd_rel[0])*forces[0] #
+
+        # smoothed sign flip
+        epsilon = 1e-2  # smoothing factor, tune if needed
+        smoothed_sign = ca.tanh(self._v_frd_rel[0] / epsilon)
+        forces[0] = smoothed_sign * forces[0]
 
         # forces += self._thrust
 
-        speed_threshold = 80.0  # m/s
-        penalty_factor = 10.0  # Scale factor for additional drag
+        # speed_threshold = 80.0  # m/s
+        # penalty_factor = 10.0  # Scale factor for additional drag
 
-        # Smooth penalty function for increased drag
-        excess_speed = self._airspeed - speed_threshold
-        additional_drag = penalty_factor * ca.fmax(0, excess_speed)**2  # Quadratic penalty for smoothness
+        # # Smooth penalty function for increased drag
+        # excess_speed = self._airspeed - speed_threshold
+        # additional_drag = penalty_factor * ca.fmax(0, excess_speed)**2  # Quadratic penalty for smoothness
 
-        # Apply the additional drag along the x-axis (forward direction)
-        forces[0] -= additional_drag
+        # # Apply the additional drag along the x-axis (forward direction)
+        # forces[0] -= additional_drag
         return forces
     
     @property

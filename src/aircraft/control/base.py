@@ -270,8 +270,8 @@ class ControlProblem(ABC):
 
 
             self.constraint(ca.sumsqr(node.state[6:10])==1, description=f"quaternion norm constraint at node {node.index}")
-            if self.progress:
-                self.constraint(ca.fabs(next.progress - node.progress) <= self.max_jump)
+            # if self.progress:
+            #     self.constraint(ca.fabs(next.progress - node.progress) <= self.max_jump)
 
 
         else:

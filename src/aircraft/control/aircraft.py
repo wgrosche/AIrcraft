@@ -158,7 +158,7 @@ class AircraftControl(ControlProblem):
         self.plotter = TrajectoryPlotter(aircraft)
 
         self.current_waypoint_idx = 0
-        self.control_limits = kwargs.get('control_limits', {"aileron": [-3, 3], "elevator": [-3, 3], "rudder": [-3, 3]})
+        self.control_limits = kwargs.get('control_limits', {"aileron": [-5, 5], "elevator": [-5, 5], "rudder": [-5, 5]})
         super().__init__(dynamics=dynamics, **kwargs)
         
         
