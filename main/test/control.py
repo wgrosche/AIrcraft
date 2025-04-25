@@ -55,12 +55,44 @@ class Controller(AircraftControl, SaveMixin):#, ProgressTimeMixin):
     
 
     def callback(self, iteration: int):
+            """
+            Callback method for tracking optimization progress and visualizing trajectory.
+    
+            This method is called during each iteration of the optimization process. It performs two main tasks:
+            1. Prints the quaternion norm for each node to help diagnose potential quaternion normalization issues
+            2. Periodically plots the trajectory at specified intervals (every 50 iterations)
+    
+            Args:
+                iteration (int): Current iteration number of the optimization process
+    
+            Notes:
+                - Quaternion norm is calculated using numpy's linalg.norm function
+                - Extracts quaternion components from state vector (indices 6:10)
+                - Plots trajectory using TrajectoryPlotter when iteration is a multiple of 50
+            """
+            state_traj = self.opti.debug.value(self.state)  # shape (n_states, N+1)
+            quat_norms = np.linalg.norm(state_traj[6:10, :], axis=0)
+            print(f"Iteration: {iteration}", " Quaternion Norm: ", quat_norms)
+            if self.plotter and iteration % 50 == 0:
+                print("plotting")
+                trajectory_data = TrajectoryData(
+                    state=np.array(state_traj)[:, 1:],
+                    control=np.array(self.opti.debug.value(self.control)),
+                    time=np.array(self.opti.debug.value(self.time))
+                )
+                self.plotter.plot(trajectory_data=trajectory_data)
+                plt.draw()
+                self.plotter.figure.canvas.start_event_loop(0.0002)
+                plt.show()
+        
+                super().callback(iteration)
+    def callback(self, iteration: int):
         # J = self.opti.debug.value(ca.jacobian(self.opti.g, self.opti.x))
         # plt.spy(J)
         # plt.show(block = True)
         # return None
         # super().callback(iteration)
-        print(f"Iteration: {iteration}")
+        print(f"Iteration: {iteration}", " Quaternion Norm: ", np.linalg.norm(self.opti.debug.value(self.state)[6:10, :], axis=0))
         if self.plotter and iteration % 50 == 0:
             print("plotting")
             # if iteration==0:
@@ -91,7 +123,7 @@ def main():
     trim_state_and_control = [0, 0, -200, 30, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
     aircraft.com = np.array(trim_state_and_control[-3:])
     filepath = Path(DATAPATH) / 'trajectories' / 'basic_test.h5'
-    controller = Controller(aircraft=aircraft, filepath=filepath, implicit=True, progress = False)
+    controller = Controller(aircraft=aircraft, filepath=filepath, implicit=False, progress = False)
     guess = controller.initialise(ca.DM(trim_state_and_control[:aircraft.num_states]))
     controller.setup(guess)
     
