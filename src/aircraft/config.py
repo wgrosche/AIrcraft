@@ -61,7 +61,8 @@ control_dict = {'scale_state' : ca.vertcat(
                             [50, 50, 50],
                             [1, 1, 1, 1],
                             [np.pi, np.pi, np.pi]),
-                "scale_control": ca.vertcat(10, 10, 0, 0, 0), "max_control_nodes" : 100}
+                "scale_control": ca.vertcat(10, 10, 0, 0, 0), "max_control_nodes" : 100,
+                "integrator_tol" : 1e-2}
                 # 'scale_control' : ca.vertcat(
                 #             5, 5, 5,
                 #             [1e2, 1e2, 1e2],

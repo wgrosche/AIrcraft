@@ -234,13 +234,13 @@ def visualize_3d_dubins_path(waypoints, trajectory, orientations=None):
     # Plot the waypoints
     waypoints_x = [p[0] for p in waypoints]
     waypoints_y = [p[1] for p in waypoints]
-    waypoints_z = [p[2] for p in waypoints]
+    waypoints_z = [-p[2] for p in waypoints]
     ax.scatter(waypoints_x, waypoints_y, waypoints_z, color='red', label='Waypoints', s=50)
 
     # Plot the trajectory
     traj_x = [p[0] for p in trajectory]
     traj_y = [p[1] for p in trajectory]
-    traj_z = [p[2] for p in trajectory]
+    traj_z = [-p[2] for p in trajectory]
     ax.plot(traj_x, traj_y, traj_z, color='blue', label='3D Dubins Path', linewidth=2)
     x_axes = [R.from_quat(orientation).apply([1,0,0]) for orientation in orientations]
     y_axes = [R.from_quat(orientation).apply([0,1,0]) for orientation in orientations]
@@ -252,10 +252,10 @@ def visualize_3d_dubins_path(waypoints, trajectory, orientations=None):
         ax.quiver(
             [trajectory[i][0] for i in sample_indices],
             [trajectory[i][1] for i in sample_indices], 
-            [trajectory[i][2] for i in sample_indices],
+            [-trajectory[i][2] for i in sample_indices],
             [x_axes[i-1][0] for i in sample_indices],
             [x_axes[i-1][1] for i in sample_indices],
-            [x_axes[i-1][2] for i in sample_indices],
+            [-x_axes[i-1][2] for i in sample_indices],
             color='green', length=10.0, normalize=True
         )
 
@@ -286,14 +286,18 @@ def compute_angular_velocity(quaternions, time_intervals):
 
         # Compute relative rotation (q2 * q1^-1)
         delta_q = q2 * q1.inv()
-        axis, angle = delta_q.as_rotvec(), np.linalg.norm(delta_q.as_rotvec())
 
-        # Angular velocity (omega = angle / delta_t * axis)
+        # Rotation vector: axis * angle (in radians)
+        rotvec = delta_q.as_rotvec()
+
+        # Divide by time interval to get angular velocity
         delta_t = time_intervals[i - 1]
-        omega = (angle / delta_t) * axis / np.linalg.norm(axis)
+        omega = rotvec / delta_t
+
         angular_velocities.append(omega)
 
     return angular_velocities
+
 
 def compute_roll_angle(curvature, velocity, g=9.81):
     """Compute the roll angle for a coordinated turn.
@@ -475,7 +479,6 @@ class DubinsInitialiser:
         
         return expr
 
-
     def length(self, N=100):
         import casadi as ca
 
@@ -484,32 +487,67 @@ class DubinsInitialiser:
         dpos_ds = ca.jacobian(pos, s)  # ∂trajectory/∂s
         speed = ca.norm_2(dpos_ds)
 
-        # Build integrator over s ∈ [0,1]
+        # Make sure to use SX or MX version of s depending on eval context
         integrand = ca.Function('integrand', [s], [speed])
+
         s_grid = np.linspace(0, 1, N)
         ds = 1 / (N - 1)
         length = 0.0
+
         for i in range(N - 1):
-            si = s_grid[i]
-            si1 = s_grid[i + 1]
-            # Trapezoidal integration
-            length += 0.5 * ds * (integrand(si) + integrand(si1))
-        
-        return float(length)
+            si = float(s_grid[i])
+            si1 = float(s_grid[i + 1])
+            # Evaluate with .evalf()
+            vi = integrand(si).full().item()
+            vi1 = integrand(si1).full().item()
+            length += 0.5 * ds * (vi + vi1)
+
+        return length
 
 
-    def trajectory(self, s):
+
+
+    def sx_linear_interpolator(self, s_vals, y_vals):
         import casadi as ca
+        import numpy as np
+        assert len(s_vals) == len(y_vals)
+        n = len(s_vals)
+
+        def interp(s):
+            expr = 0
+            for i in range(n - 1):
+                s0, s1 = s_vals[i], s_vals[i + 1]
+                y0, y1 = y_vals[i], y_vals[i + 1]
+                w = (s - s0) / (s1 - s0)
+                cond = ca.logic_and(s >= s0, s <= s1)
+                expr += ca.if_else(cond, y0 * (1 - w) + y1 * w, 0)
+            # Extrapolation (optional)
+            expr += ca.if_else(s < s_vals[0], y_vals[0], 0)
+            expr += ca.if_else(s > s_vals[-1], y_vals[-1], 0)
+            return expr
+
+        return interp
+
+    @property
+    def trajectory(self):
+        import casadi as ca
+        s = ca.MX.sym("s")
         s_values = np.linspace(0, 1, num=len(self.dubins_path))
         x_values = [i[0] for i in self.dubins_path]
         y_values = [i[1] for i in self.dubins_path]
         z_values = [i[2] for i in self.dubins_path]
 
-        Px = ca.interpolant('Px', 'bspline', [s_values], x_values)
-        Py = ca.interpolant('Py', 'bspline', [s_values], y_values)
-        Pz = ca.interpolant('Pz', 'bspline', [s_values], z_values)
+        # Px = ca.interpolant('Px', 'bspline', [s_values], x_values)
+        # Py = ca.interpolant('Py', 'bspline', [s_values], y_values)
+        # Pz = ca.interpolant('Pz', 'bspline', [s_values], z_values)
 
-        return ca.vertcat(Px(s), Py(s), Pz(s))
+        interp_x = self.sx_linear_interpolator(s_values, x_values)
+        interp_y = self.sx_linear_interpolator(s_values, y_values)
+        interp_z = self.sx_linear_interpolator(s_values, z_values)
+
+        traj = ca.vertcat(interp_x(s), interp_y(s), interp_z(s))
+
+        return ca.Function('traj', [s], [traj])
 
     # def trajectory(self, s):
     #     import casadi as ca

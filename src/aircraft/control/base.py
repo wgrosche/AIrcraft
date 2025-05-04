@@ -253,7 +253,7 @@ class ControlProblem(ABC):
     
     def state_constraint(self, node: ControlNode, next: ControlNode, dt: Optional[ca.MX] = None) -> None:
         dt_i = 1.0 / node.progress
-        if hasattr(self, 'x_dot'):
+        if hasattr(self, 'x_dot') and self.implicit:
             
             # implicit constraint:
             self.constraint(next.state - node.state - dt_i * self.x_dot(next.state, node.control) == 0, description=f"implicit state dynamics constraint at node {node.index}")
@@ -273,6 +273,16 @@ class ControlProblem(ABC):
             # if self.progress:
             #     self.constraint(ca.fabs(next.progress - node.progress) <= self.max_jump)
 
+        # elif self.progress and self.adaptive:
+        #     alpha = 1e-2
+        #     adaptive_weight = 1.0
+        #     tol = 1e-2
+        #     func_state = self.dynamics(node.state, node.control)
+        #     J = ca.jacobian(func_state, node.state)
+        #     prod = J @ func_state
+        #     error_surrogate = alpha * (1 / node.progress**2) * ca.dot(prod, J @ prod)
+        #     constraints += [error_surrogate <= tol]
+        #     loss += adaptive_weight * node.progress
 
         else:
             self.constraint(next.state - self.dynamics(node.state, node.control, dt_i) == 0, description=f"state dynamics constraint at node {node.index}")

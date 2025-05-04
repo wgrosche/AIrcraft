@@ -42,14 +42,19 @@ dynamics = aircraft.state_update
 progress = 0
 dubins = DubinsInitialiser(trajectory_config)
 dubins.trajectory(1)
-dubins.visualise()
-mhtt = Controller(aircraft=aircraft, track = dubins.trajectory, track_length = dubins.length(), filepath = Path(DATAPATH) / 'trajectories' / 'mhtt_solution.h5', num_nodes=1000, dt=0.01)
+print("Trajectory: ", dubins.trajectory(1).full().flatten())
+print("Length: :",dubins.length())
+# dubins.visualise()
+mhtt = Controller(aircraft=aircraft, track = dubins.trajectory, track_length = dubins.length(), filepath = Path(DATAPATH) / 'trajectories' / 'mhtt_solution.h5', num_nodes=100, dt=0.01, progress= False, implicit=False)
 
 while progress < 1:
     print("initial state: ", state, ", progress: ", progress)
     initial_state = state
+    
     guess, progress = mhtt.initialise(initial_state, progress)
+    print("Initialisedd guess: ", guess)
     mhtt.setup(guess, progress)
+    print("Setup guess: ")
     sol = mhtt.solve()
     print("Solution: ", sol)
     if sol.value(mhtt.progress[-1]) > 1:
