@@ -71,8 +71,8 @@ class Controller(AircraftControl, SaveMixin):#, ProgressTimeMixin):
                 - Plots trajectory using TrajectoryPlotter when iteration is a multiple of 50
             """
             state_traj = self.opti.debug.value(self.state)  # shape (n_states, N+1)
-            quat_norms = np.linalg.norm(state_traj[6:10, :], axis=0)
-            print(f"Iteration: {iteration}", " Quaternion Norm: ", quat_norms)
+            # quat_norms = np.linalg.norm(state_traj[6:10, :], axis=0)
+            # print(f"Iteration: {iteration}", " Quaternion Norm: ", quat_norms)
             if self.plotter and iteration % 50 == 0:
                 print("plotting")
                 trajectory_data = TrajectoryData(
@@ -86,27 +86,27 @@ class Controller(AircraftControl, SaveMixin):#, ProgressTimeMixin):
                 plt.show()
         
                 super().callback(iteration)
-    def callback(self, iteration: int):
-        # J = self.opti.debug.value(ca.jacobian(self.opti.g, self.opti.x))
-        # plt.spy(J)
-        # plt.show(block = True)
-        # return None
-        # super().callback(iteration)
-        print(f"Iteration: {iteration}", " Quaternion Norm: ", np.linalg.norm(self.opti.debug.value(self.state)[6:10, :], axis=0))
-        if self.plotter and iteration % 50 == 0:
-            print("plotting")
-            # if iteration==0:
-            trajectory_data = TrajectoryData(
-                state=np.array(self.opti.debug.value(self.state))[:, 1:],
-                control=np.array(self.opti.debug.value(self.control)),
-                time=np.array(self.opti.debug.value(self.time))
-            )
-            self.plotter.plot(trajectory_data=trajectory_data)
-            plt.draw()
-            self.plotter.figure.canvas.start_event_loop(0.0002)
-            plt.show()
+    # def callback(self, iteration: int):
+    #     # J = self.opti.debug.value(ca.jacobian(self.opti.g, self.opti.x))
+    #     # plt.spy(J)
+    #     # plt.show(block = True)
+    #     # return None
+    #     # super().callback(iteration)
+    #     # print(f"Iteration: {iteration}", " Quaternion Norm: ", np.linalg.norm(self.opti.debug.value(self.state)[6:10, :], axis=0))
+    #     if self.plotter and iteration % 50 == 0:
+    #         print("plotting")
+    #         # if iteration==0:
+    #         trajectory_data = TrajectoryData(
+    #             state=np.array(self.opti.debug.value(self.state))[:, 1:],
+    #             control=np.array(self.opti.debug.value(self.control)),
+    #             time=np.array(self.opti.debug.value(self.time))
+    #         )
+    #         self.plotter.plot(trajectory_data=trajectory_data)
+    #         plt.draw()
+    #         self.plotter.figure.canvas.start_event_loop(0.0002)
+    #         plt.show()
     
-            super().callback(iteration)
+    #         super().callback(iteration)
 
 def main():
     traj_dict = json.load(open('data/glider/problem_definition.json'))
@@ -120,10 +120,10 @@ def main():
 
     aircraft = Aircraft(opts = opts)
     aircraft.STEPS = 1
-    trim_state_and_control = [0, 0, -200, 30, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
+    trim_state_and_control = [0, 0, -200, 50, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
     aircraft.com = np.array(trim_state_and_control[-3:])
     filepath = Path(DATAPATH) / 'trajectories' / 'basic_test.h5'
-    controller = Controller(aircraft=aircraft, filepath=filepath, implicit=False, progress = False)
+    controller = Controller(aircraft=aircraft, filepath=filepath, implicit=False, progress = True)
     guess = controller.initialise(ca.DM(trim_state_and_control[:aircraft.num_states]))
     controller.setup(guess)
     

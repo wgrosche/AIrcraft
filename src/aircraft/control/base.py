@@ -270,8 +270,8 @@ class ControlProblem(ABC):
 
 
             self.constraint(ca.sumsqr(node.state[6:10])==1, description=f"quaternion norm constraint at node {node.index}")
-            # if self.progress:
-            #     self.constraint(ca.fabs(next.progress - node.progress) <= self.max_jump)
+            if self.progress:
+                self.constraint(next.progress == node.progress)#self.max_jump)
 
         # elif self.progress and self.adaptive:
         #     alpha = 1e-2
@@ -314,7 +314,7 @@ class ControlProblem(ABC):
         
         if self.progress:
             opti.set_initial(next_node.progress, 1/self.dt)
-            self.constraint(opti.bounded(1e0, next_node.progress, 1e5), description=f"positive progress rate at node {index}")
+            self.constraint(opti.bounded(5e1, next_node.progress, 1e3), description=f"positive progress rate at node {index}")
 
         state_guess = guess[:self.state_dim, index]
         control_guess = guess[self.state_dim:self.state_dim + self.control_dim, index]
@@ -338,7 +338,7 @@ class ControlProblem(ABC):
 
         if self.progress:
             opti.set_initial(current_node.progress, 1/self.dt)
-            self.constraint(opti.bounded(1e0, current_node.progress, 1e5), description=f"positive progress rate at node {0}")
+            self.constraint(opti.bounded(5e1, current_node.progress, 1e4), description=f"positive progress rate at node {0}")
         state_guess = guess[:self.state_dim, 0]
         control_guess = guess[self.state_dim:self.state_dim + self.control_dim, 0]
 

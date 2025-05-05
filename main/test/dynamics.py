@@ -54,8 +54,8 @@ def main():
         state = ca.vertcat(trim_state_and_control[:aircraft.num_states])
         control = np.zeros(aircraft.num_controls)
         control[:3] = trim_state_and_control[aircraft.num_states:-3]
-        control[0] = 1
-        control[1] = -1
+        control[0] = 0
+        control[1] = 0
         aircraft.com = np.array(trim_state_and_control[-3:])
     else:
         x0 = np.zeros(3)
@@ -83,13 +83,14 @@ def main():
     print("Jacobian of state derivatives w.r.t. elevator:")
     print(jacobian_elevator_val)
     dt = .01
-    tf = 5
+    tf = 1
     state_list = np.zeros((aircraft.num_states, int(tf / dt)))
     t = 0
     ele_pos = True
     ail_pos = True
     control_list = np.zeros((aircraft.num_controls, int(tf / dt)))
     for i in tqdm(range(int(tf / dt)), desc = 'Simulating Trajectory:'):
+        print(aircraft.coefficients(state, control))
         if np.isnan(state[0]):
             print('Aircraft crashed')
             break
