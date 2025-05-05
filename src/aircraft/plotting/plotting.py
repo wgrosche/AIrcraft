@@ -437,8 +437,8 @@ class TrajectoryPlotter:
 
         ax.legend()
         ax.grid(True)
-        ax.yaxis.get_offset_text().set_x(-0.1)  # adjust X offset
-        ax.yaxis.get_offset_text().set_y(-0.1)  # or adjust Y manually
+        # ax.yaxis.get_offset_text().set_x(-0.1)  # adjust X offset
+        # ax.yaxis.get_offset_text().set_y(-0.1)  # or adjust Y manually
         ax.set_title('Quaternion Norm')
         
     def plot(self, trajectory_data:TrajectoryData = None, filepath:str = None, iteration:Optional[int] = None):

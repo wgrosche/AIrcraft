@@ -257,16 +257,19 @@ class ControlProblem(ABC):
             
             # implicit constraint:
             self.constraint(next.state - node.state - dt_i * self.x_dot(next.state, node.control) == 0, description=f"implicit state dynamics constraint at node {node.index}")
-            # x_dot_q = self.x_dot(node.state, node.control)[6:10]
-            # phi_dot = 2 * ca.dot(node.state[6:10], x_dot_q)
+            if self.quaternion_normalisation == 'baumgarte':
+                x_dot_q = self.x_dot(node.state, node.control)[6:10]
+                phi_dot = 2 * ca.dot(node.state[6:10], x_dot_q)
 
-            # alpha = 2.0  # damping
-            # beta = 2.0   # stiffness
+                alpha = 2.0  # damping
+                beta = 2.0   # stiffness
 
-            # phi = ca.dot(node.state[6:10], node.state[6:10]) - 1
-            # stabilized_phi = 2 * alpha * phi_dot + beta**2 * phi
+                phi = ca.dot(node.state[6:10], node.state[6:10]) - 1
+                stabilized_phi = 2 * alpha * phi_dot + beta**2 * phi
 
-            # self.constraint(stabilized_phi == 0, description="Baumgarte quaternion normalization")
+                self.constraint(stabilized_phi == 0, description="Baumgarte quaternion normalization")
+            elif self.quaternion_normalisation == 'equality':
+                self.constraint(ca.dot(node.state[6:10], node.state[6:10])==1)
 
 
             self.constraint(ca.sumsqr(node.state[6:10])==1, description=f"quaternion norm constraint at node {node.index}")
@@ -286,6 +289,26 @@ class ControlProblem(ABC):
 
         else:
             self.constraint(next.state - self.dynamics(node.state, node.control, dt_i) == 0, description=f"state dynamics constraint at node {node.index}")
+            if hasattr(self, 'x_dot') and self.quaternion_normalisation == 'baumgarte':
+                # add Baumgarte quaternion stabilisation
+                x_dot_q = self.x_dot(node.state, node.control)[6:10]
+                phi_dot = 2 * ca.dot(node.state[6:10], x_dot_q)
+
+                alpha = 2.0  # damping
+                beta = 2.0   # stiffness
+
+                phi = ca.dot(node.state[6:10], node.state[6:10]) - 1
+                stabilized_phi = 2 * alpha * phi_dot + beta**2 * phi
+
+                self.constraint(stabilized_phi == 0, description="Baumgarte quaternion normalization")
+            elif self.quaternion_normalisation == 'equality':
+                self.constraint(ca.dot(node.state[6:10], node.state[6:10])==1)
+            elif self.quaternion_normalisation == 'integration':
+                # todo
+                print("To be implemented, please change your method")
+                
+
+            
 
     @abstractmethod
     def loss(self, nodes:List[ControlNode], time:Optional[ca.MX] = None) -> ca.MX:
