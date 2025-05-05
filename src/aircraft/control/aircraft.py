@@ -150,7 +150,7 @@ class AircraftControl(ControlProblem):
     Class that implements constraints upon state and control for and aircraft
     """
 
-    def __init__(self, *, aircraft: Aircraft, implicit:bool = False, **kwargs):
+    def __init__(self, *, aircraft: Aircraft, implicit:bool = False, normalise_quaternion:bool = True, **kwargs):
         dynamics = aircraft.state_update
         if implicit:
             self.x_dot = aircraft.state_derivative
@@ -158,7 +158,7 @@ class AircraftControl(ControlProblem):
         self.plotter = TrajectoryPlotter(aircraft)
 
         self.current_waypoint_idx = 0
-        self.control_limits = kwargs.get('control_limits', {"aileron": [-3, 3], "elevator": [-3, 3], "rudder": [-3, 3]})
+        self.control_limits = kwargs.get('control_limits', {"aileron": [-5, 5], "elevator": [-5, 5], "rudder": [-5, 5]})
         super().__init__(dynamics=dynamics, **kwargs)
         
         
@@ -279,7 +279,7 @@ class AircraftControl(ControlProblem):
     def solve(self, warm_start: Optional[ca.OptiSol] = None):
         sol = super().solve(warm_start=warm_start)
         trajectory_data = TrajectoryData(
-                state=np.array(self.opti.debug.value(self.state))[:, 1:],
+                state=np.array(self.opti.debug.value(self.state))[:, :-1],
                 control=np.array(self.opti.debug.value(self.control)),
                 time=np.array(self.opti.debug.value(self.time))
             )

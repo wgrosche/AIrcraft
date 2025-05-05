@@ -238,7 +238,7 @@ class Aircraft(SixDOF):
         v_frd_rel = self._v_frd_rel
         self._left_wing_alpha = ca.atan2(v_frd_rel[2] - self.b * self._omega_frd_ned[0] / 4, v_frd_rel[0] + self.EPSILON)
 
-        self._left_wing_alpha = ca.fmax(ca.fmin(self._left_wing_alpha, np.deg2rad(30)), np.deg2rad(-30))
+        # self._left_wing_alpha = ca.fmax(ca.fmin(self._left_wing_alpha, np.deg2rad(30)), np.deg2rad(-30))
         return ca.Function('left_wing_alpha', [self.state, self.control], [self._left_wing_alpha])
     
     @property
@@ -250,7 +250,7 @@ class Aircraft(SixDOF):
         v_frd_rel = self._v_frd_rel
         self._right_wing_alpha = ca.atan2(v_frd_rel[2] + self.b * self._omega_frd_ned[0] / 4, v_frd_rel[0] + self.EPSILON)
 
-        self._right_wing_alpha = ca.fmax(ca.fmin(self._right_wing_alpha, np.deg2rad(30)), np.deg2rad(-30))
+        # self._right_wing_alpha = ca.fmax(ca.fmin(self._right_wing_alpha, np.deg2rad(30)), np.deg2rad(-30))
         return ca.Function('right_wing_alpha', [self.state, self.control], [self._right_wing_alpha])
     
     @property
@@ -263,7 +263,7 @@ class Aircraft(SixDOF):
 
         airspeed = ca.sqrt(ca.sumsqr(v_frd_rel) + self.EPSILON)
         self._rudder_beta = ca.asin(v_frd_rel[1] / airspeed)
-        self._rudder_beta = ca.fmax(ca.fmin(self._rudder_beta, np.deg2rad(20)), np.deg2rad(-20))
+        # self._rudder_beta = ca.fmax(ca.fmin(self._rudder_beta, np.deg2rad(20)), np.deg2rad(-20))
         return ca.Function('rudder_beta', [self.state, self.control], [self._rudder_beta])
     
     @property
@@ -273,7 +273,7 @@ class Aircraft(SixDOF):
         r = self._omega_frd_ned[2]
         new_vel = self._v_frd_rel[0] 
         new_vel[0] += self.b * r / 4
-        new_vel = ca.fmin(100, new_vel)
+        # new_vel = ca.fmin(100, new_vel)
         self._left_wing_qbar = 0.5 * 1.225 * ca.dot(new_vel, new_vel)
         return ca.Function('left_wing_qbar', [self.state, self.control], [self._left_wing_qbar])
     
@@ -285,7 +285,7 @@ class Aircraft(SixDOF):
         new_vel = self._v_frd_rel[0] 
         new_vel[0] += self.b * r / 4
 
-        new_vel = ca.fmin(100, new_vel)
+        # new_vel = ca.fmin(100, new_vel)
         self._right_wing_qbar = 0.5 * 1.225 * ca.dot(new_vel, new_vel)
         return ca.Function('right_wing_qbar', [self.state, self.control], [self._right_wing_qbar])
         
@@ -396,19 +396,24 @@ class Aircraft(SixDOF):
         forces = self._coefficients[:3] * self._qbar * self.S
 
         # antialign drag and velocity
-        forces[0] = ca.sign(self._v_frd_rel[0])*forces[0] #
+        # forces[0] = ca.sign(self._v_frd_rel[0])*forces[0] #
 
-        forces += self._thrust
+        # smoothed sign flip
+        epsilon = 1e-2  # smoothing factor, tune if needed
+        smoothed_sign = ca.tanh(self._v_frd_rel[0] / epsilon)
+        forces[0] = smoothed_sign * forces[0]
 
-        speed_threshold = 80.0  # m/s
-        penalty_factor = 10.0  # Scale factor for additional drag
+        # forces += self._thrust
 
-        # Smooth penalty function for increased drag
-        excess_speed = self._airspeed - speed_threshold
-        additional_drag = penalty_factor * ca.fmax(0, excess_speed)**2  # Quadratic penalty for smoothness
+        # speed_threshold = 80.0  # m/s
+        # penalty_factor = 10.0  # Scale factor for additional drag
 
-        # Apply the additional drag along the x-axis (forward direction)
-        forces[0] -= additional_drag
+        # # Smooth penalty function for increased drag
+        # excess_speed = self._airspeed - speed_threshold
+        # additional_drag = penalty_factor * ca.fmax(0, excess_speed)**2  # Quadratic penalty for smoothness
+
+        # # Apply the additional drag along the x-axis (forward direction)
+        # forces[0] -= additional_drag
         return forces
     
     @property

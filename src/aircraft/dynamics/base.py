@@ -404,7 +404,7 @@ class SixDOF(ABC):
             [self._state_derivative], ['x', 'u'], ['x_dot']
             )
     
-    def state_step(self, state, control, dt_scaled):
+    def state_step(self, state, control, dt_scaled, normalise_quaternion:bool=False):
         """ 
         Runge-Kutta step for state update.
         Due to the multiplicative nature of the quaternion integration,
@@ -433,7 +433,9 @@ class SixDOF(ABC):
 
         # Quaternion update to maintain unit norm
         # state[6:10] = self.q_frd_ned_update(state, control, dt_scaled)
-        state[6:10] = Quaternion(state[6:10]).normalize()
+        if normalise_quaternion:
+            state[6:10] = Quaternion(state[6:10]).normalize()
+        # state[6:10] = Quaternion(state[6:10]).normalize()
 
         return state
 
