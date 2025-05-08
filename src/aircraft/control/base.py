@@ -172,6 +172,7 @@ class ControlProblem(ABC):
         self.progress = progress
         self.dt = dt
         self.max_jump = 0.05
+        self.quaternion_normalisation = None
         if not progress:
             
             self.time = dt * num_nodes

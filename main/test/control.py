@@ -16,7 +16,7 @@ from aircraft.plotting.plotting import TrajectoryPlotter, TrajectoryData
 
 
 class Controller(AircraftControl, SaveMixin):#, ProgressTimeMixin):
-    def __init__(self, *, aircraft, num_nodes=400, dt=.01, opts = {}, filepath:str = '', **kwargs):
+    def __init__(self, *, aircraft, num_nodes=300, dt=.01, opts = {}, filepath:str = '', **kwargs):
         super().__init__(aircraft=aircraft, num_nodes=num_nodes, opts = opts, dt = dt, **kwargs)
         if filepath:
             self.save_path = filepath
@@ -28,7 +28,8 @@ class Controller(AircraftControl, SaveMixin):#, ProgressTimeMixin):
     def loss(self, nodes, time):
         control_loss = ca.sumsqr(self.control[: 1:] - self.control[:, -1])
         # self.constraint(ca.sumsqr(nodes[-1].state[:3] - [0, 30, -180])==0)
-        return 1000*ca.sumsqr(nodes[-1].state[:3] - [0, 100, -180]) + control_loss + time #time
+        return 1000*ca.sumsqr(nodes[-1].state[:2] - [0, 30]) + control_loss + time + ca.sum1(self.state[:, 3])#time
+        # return 1000*ca.sumsqr(nodes[-1].state[:3] - [0, 100, -180]) + control_loss + time #time
     
     def initialise(self, initial_state):
         """
@@ -36,7 +37,7 @@ class Controller(AircraftControl, SaveMixin):#, ProgressTimeMixin):
         """
         guess = np.zeros((self.state_dim + self.control_dim, self.num_nodes + 1))
         guess[13, :] = 1
-        guess[14, :] = -1
+        guess[14, :] = 1
         guess[:self.state_dim, 0] = initial_state.toarray().flatten()
         # dt_initial = self.dt
         # dt_initial = 0.01#2 / self.num_nodes
@@ -123,7 +124,7 @@ def main():
     trim_state_and_control = [0, 0, -200, 50, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
     aircraft.com = np.array(trim_state_and_control[-3:])
     filepath = Path(DATAPATH) / 'trajectories' / 'basic_test.h5'
-    controller = Controller(aircraft=aircraft, filepath=filepath, implicit=False, progress = True)
+    controller = Controller(aircraft=aircraft, filepath=filepath, implicit=False, progress = False)
     guess = controller.initialise(ca.DM(trim_state_and_control[:aircraft.num_states]))
     controller.setup(guess)
     
