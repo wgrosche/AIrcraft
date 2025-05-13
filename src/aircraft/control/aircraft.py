@@ -150,7 +150,7 @@ class AircraftControl(ControlProblem):
     Class that implements constraints upon state and control for and aircraft
     """
 
-    def __init__(self, *, aircraft: Aircraft, implicit:bool = False, normalise_quaternion:bool = True, **kwargs):
+    def __init__(self, *, aircraft: Aircraft, implicit:bool = False, **kwargs):
         dynamics = aircraft.state_update
         if implicit:
             self.x_dot = aircraft.state_derivative
