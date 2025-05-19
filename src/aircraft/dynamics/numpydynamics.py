@@ -36,10 +36,10 @@ class SixDOF(ABC):
     def inertia(self):
         return np.diag([1, 1, 1])
     
-    @abstractmethod
     @property
+    @abstractmethod
     def controls(self):
-        pass
+        ...
 
     @property
     def inertial_position(self):
@@ -80,7 +80,7 @@ class SixDOF(ABC):
         return R.from_quat(self.inertial_attitude).apply(vector)
     
     def from_body_to_inertial(self, vector):
-        return R.from_quat(self.inertial_attitude).inverse().apply(vector)
+        return R.from_quat(self.inertial_attitude).inv().apply(vector)
     
     @property
     def body_velocity(self):
@@ -114,18 +114,21 @@ class SixDOF(ABC):
     def phi(self):
         if self._cached_euler is None:
             self._compute_euler_angles()
+        assert isinstance(self._cached_euler, tuple)
         return self._cached_euler[0]
     
     @property
     def theta(self):
         if self._cached_euler is None:
             self._compute_euler_angles()
+        assert isinstance(self._cached_euler, tuple)
         return self._cached_euler[1]
     
     @property
     def psi(self):
         if self._cached_euler is None:
             self._compute_euler_angles()
+        assert isinstance(self._cached_euler, tuple)
         return self._cached_euler[2]
     
     @property
@@ -135,12 +138,12 @@ class SixDOF(ABC):
     
     @property
     def theta_dot(self):
-        p, q, r = self.body_angular_velocity
+        _, q, r = self.body_angular_velocity
         return q * np.cos(self.phi) - r * np.sin(self.phi)
     
     @property
     def psi_dot(self):
-        p, q, r = self.body_angular_velocity
+        _, q, r = self.body_angular_velocity
         return (q * np.sin(self.phi) + r * np.cos(self.phi)) / np.cos(self.theta)
 
     @property

@@ -1,27 +1,13 @@
 
 
 import casadi as ca
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from typing import Union, Tuple, Optional
 import numpy as np
-import matplotlib.pyplot as plt
-plt.switch_backend('TkAgg')
-from mpl_toolkits.mplot3d import Axes3D
-
-from liecasadi import Quaternion
-from scipy.spatial.transform import Rotation as R
-import json
-import os
 from pathlib import Path
 import pandas as pd
-from tqdm import tqdm
-import h5py
 import pickle
-
-from aircraft.config import BASEPATH, NETWORKPATH, DATAPATH, DEVICE
-from aircraft.surrogates.models import ScaledModel
-from aircraft.utils.utils import load_model, TrajectoryConfiguration, AircraftConfiguration, perturb_quaternion
-
+from aircraft.utils.utils import load_model, AircraftConfiguration
 from dataclasses import dataclass
 from aircraft.dynamics.base import SixDOFOpts, SixDOF
 

@@ -28,7 +28,99 @@ class ControlNodeWaypoints(ControlNode):
             mu = mu,
             nu = nu
         )
-    
+
+# @dataclass
+# class WaypointControl(ControlProblem):
+#     def __init__(self, *, trajectory: TrajectoryConfiguration, **kwargs):
+#         super().__init__(**kwargs)
+#         self.current_waypoint_param = self.opti.parameter(3)  # x, y, z
+#         self.next_waypoint_param = self.opti.parameter(3)     # x, y, z
+#         # Initialize waypoints
+#         self.waypoints = trajectory.waypoints or []
+
+#     def _setup_objective(self, nodes:list[ControlNode]) -> None:
+#         """
+#         Set up the objective function using waypoint parameters
+#         """
+#         super()._setup_objective(nodes)
+        
+#         # Primary objective: minimize distance to next waypoint
+#         next_waypoint_diff = nodes[-1].state[:3] - self.next_waypoint_param
+#         next_waypoint_dist_sq = ca.dot(next_waypoint_diff, next_waypoint_diff)
+        
+#         # Secondary objective: stay close to current waypoint
+#         current_waypoint_diff = nodes[0].state[:3] - self.current_waypoint_param
+#         current_waypoint_dist_sq = ca.dot(current_waypoint_diff, current_waypoint_diff)
+        
+#         # Combine objectives with appropriate weights
+#         self.opti.minimize(1000 * next_waypoint_dist_sq + 100 * current_waypoint_dist_sq)
+        
+#         # Add control smoothness objectives
+#         lambda_rate = 100.0
+#         lambda_smooth = 50.0
+#         rate_penalty = ca.sumsqr(self.control[:2, 1:] - self.control[:2, :-1])
+#         smoothness_penalty = ca.sumsqr(self.control[:2, 2:] - 2 * self.control[:2, 1:-1] + self.control[:2, :-2])
+#         self.opti.minimize(lambda_rate * rate_penalty + lambda_smooth * smoothness_penalty)
+
+
+#     def setup(self, guess, initial_state:Union[np.ndarray, ]=None, current_waypoint_idx=0):
+#         """Set up the waypoints"""
+#         super().setup(guess)
+        
+#         # Set waypoint parameters
+#         if self.waypoints and current_waypoint_idx < len(self.waypoints):
+#             self.current_waypoint_idx = current_waypoint_idx
+#             self.opti.set_value(self.current_waypoint_param, self.waypoints[current_waypoint_idx].position)
+            
+#             next_idx = min(current_waypoint_idx + 1, len(self.waypoints) - 1)
+#             self.opti.set_value(self.next_waypoint_param, self.waypoints[next_idx].position)
+
+#     def update_parameters(self, initial_state, current_waypoint_idx=None):
+#         """Update parameters between MPC iterations"""
+#         self.opti.set_value(self.initial_state_param, initial_state)
+        
+#         if current_waypoint_idx is not None:
+#             self.current_waypoint_idx = current_waypoint_idx
+            
+#         # Update waypoint parameters
+#         if self.waypoints and self.current_waypoint_idx < len(self.waypoints):
+#             self.opti.set_value(self.current_waypoint_param, self.waypoints[self.current_waypoint_idx].position)
+            
+#             next_idx = min(self.current_waypoint_idx + 1, len(self.waypoints) - 1)
+#             self.opti.set_value(self.next_waypoint_param, self.waypoints[next_idx].position)
+
+#     def check_waypoint_reached(self, state_list):
+#         """
+#         Check if any state in the list has reached the current waypoint
+        
+#         Args:
+#             state_list: List of states to check
+            
+#         Returns:
+#             bool: True if waypoint is reached, False otherwise
+#         """
+#         if not self.waypoints or self.current_waypoint_idx >= len(self.waypoints):
+#             return False
+            
+#         current_waypoint = self.waypoints[self.current_waypoint_idx]
+#         for state in state_list:
+#             position = state[:3]
+#             if current_waypoint.is_reached(position):
+#                 return True
+                
+#         return False
+
+#     def advance_waypoint(self):
+#         """
+#         Advance to the next waypoint if available
+        
+#         Returns:
+#             bool: True if advanced to a new waypoint, False if at the last waypoint
+#         """
+#         if self.current_waypoint_idx < len(self.waypoints) - 1:
+#             self.current_waypoint_idx += 1
+#             return True
+#         return False
 
 
 class WaypointControl(ControlProblem):
