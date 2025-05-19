@@ -6,7 +6,7 @@ import numpy as np
 from tqdm import tqdm
 import casadi as ca
 import json
-from aircraft.control.aircraft import AircraftControl, WaypointControl
+from aircraft.control.aircraft import AircraftControl, WaypointControl, ControlNode
 from aircraft.control.base import SaveMixin#, VariableTimeMixin
 
 from aircraft.control.variable_time import ProgressTimeMixin
@@ -16,7 +16,7 @@ from aircraft.plotting.plotting import TrajectoryPlotter, TrajectoryData
 
 
 class Controller(AircraftControl, SaveMixin):#, ProgressTimeMixin):
-    def __init__(self, *, aircraft, num_nodes=298, dt=.01, opts = {}, filepath:str = '', **kwargs):
+    def __init__(self, *, aircraft:Aircraft, num_nodes:int=298, dt:float=.01, opts:dict = {}, filepath:str = '', **kwargs:Aircraft):
         super().__init__(aircraft=aircraft, num_nodes=num_nodes, opts = opts, dt = dt, **kwargs)
         if filepath:
             self.save_path = filepath
@@ -25,7 +25,7 @@ class Controller(AircraftControl, SaveMixin):#, ProgressTimeMixin):
         self.plotter = TrajectoryPlotter(aircraft)
         
 
-    def loss(self, nodes, time):
+    def loss(self, nodes:ControlNode, time:ca.MX) -> ca.MX:
         control_loss = ca.sumsqr(self.control[: 1:] - self.control[:, -1])
         # self.constraint(ca.sumsqr(nodes[-1].state[:3] - [0, 30, -180])==0)
         return 1000*ca.sumsqr(nodes[-1].state[:2] - [0, 30]) + control_loss + time - ca.sumsqr(self.state[:, 3])/100 - ca.sumsqr(self.state[:, 2])/100#time
