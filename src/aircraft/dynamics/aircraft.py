@@ -23,8 +23,7 @@ class AircraftOpts(SixDOFOpts):
     stall_scaling:bool = True
     
     def __post_init__(self):
-        if self.aircraft_config is not None:
-            self.mass = self.aircraft_config.mass
+        self.mass:float = self.aircraft_config.mass
     
 
 class Aircraft(SixDOF):

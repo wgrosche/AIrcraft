@@ -265,7 +265,7 @@ class TrajectoryConfiguration:
     def __repr__(self):
         return str(self.trajectory_dict)
     
-def perturb_quaternion(q, delta_theta=0.01):
+def perturb_quaternion(q:Quaternion, delta_theta=0.01):
     """ Perturbs a quaternion by a small rotation. """
     # Generate a small random rotation axis
     
