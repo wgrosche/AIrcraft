@@ -19,19 +19,23 @@ class SixDOF(ABC):
     """
     num_controls:int
     physical_integration_substeps:int
-    def __init__(self, opts:Optional[SixDOFOpts] = None, lqr:bool = False, setpoint:Optional[np.ndarray]=None) -> None:
+    com:Union[ca.DM, np.ndarray, ca.MX, list[float]]
+    static_inertia_tensor:ca.DM
+    def __init__(self, *, opts:Optional[SixDOFOpts] = None, lqr:bool = False, setpoint:Optional[np.ndarray]=None, **kwargs) -> None:
         if opts is None:
-            self.opts = SixDOFOpts()
+            opts = SixDOFOpts()
+        self.opts = opts
         self.gravity = self.opts.gravity
         self.dt_sym:ca.MX = ca.MX.sym('dt') # type: ignore[arg-type]
         self.epsilon = self.opts.epsilon
         self.mass = self.opts.mass
-        self.com = None
         self.lqr = lqr
         self.normalise = False
         if self.lqr:
             assert setpoint is not None, "Cannot perform LQR without a valid setpoint"
             self.setpoint = setpoint
+
+        super().__init__(**kwargs)
 
     def _initialise_LQR(self, setpoint:np.ndarray) -> None:
         """
@@ -109,12 +113,27 @@ class SixDOF(ABC):
     
     
     @property
-    @abstractmethod
     def inertia_tensor(self) -> ca.MX:
         """
         Inertia Tensor around the Centre of Mass
         """
-        pass
+        assert isinstance(self.mass, Union[float, ca.MX])
+        assert isinstance(self.com, (ca.DM, np.ndarray, ca.MX, list))
+        assert isinstance(self.static_inertia_tensor, ca.DM)
+
+        com = self.com
+        
+        x, y, z = com[0], com[1], com[2]
+
+        com_term = ca.vertcat(
+            ca.horzcat(y**2 + z**2, -x*y, -x*z),
+            ca.horzcat(-y*x, x**2 + z**2, -y*z),
+            ca.horzcat(-z*x, -z*y, x**2 + y**2)
+        )
+
+        inertia_tensor = self.static_inertia_tensor + self.mass * com_term
+
+        return inertia_tensor 
     
     @property
     def inverse_inertia_tensor(self) -> ca.MX:
@@ -158,19 +177,19 @@ class SixDOF(ABC):
     
     @property
     def phi(self) -> ca.Function:
-        x, y, z, w = self._q_frd_ned[0], self._q_frd_ned[1], self._q_frd_ned[2], self._q_frd_ned[3]
+        x, y, z, w = ca.vertsplit(self._q_frd_ned)
         self._phi = ca.atan2(2 * (w * x + y * z), 1 - 2 * (x**2 + y**2))
         return ca.Function('phi', [self.state], [self._phi])
 
     @property
     def theta(self) -> ca.Function:
-        x, y, z, w = self._q_frd_ned[0], self._q_frd_ned[1], self._q_frd_ned[2], self._q_frd_ned[3]
+        x, y, z, w = ca.vertsplit(self._q_frd_ned)
         self._theta = ca.asin(2 * (w * y - z * x))
         return ca.Function('theta', [self.state], [self._theta])
 
     @property
     def psi(self) -> ca.Function:
-        x, y, z, w = self._q_frd_ned[0], self._q_frd_ned[1], self._q_frd_ned[2], self._q_frd_ned[3]
+        x, y, z, w = ca.vertsplit(self._q_frd_ned)
         self._psi = ca.atan2(2 * (w * z + x * y), 1 - 2 * (y**2 + z**2))
         return ca.Function('psi', [self.state], [self._psi])
 
@@ -180,7 +199,7 @@ class SixDOF(ABC):
 
         phi = self._phi
         theta = self._theta
-        p, q, r = self._omega_frd_ned[0], self._omega_frd_ned[1], self._omega_frd_ned[2]
+        p, q, r = ca.vertsplit(self._omega_frd_ned)
 
         self._phi_dot = p + ca.sin(phi) * ca.tan(theta) * q + ca.cos(phi) * ca.tan(theta) * r
 
@@ -190,7 +209,7 @@ class SixDOF(ABC):
     def theta_dot(self) -> ca.Function:
         self._ensure_initialized('phi')
         phi = self._phi
-        q, r = self._omega_frd_ned[1], self._omega_frd_ned[2]
+        _, q, r = ca.vertsplit(self._omega_frd_ned)
 
         self._theta_dot = ca.cos(phi) * q - ca.sin(phi) * r
         return ca.Function('theta_dot', [self.state], [self._theta_dot])
@@ -201,8 +220,7 @@ class SixDOF(ABC):
         self._ensure_initialized('phi', 'theta')
         phi = self._phi
         theta = self._theta
-        
-        q, r = self._omega_frd_ned[1], self._omega_frd_ned[2]
+        _, q, r = ca.vertsplit(self._omega_frd_ned)
 
         self._psi_dot = (ca.sin(phi) / ca.cos(theta)) * q + (ca.cos(phi) / ca.cos(theta)) * r
         return ca.Function('psi_dot', [self.state], [self._psi_dot])

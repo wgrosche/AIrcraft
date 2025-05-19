@@ -16,6 +16,7 @@ from pathlib import Path
 import pandas as pd
 from tqdm import tqdm
 import h5py
+import pickle
 
 from aircraft.config import BASEPATH, NETWORKPATH, DATAPATH, DEVICE
 from aircraft.surrogates.models import ScaledModel
@@ -24,20 +25,16 @@ from aircraft.utils.utils import load_model, TrajectoryConfiguration, AircraftCo
 from dataclasses import dataclass
 from aircraft.dynamics.base import SixDOFOpts, SixDOF
 
-
-print(DEVICE)
-
-
-
 @dataclass
 class AircraftOpts(SixDOFOpts):
     linear_path:Optional[Path] = None
     poly_path:Optional[Path] = None
     nn_model_path:Optional[Path] = None
-    aircraft_config:Optional[AircraftConfiguration] = None
+    aircraft_config:AircraftConfiguration = AircraftConfiguration({})
     realtime:bool = False # Work in progress implementation of faster nn 
-    stall_angle_alpha:Tuple[float] = (np.deg2rad(-10), np.deg2rad(10))
-    stall_angle_beta:Tuple[float] = (np.deg2rad(-10), np.deg2rad(10))
+    stall_angle_alpha:Tuple[float, float] = (float(np.deg2rad(-10)), float(np.deg2rad(10)))
+    stall_angle_beta:Tuple[float, float] = (float(np.deg2rad(-10)), float(np.deg2rad(10)))
+    stall_scaling:bool = True
     
     def __post_init__(self):
         if self.aircraft_config is not None:
@@ -109,70 +106,51 @@ class Aircraft(SixDOF):
 
     """
 
-
     def __init__(
             self,
-            opts:AircraftOpts
+            opts:AircraftOpts,
+            **kwargs
             ):
         
         """ 
-        EPSILON: smoothing parameter for non-smoothly-differentiable functions
-        STEPS: number of integration steps in each state update
         """
-        super().__init__()
-        self.LINEAR = False
+        super().__init__(opts = opts, **kwargs)
 
-        if opts.linear_path:
-            self.LINEAR = True
-            self.linear_coeffs = ca.DM(np.array(pd.read_csv(opts.linear_path)))
-            self.fitted_models = None
-        elif opts.poly_path:
-            import pickle
-            with open(opts.poly_path, 'rb') as file:
-                self.fitted_models = pickle.load(file)
-
-        elif opts.nn_model_path:
-            try:
-                from l4casadi import L4CasADi
-                from l4casadi.naive import NaiveL4CasADiModule
-                from l4casadi.realtime import RealTimeL4CasADi
-            except ImportError:
-                print("L4CasADi not installed")
-            self.LINEAR = False
-            self.fitted_models = None
-            model = load_model(filepath=opts.nn_model_path)
-            if opts.realtime:
-                self.model = RealTimeL4CasADi(model, approximation_order=1)
-            else:
-                self.model = L4CasADi(model, name = 'AeroModel', 
-                                    generate_jac_jac=True
-                                    )
-        
-        self.EPSILON = opts.epsilon
-        self.STEPS = opts.physical_integration_substeps
-
-        self.grav = ca.vertcat(0, 0, 9.81)
-        self.S = opts.aircraft_config.reference_area
-        self.b = opts.aircraft_config.span
-        self.c = opts.aircraft_config.chord
-        self.mass = opts.aircraft_config.mass
-        self.com = opts.aircraft_config.aero_centre_offset # position of aerodynamic centre relative to the centre of mass
-        self.rudder_moment_arm = 0.5 # distance between centre of mass and the tail of the plane (used for damping calculations)
-        self.length = opts.aircraft_config.length
         self.opts = opts
-
-        self.dt_sym = ca.MX.sym('dt')
+        self.grav = self.opts.gravity
+        self.stall_scaling = self.opts.stall_scaling
+        self.initialise_aircraft(self.opts.aircraft_config)
 
         self.state
         self.control
 
+    def initialise_aircraft(self, config:AircraftConfiguration) -> None:
+        self.S = config.reference_area
+        self.b = config.span
+        self.c = config.chord
+        self.mass = config.mass
+        self.com = config.aero_centre_offset
+        self.rudder_moment_arm = config.rudder_moment_arm
+        self.length = config.length
+
+        i_xx = config.Ixx
+        i_yy = config.Iyy
+        i_xz = config.Ixz
+        i_zz = config.Izz
+
+        self.static_inertia_tensor = ca.vertcat(
+                                        ca.horzcat(i_xx, 0  , i_xz),
+                                        ca.horzcat(0  , i_yy, 0  ),
+                                        ca.horzcat(i_xz, 0  , i_zz)
+                                    )
+        
     @property
-    def control(self):
+    def control(self) -> ca.MX:
         if not hasattr(self, '_control_initialized') or not self._control_initialized:
-            self._aileron = ca.MX.sym('aileron')
-            self._elevator = ca.MX.sym('elevator')
-            self._rudder = ca.MX.sym('rudder')
-            self._thrust = ca.MX.sym('thrust', 3)
+            self._aileron = ca.MX.sym('aileron')  # type: ignore[arg-type]
+            self._elevator = ca.MX.sym('elevator')  # type: ignore[arg-type]
+            self._rudder = ca.MX.sym('rudder')  # type: ignore[arg-type]
+            self._thrust = ca.MX.sym('thrust', 3)  # type: ignore[arg-type]
 
             self._control = ca.vertcat(
             self._aileron, 
@@ -180,28 +158,20 @@ class Aircraft(SixDOF):
             self._rudder,
             self._thrust
             )
-            self.num_controls = self._control.size()[0]
+            
 
             self._control_initialized = True
+            self.num_controls:int = self._control.size()[0]
+        assert isinstance(self.num_controls, int)
+        assert isinstance(self._control, ca.MX)
 
         return self._control
 
     @property
-    def inertia_tensor(self):
+    def inertia_tensor(self) -> ca.MX:
         """
         Inertia Tensor around the Centre of Mass
         """
-
-        i_xx = self.opts.aircraft_config.Ixx
-        i_yy = self.opts.aircraft_config.Iyy
-        i_xz = self.opts.aircraft_config.Ixz
-        i_zz = self.opts.aircraft_config.Izz
-
-        aero_inertia_tensor = ca.vertcat(
-            ca.horzcat(i_xx, 0  , i_xz),
-            ca.horzcat(0  , i_yy, 0  ),
-            ca.horzcat(i_xz, 0  , i_zz)
-        )
         mass = self.mass
 
         com = self.com
@@ -214,195 +184,237 @@ class Aircraft(SixDOF):
             ca.horzcat(-z*x, -z*y, x**2 + y**2)
         )
 
-        inertia_tensor = aero_inertia_tensor + mass * com_term
+        inertia_tensor = self.static_inertia_tensor + mass * com_term
 
-        return inertia_tensor 
+        return inertia_tensor
 
     @property
-    def elevator_alpha(self):
+    def elevator_alpha(self) -> ca.Function:
         """
         Includes changed angle of attack due to pitch rate
         """
         self._ensure_initialized('v_frd_rel')
-        v_frd_rel = self._v_frd_rel
-        self._elevator_alpha = ca.atan2(v_frd_rel[2] + self.rudder_moment_arm * self._omega_frd_ned[1], v_frd_rel[0] + self.EPSILON)
+        u, _, w = ca.vertsplit(self._v_frd_rel)
+        _, q, _ = ca.vertsplit(self._omega_frd_ned)
+
+        self._elevator_alpha = ca.atan2(w + self.rudder_moment_arm * q, u + self.epsilon)
         return ca.Function('elevator_alpha', [self.state, self.control], [self._elevator_alpha])
     
 
     @property
-    def left_wing_alpha(self):
+    def left_wing_alpha(self) -> ca.Function:
         """
         Includes changed angle of attack due to roll rate
         """
         self._ensure_initialized('_v_frd_rel')
-        v_frd_rel = self._v_frd_rel
-        self._left_wing_alpha = ca.atan2(v_frd_rel[2] - self.b * self._omega_frd_ned[0] / 4, v_frd_rel[0] + self.EPSILON)
-
-        # self._left_wing_alpha = ca.fmax(ca.fmin(self._left_wing_alpha, np.deg2rad(30)), np.deg2rad(-30))
+        u, _, w = ca.vertsplit(self._v_frd_rel)
+        p, _, _ = ca.vertsplit(self._omega_frd_ned)
+        self._left_wing_alpha = ca.atan2(w - self.b * p / 4, u + self.epsilon)
         return ca.Function('left_wing_alpha', [self.state, self.control], [self._left_wing_alpha])
     
     @property
-    def right_wing_alpha(self):
+    def right_wing_alpha(self) -> ca.Function:
         """
         Includes changed angle of attack due to roll rate
         """
         self._ensure_initialized('v_frd_rel')
-        v_frd_rel = self._v_frd_rel
-        self._right_wing_alpha = ca.atan2(v_frd_rel[2] + self.b * self._omega_frd_ned[0] / 4, v_frd_rel[0] + self.EPSILON)
-
-        # self._right_wing_alpha = ca.fmax(ca.fmin(self._right_wing_alpha, np.deg2rad(30)), np.deg2rad(-30))
+        u, _, w = ca.vertsplit(self._v_frd_rel)
+        p, _, _ = ca.vertsplit(self._omega_frd_ned)
+        self._right_wing_alpha = ca.atan2(w + self.b * p / 4, u + self.epsilon)
         return ca.Function('right_wing_alpha', [self.state, self.control], [self._right_wing_alpha])
     
     @property
-    def rudder_beta(self):
+    def rudder_beta(self) -> ca.Function:
         self._ensure_initialized('v_frd_rel', 'airspeed')
 
-        
         v_frd_rel = self._v_frd_rel
         v_frd_rel[1] = v_frd_rel[1] - self.rudder_moment_arm * self._omega_frd_ned[2]
 
-        airspeed = ca.sqrt(ca.sumsqr(v_frd_rel) + self.EPSILON)
+        airspeed = ca.sqrt(ca.sumsqr(v_frd_rel) + self.epsilon)
         self._rudder_beta = ca.asin(v_frd_rel[1] / airspeed)
-        # self._rudder_beta = ca.fmax(ca.fmin(self._rudder_beta, np.deg2rad(20)), np.deg2rad(-20))
         return ca.Function('rudder_beta', [self.state, self.control], [self._rudder_beta])
     
     @property
-    def left_wing_qbar(self):
+    def left_wing_qbar(self) -> ca.Function:
         self._ensure_initialized('v_frd_rel')
         
         r = self._omega_frd_ned[2]
         new_vel = self._v_frd_rel[0] 
         new_vel[0] += self.b * r / 4
-        # new_vel = ca.fmin(100, new_vel)
         self._left_wing_qbar = 0.5 * 1.225 * ca.dot(new_vel, new_vel)
         return ca.Function('left_wing_qbar', [self.state, self.control], [self._left_wing_qbar])
     
     @property
-    def right_wing_qbar(self):
+    def right_wing_qbar(self) -> ca.Function:
         self._ensure_initialized('v_frd_rel')
 
         r = self._omega_frd_ned[2]
         new_vel = self._v_frd_rel[0] 
         new_vel[0] += self.b * r / 4
-
-        # new_vel = ca.fmin(100, new_vel)
         self._right_wing_qbar = 0.5 * 1.225 * ca.dot(new_vel, new_vel)
         return ca.Function('right_wing_qbar', [self.state, self.control], [self._right_wing_qbar])
+    
+
         
-    # @property
-    # def coefficients(self):
-    #     """
-    #     Forward pass of the ml model to retrieve aerodynamic coefficients.
 
-    #     To calculate damping factors the effective velocities (under the angular rotation) of the relevant lifting surfaces are calculated and passed as inputs to the model.
-    #     """
+    
+    @abstractmethod
+    def model_outputs(self, inputs:ca.DM) -> ca.MX:
+        """
+        Generates the forward pass of the aerodynamics surrogate ready for post-processing by coefficients
+        """
+        ...
+    
 
-    #     self._ensure_initialized(
-    #         'qbar', 'alpha', 'beta', 'elevator_alpha', 
-    #         'right_wing_alpha', 'left_wing_alpha', 
-    #         'right_wing_qbar', 'left_wing_qbar', 'rudder_beta'
-    #     )
-
-    #     inputs = ca.vertcat(
-    #         self._qbar, 
-    #         self._alpha, 
-    #         self._beta, 
-    #         self._aileron, 
-    #         self._elevator
-    #         )
-        
-    #     if self.LINEAR:
-    #         outputs = ca.mtimes(self.linear_coeffs, ca.vertcat(inputs, 1))
-
-    #     elif self.fitted_models is not None:
-    #         outputs = ca.vertcat(*[self.fitted_models['casadi_functions'][i](inputs) for i in self.fitted_models['casadi_functions'].keys()])
-
-
-
-    #         # roll rate contribution with terms due to changed angle of attack and airspeed
-    #         left_wing_inputs = ca.vertcat(
-    #             self._left_wing_qbar, # may want to use qbar here instead
-    #             self._left_wing_alpha,
-    #             0,
-    #             0,
-    #             0
-    #         )
-    #         left_wing_lift_coeff = ca.vertcat(*[self.fitted_models['casadi_functions'][i](left_wing_inputs) for i in self.fitted_models['casadi_functions'].keys()])
-    #         right_wing_inputs = ca.vertcat(
-    #             self._right_wing_qbar, # may want to use qbar here instead
-    #             self._right_wing_alpha,
-    #             0,
-    #             0,
-    #             0
-    #         )
-    #         right_wing_lift_coeff = ca.vertcat(*[self.fitted_models['casadi_functions'][i](right_wing_inputs) for i in self.fitted_models['casadi_functions'].keys()])
-
-    #         outputs[3] += self.b / 4 * (right_wing_lift_coeff[2] / 2 - left_wing_lift_coeff[2] / 2) # span over 4 assumes wing lift attacks at centre of wing, coeffs/2 to adjust reference area as the lift of each wing should be halved relative to the whole plane
-    #         # pitch coefficient contribution due to pitch rate
-    #         elevator_inputs = ca.vertcat(
-    #             self._qbar,
-    #             self._elevator_alpha,
-    #             self._beta,
-    #             self._aileron,
-    #             self._elevator
-    #         )
-    #         elevator_damped_pitch_coeff = ca.vertcat(*[self.fitted_models['casadi_functions'][i](elevator_inputs) for i in self.fitted_models['casadi_functions'].keys()])
-    #         outputs[4] = elevator_damped_pitch_coeff[4]
-
-    #         # yaw coefficient contribution due to yaw rate
-    #         rudder_inputs = ca.vertcat(
-    #             self._qbar,
-    #             self._alpha,
-    #             self._rudder_beta,
-    #             self._aileron,
-    #             self._elevator
-    #         )  
-    #         rudder_damped_yaw_coeff = ca.vertcat(*[self.fitted_models['casadi_functions'][i](rudder_inputs) for i in self.fitted_models['casadi_functions'].keys()])
-    #         outputs[5] = rudder_damped_yaw_coeff[5]
-
-    #     else:
-    #         outputs = self.model(ca.reshape(inputs, 1, -1))
-    #         outputs = ca.vertcat(outputs.T)
-
-
-    #     # stall scaling
-    #     stall_angle_alpha = np.deg2rad(10)
-    #     stall_angle_beta = np.deg2rad(10)
-
-    #     steepness = 10
-
-    #     alpha_scaling = 1 / (1 + ca.exp(steepness * (ca.fabs(self._alpha) - stall_angle_alpha)))
-    #     beta_scaling = 1 / (1 + ca.exp(steepness * (ca.fabs(self._beta) - stall_angle_beta)))
-        
-    #     outputs[2] *= alpha_scaling
-    #     outputs[2] *= beta_scaling
-
-    #     outputs[4] *= alpha_scaling
-    #     # outputs[4] *= beta_scaling
-
-
-    #     self._coefficients = outputs
-
-    #     return ca.Function(
-    #         'coefficients', 
-    #         [self.state, self.control], 
-    #         [self._coefficients]
-    #         )
     
     @property
-    def coefficients(self):
+    def coefficients(self) -> ca.Function:
         """
-        Returns simplified, hardcoded aerodynamic coefficients for testing.
-        Includes basic damping from angular rates (p, q, r).
+        Forward pass of the model to retrieve aerodynamic coefficients.
 
-        Outputs: [CD, CY, CL, Cl, Cm, Cn] (drag, side force, lift, roll, pitch, yaw)
+        To calculate damping factors the effective velocities (under the angular rotation) of the relevant lifting surfaces are calculated and passed as inputs to the model.
         """
 
-        self._ensure_initialized('alpha', 'beta', 'aileron', 'elevator', 'rudder')
+        self._ensure_initialized(
+            'qbar', 'alpha', 'beta', 'elevator_alpha', 
+            'right_wing_alpha', 'left_wing_alpha', 
+            'right_wing_qbar', 'left_wing_qbar', 'rudder_beta'
+        )
 
-        # Unpack angular rates
-        p, q, r = self._omega_frd_ned[0], self._omega_frd_ned[1], self._omega_frd_ned[2]
+        inputs = ca.vertcat(
+            self._qbar, 
+            self._alpha, 
+            self._beta, 
+            self._aileron, 
+            self._elevator
+            )
+        
 
+        outputs = self.model_outputs(inputs)
+        
+        # Simplified rudder model
+        Cn_rudder = -0.1
+        outputs[5] += Cn_rudder * 6 * self._rudder * np.pi / 180
+
+        if self.stall_scaling:
+            # stall scaling
+            stall_angle_alpha = np.deg2rad(10)
+            stall_angle_beta = np.deg2rad(10)
+
+            steepness = 10
+
+            alpha_scaling = 1 / (1 + ca.exp(steepness * (ca.fabs(self._alpha) - stall_angle_alpha)))
+            beta_scaling = 1 / (1 + ca.exp(steepness * (ca.fabs(self._beta) - stall_angle_beta)))
+            
+            outputs[2] *= alpha_scaling
+            outputs[2] *= beta_scaling
+
+            outputs[4] *= alpha_scaling
+            # outputs[4] *= beta_scaling
+
+
+        self._coefficients = outputs
+
+        return ca.Function(
+            'coefficients', 
+            [self.state, self.control], 
+            [self._coefficients]
+            )
+    
+
+    
+    @property
+    def _forces_frd(self) -> ca.MX:
+        self._ensure_initialized('coefficients', 'qbar')
+
+        forces = self._coefficients[:3] * self._qbar * self.S
+
+        # antialign drag and velocity with smoothed sign flip
+        epsilon = 1e-2
+        smoothed_sign = ca.tanh(self._v_frd_rel[0] / epsilon)
+        forces[0] = smoothed_sign * forces[0]
+
+        forces += self._thrust
+
+        return forces
+    
+    @property
+    def _moments_aero_frd(self) -> ca.MX:
+        self._ensure_initialized('coefficients', 'qbar')
+        moments_aero = (self._coefficients[3:] * self._qbar * self.S 
+                        * ca.vertcat(self.b, self.c, self.b))
+
+        return moments_aero
+
+class AircraftTrim(Aircraft):
+    def __init__(
+            self,
+            opts:AircraftOpts
+            ):
+        
+        super().__init__(opts)
+    
+    @property
+    def control(self) -> ca.MX:
+        if not hasattr(self, '_com_initialized') or not self._com_initialized:
+            self._control = super().control
+            self._com = ca.MX.sym('com', 3) # type: ignore[arg-type]
+            self._control = ca.vertcat(self._control, self._com)
+            self._com_initialized = True
+            self.num_controls:int = self._control.size()[0]
+
+        assert isinstance(self.num_controls, int)
+        assert isinstance(self._control, ca.MX)
+
+        return self._control
+
+    @property
+    def inertia_tensor(self):
+        """
+        Inertia Tensor around the Centre of Mass
+        """
+
+        mass = self.mass
+
+        com = self._com
+        
+        x, y, z = com[0], com[1], com[2]
+
+        com_term = ca.vertcat(
+            ca.horzcat(y**2 + z**2, -x*y, -x*z),
+            ca.horzcat(-y*x, x**2 + z**2, -y*z),
+            ca.horzcat(-z*x, -z*y, x**2 + y**2)
+        )
+
+        inertia_tensor = self.static_inertia_tensor + mass * com_term
+
+        return inertia_tensor
+    
+
+
+class LinearAircraft(Aircraft):
+    def __init__(
+            self,
+            *,
+            linear_path:Optional[Union[str, Path]] = None,
+            **kwargs
+            ):
+        
+        super().__init__(**kwargs)
+        self.fitted = False
+        if linear_path is not None:
+            self.linear_coeffs = ca.DM(np.array(pd.read_csv(linear_path)))
+            self.fitted = True
+        self.fitted_models = None
+
+    def model_outputs(self, inputs: ca.DM) -> ca.MX:
+        if self.fitted:
+            return ca.MX(ca.mtimes(self.linear_coeffs, ca.vertcat(inputs, 1)))
+
+        _, alpha, beta, aileron, elevator = ca.vertsplit(inputs)
+        
+        p, q, r = ca.vertsplit(self._omega_frd_ned)
+        
         # Constants for control surface effectiveness
         CD0 = 0.02
         CD_alpha = 0.3
@@ -422,144 +434,139 @@ class Aircraft(SixDOF):
         Cn_r = -0.05  # yaw damping
 
         # Core coefficient calculations
-        CD = CD0 + CD_alpha * self._alpha**2
-        CL = CL0 + CL_alpha * self._alpha
-        CY = CY_beta * self._beta
+        CD = CD0 + CD_alpha * alpha**2
+        CL = CL0 + CL_alpha * alpha
+        CY = CY_beta * beta
 
-        Cl = Cl_aileron * 4 * self._aileron  * np.pi / 180+ Cl_p * p
-        Cm = Cm_elevator * 5 * self._elevator  * np.pi / 180 + Cm_q * q
+        Cl = Cl_aileron * 4 * aileron  * np.pi / 180+ Cl_p * p
+        Cm = Cm_elevator * 5 * elevator  * np.pi / 180 + Cm_q * q
         Cn = Cn_rudder * 6 * self._rudder * np.pi / 180 + Cn_r * r
 
-        outputs = ca.vertcat(-CD, CY, -CL, Cl, Cm, Cn)
+        return ca.MX(ca.vertcat(-CD, CY, -CL, Cl, Cm, Cn))
 
-        self._coefficients = outputs
-
-        return ca.Function(
-            'coefficients',
-            [self.state, self.control],
-            [self._coefficients]
-        )
-    
     @property
-    def _forces_frd(self):
-        self._ensure_initialized('coefficients', 'qbar')
-
-        forces = self._coefficients[:3] * self._qbar * self.S
-
-        # antialign drag and velocity
-        # forces[0] = ca.sign(self._v_frd_rel[0])*forces[0] #
-
-        # smoothed sign flip
-        epsilon = 1e-2  # smoothing factor, tune if needed
-        smoothed_sign = ca.tanh(self._v_frd_rel[0] / epsilon)
-        forces[0] = smoothed_sign * forces[0]
-
-        # forces += self._thrust
-
-        # speed_threshold = 80.0  # m/s
-        # penalty_factor = 10.0  # Scale factor for additional drag
-
-        # # Smooth penalty function for increased drag
-        # excess_speed = self._airspeed - speed_threshold
-        # additional_drag = penalty_factor * ca.fmax(0, excess_speed)**2  # Quadratic penalty for smoothness
-
-        # # Apply the additional drag along the x-axis (forward direction)
-        # forces[0] -= additional_drag
-        return forces
-    
-    @property
-    def _moments_aero_frd(self):
-        self._ensure_initialized('coefficients', 'qbar')
-        moments_aero = (self._coefficients[3:] * self._qbar * self.S 
-                        * ca.vertcat(self.b, self.c, self.b))
-        
-        # simplified rudder added in
-        C_n_delta_r = -0.01
-        delta_r = self._rudder
-        N_rudder = C_n_delta_r * delta_r * self._qbar * self.S * self.b
-
-        moments_aero[2] += N_rudder
-
-
-        return moments_aero
-
-class AircraftLinear(SixDOF):
-
-    def __init__(self):
-        super().__init__()
-
     def coefficients(self) -> ca.Function:
         """
-        
+        Returns simplified, hardcoded aerodynamic coefficients for testing.
+        Includes basic damping from angular rates (p, q, r).
+
+        Outputs: [CD, CY, CL, Cl, Cm, Cn] (drag, side force, lift, roll, pitch, yaw)
         """
+        self._ensure_initialized(
+            'qbar', 'alpha', 'beta'
+        )
 
-        self._coefficients = None
-        return ca.Function('coefficients', [self.state, self.control], [self._coefficients])
+        inputs = ca.vertcat(
+            self._qbar, 
+            self._alpha, 
+            self._beta, 
+            self._aileron, 
+            self._elevator
+            )
+        
+        self._coefficients = self.model_outputs(inputs)
 
-
-
- 
-
-class AircraftTrim(Aircraft):
+        return ca.Function(
+            'coefficients', 
+            [self.state, self.control], 
+            [self._coefficients]
+            )
+    
+class NeuralAircraft(Aircraft):
     def __init__(
             self,
-            opts:AircraftOpts
+            *,
+            neural_path:Optional[Union[str, Path]] = None,
+            realtime:bool = False,
+            **kwargs
             ):
         
-        super().__init__(opts)
-    
-    @property
-    def control(self):
-        if not hasattr(self, '_control_initialized') or not self._control_initialized:
-            self._aileron = ca.MX.sym('aileron')
-            self._elevator = ca.MX.sym('elevator')
-            self._thrust = ca.MX.sym('thrust')
-            self._com = ca.MX.sym('com', 3)
+        super().__init__(**kwargs)
 
-            self._control = ca.vertcat(
-            self._aileron, 
-            self._elevator,
-            self._thrust,
-            self._com
-            )
-            self.num_controls = self._control.size()[0]
+        try:
+            from l4casadi import L4CasADi
+            from l4casadi.realtime import RealTimeL4CasADi
+        except ImportError as e:
+            raise ImportError("Mode 'neural' requires `l4casadi`. Please install it to proceed.") from e
 
-            self._control_initialized = True
+        assert isinstance(neural_path, (str, Path)), "Must supply a valid model path for mode 'neural'"
 
-        return self._control
+        model = load_model(filepath=neural_path)
+        if realtime:
+            self.model = RealTimeL4CasADi(model, approximation_order=1)
+        else:
+            self.model = L4CasADi(model, name='AeroModel', generate_jac_jac=True)
 
-    @property
-    def inertia_tensor(self):
-        """
-        Inertia Tensor around the Centre of Mass
-        """
+    def model_outputs(self, inputs: ca.DM) -> ca.MX:
+        outputs = self.model(ca.reshape(inputs, 1, -1))
+        assert isinstance(outputs, ca.MX), "model output not a ca.MX object"
+        outputs = ca.vertcat(outputs.T)
+        return ca.MX(outputs)
 
-        i_xx = self.opts.aircraft_config.Ixx
-        i_yy = self.opts.aircraft_config.Iyy
-        i_xz = self.opts.aircraft_config.Ixz
-        i_zz = self.opts.aircraft_config.Izz
 
-        aero_inertia_tensor = ca.vertcat(
-            ca.horzcat(i_xx, 0  , i_xz),
-            ca.horzcat(0  , i_yy, 0  ),
-            ca.horzcat(i_xz, 0  , i_zz)
-        )
-
-        mass = self.mass
-
-        com = self._com
+class PolynomialAircraft(Aircraft):
+    def __init__(
+            self,
+            *,
+            poly_path:Optional[Union[str, Path]] = None,
+            realtime:bool = False,
+            **kwargs
+            ):
+        assert isinstance(poly_path, Union[str, Path]), "must supply a valid linear path for mode 'polynomial'"
+        with open(poly_path, 'rb') as file:
+            self.fitted_models = pickle.load(file)
+        assert isinstance(self.fitted_models, dict)
         
-        x, y, z = com[0], com[1], com[2]
+        super().__init__(**kwargs)
 
-        com_term = ca.vertcat(
-            ca.horzcat(y**2 + z**2, -x*y, -x*z),
-            ca.horzcat(-y*x, x**2 + z**2, -y*z),
-            ca.horzcat(-z*x, -z*y, x**2 + y**2)
+
+    def model_outputs(self, inputs: ca.DM) -> ca.MX:
+        """
+        Forward pass of the polynomial model to retrieve aerodynamic coefficients.
+
+        To calculate damping factors the effective velocities (under the angular rotation) of the relevant lifting surfaces are calculated and passed as inputs to the model.
+        """
+        outputs = ca.vertcat(*[self.fitted_models['casadi_functions'][i](inputs) for i in self.fitted_models['casadi_functions'].keys()])
+
+        # roll rate contribution with terms due to changed angle of attack and airspeed
+        left_wing_inputs = ca.vertcat(
+            self._left_wing_qbar, # may want to use qbar here instead
+            self._left_wing_alpha,
+            0,
+            0,
+            0
         )
 
-        inertia_tensor = aero_inertia_tensor + mass * com_term
+        left_wing_lift_coeff = ca.vertcat(*[self.fitted_models['casadi_functions'][i](left_wing_inputs) for i in self.fitted_models['casadi_functions'].keys()])
+        right_wing_inputs = ca.vertcat(
+            self._right_wing_qbar, # may want to use qbar here instead
+            self._right_wing_alpha,
+            0,
+            0,
+            0
+        )
+        right_wing_lift_coeff = ca.vertcat(*[self.fitted_models['casadi_functions'][i](right_wing_inputs) for i in self.fitted_models['casadi_functions'].keys()])
 
-        return inertia_tensor
-    
+        outputs[3] += self.b / 4 * (right_wing_lift_coeff[2] / 2 - left_wing_lift_coeff[2] / 2) # span over 4 assumes wing lift attacks at centre of wing, coeffs/2 to adjust reference area as the lift of each wing should be halved relative to the whole plane
+        # pitch coefficient contribution due to pitch rate
+        elevator_inputs = ca.vertcat(
+            self._qbar,
+            self._elevator_alpha,
+            self._beta,
+            self._aileron,
+            self._elevator
+        )
+        elevator_damped_pitch_coeff = ca.vertcat(*[self.fitted_models['casadi_functions'][i](elevator_inputs) for i in self.fitted_models['casadi_functions'].keys()])
+        outputs[4] = elevator_damped_pitch_coeff[4]
 
-
+        # yaw coefficient contribution due to yaw rate
+        rudder_inputs = ca.vertcat(
+            self._qbar,
+            self._alpha,
+            self._rudder_beta,
+            self._aileron,
+            self._elevator
+        )  
+        rudder_damped_yaw_coeff = ca.vertcat(*[self.fitted_models['casadi_functions'][i](rudder_inputs) for i in self.fitted_models['casadi_functions'].keys()])
+        outputs[5] = rudder_damped_yaw_coeff[5]
+        return ca.MX(outputs)

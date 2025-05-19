@@ -8,10 +8,12 @@ import json
 from aircraft.config import NETWORKPATH, DEVICE, rng
 from aircraft.surrogates.models import ScaledModel
 from scipy.spatial.transform import Rotation as R
+from pathlib import Path
+from typing import Union, Optional
 
 def load_model(
-        filepath:str = os.path.join(NETWORKPATH,'model-dynamics.pth'), 
-        device:torch.device = None
+        filepath:Union[str, Path] = os.path.join(NETWORKPATH,'model-dynamics.pth'), 
+        device:Optional[torch.device] = None
         ) -> ScaledModel:
     
     if device == None:
@@ -161,13 +163,15 @@ class AircraftConfiguration:
         self.length = aircraft_dict.get('length', 1.2)
         self.chord = aircraft_dict.get('chord', 1.0)
         self.reference_area = aircraft_dict.get('reference_area', 0.238)
-        self.aero_centre_offset = aircraft_dict.get('aero_centre_offset', [0.133, 0, 0.003])
+        self.aero_centre_offset = aircraft_dict.get('aero_centre_offset', [0.133, 0, 0.003]) # position of aerodynamic centre relative to the centre of mass
         self.Ixx = aircraft_dict.get('Ixx', 0.155)
         self.Iyy = aircraft_dict.get('Iyy', 0.114)
         self.Izz = aircraft_dict.get('Izz', 0.262)
         self.Ixz = aircraft_dict.get('Ixz', 0.01) 
         self.r_min = aircraft_dict.get('r_min', 10.0)
         self.glide_ratio = aircraft_dict.get('glide_ratio', 10.0)
+        self.rudder_moment_arm = aircraft_dict.get('rudder_moment_arm', 0.5) # distance between centre of mass and the tail of the plane (used for damping calculations)
+        
 
         
 
