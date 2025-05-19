@@ -429,6 +429,17 @@ class TrajectoryPlotter:
         if control is not None:
             self.plot_deflections(trajectory_data)
             self.plot_thrust(trajectory_data)
+
+    def plot_quat_norm(self, trajectory_data:TrajectoryData):
+        quat = trajectory_data.state[6:10,:]
+        ax = self.axes.convergence
+        self._update_or_create_line(ax, '_quat_norm_line', np.linalg.norm(quat, axis = 0), 'norm')
+
+        ax.legend()
+        ax.grid(True)
+        # ax.yaxis.get_offset_text().set_x(-0.1)  # adjust X offset
+        # ax.yaxis.get_offset_text().set_y(-0.1)  # or adjust Y manually
+        ax.set_title('Quaternion Norm')
         
     def plot(self, trajectory_data:TrajectoryData = None, filepath:str = None, iteration:Optional[int] = None):
         if isinstance(filepath, str):
@@ -444,6 +455,9 @@ class TrajectoryPlotter:
         self.plot_state(trajectory_data)
         self.plot_control(trajectory_data)
         self.plot_progress_variables(trajectory_data)
+        self.plot_quat_norm(trajectory_data)
+
+
 
         # Auto-adjust all axes limits
         for ax in self.axes():

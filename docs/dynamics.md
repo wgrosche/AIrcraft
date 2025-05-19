@@ -19,3 +19,6 @@ The simulation in [dynamics](../src/dynamics.py) contains perturbation in the
 wind vecor to test dynamic stability.
 
 [return to main](../README.md)
+
+
+## Coefficients

@@ -13,6 +13,7 @@ from pathlib import Path
 import time
 from aircraft.config import default_solver_options, BASEPATH, NETWORKPATH, DATAPATH, DEVICE, rng
 from abc import ABC, abstractmethod
+from aircraft.dynamics.base import SixDOF
 
 plt.ion()
 
@@ -143,7 +144,7 @@ class ControlProblem(ABC):
         constraint(expr, description): Register constraint with optional description.
     """
 
-    def __init__(self, *, dynamics:ca.Function, dt:float = 0.01, num_nodes:int, 
+    def __init__(self, *, system:SixDOF, dt:float = 0.01, num_nodes:int, 
                  opts:Optional[dict] = {}, x_dot = None, progress:bool = False, **kwargs):
         """
         Initialize the control problem.
@@ -159,28 +160,36 @@ class ControlProblem(ABC):
                 - 'solver_options' (dict): IPOPT solver options.
                 - 'savefile' (str): HDF5 save path.
         """
-
         self.opti = ca.Opti('nlp')
 
-        self.state_dim = dynamics.size1_in(0)
-        self.control_dim = dynamics.size1_in(1)
+        self.opts = opts
+
+        if self.opts['normalisation'] == 'integration':
+            system.normalise = True
+        else:
+            system.normalise = False
+
+        self.dynamics = system.state_update
+        self.state_dim = self.dynamics.size1_in(0)
+        self.control_dim = self.dynamics.size1_in(1)
+        self.x_dot = system.state_derivative
 
         self.num_nodes = num_nodes
+
         self.verbose = opts.get('verbose', False)
-        self.dynamics = dynamics
         self.constraint_descriptions = []
+
         self.progress = progress
         self.dt = dt
         self.max_jump = 0.05
+        
         if not progress:
-            
             self.time = dt * num_nodes
             print("final time: ", self.time)
+
         self.scale_state = opts.get('scale_state', None)
         self.scale_control = opts.get('scale_control', None)
 
-        if x_dot:
-            self.x_dot = x_dot
 
         self.state_guess_parameter = self.opti.parameter(self.state_dim, self.num_nodes + 1)
         self.control_guess_parameter = self.opti.parameter(self.control_dim, self.num_nodes + 1)
@@ -253,39 +262,49 @@ class ControlProblem(ABC):
     
     def state_constraint(self, node: ControlNode, next: ControlNode, dt: Optional[ca.MX] = None) -> None:
         dt_i = 1.0 / node.progress
-        if hasattr(self, 'x_dot') and self.implicit:
+        normalisation = self.opts.get('quaternion', None)
+        # add dynamics constraint
+        assert hasattr(self, 'x_dot'), "you silly goose, you still haven't passed it?"
+
+        if self.opts.get('integration', 'explicit') == 'explicit':
+            next_state = self.dynamics(node.state, node.control, dt_i)
+
+        elif self.opts.get('integration', 'explicit') == 'implicit':
+            next_state = node.state + dt_i  * self.x_dot(next.state, node.control)
+        
+        if normalisation == 'constraint':
+            self.constraint(ca.dot(node.state[6:10], node.state[6:10]) == 1, description=f"quaternion norm constraint at node {node.index}")
+
+        elif normalisation == 'baumgarte':
+            x_dot_q = self.x_dot(node.state, node.control)[6:10]
+            phi_dot = 2 * ca.dot(node.state[6:10], x_dot_q)
+
+            alpha = 2.0  # damping
+            beta = 2.0   # stiffness
+
+            phi = ca.dot(node.state[6:10], node.state[6:10]) - 1
+            stabilized_phi = 2 * alpha * phi_dot + beta**2 * phi
+
+            self.constraint(stabilized_phi == 0, description="Baumgarte quaternion normalization")
+
+        if self.opts.get('time', 'fixed') in ['progress', 'variable']:
+            self.constraint(next.progress == node.progress)#self.max_jump)
+
+        elif self.opts.get('time', 'fixed') == 'adaptive':
+            alpha = 1e-2
+            adaptive_weight = 1.0
+            tol = 1e-2
+            func_state = self.dynamics(node.state, node.control)
+            J = ca.jacobian(func_state, node.state)
+            prod = J @ func_state
+            error_surrogate = alpha * (1 / node.progress**2) * ca.dot(prod, J @ prod)
+            constraints += [error_surrogate <= tol]
+            loss += adaptive_weight * node.progress
             
-            # implicit constraint:
-            self.constraint(next.state - node.state - dt_i * self.x_dot(next.state, node.control) == 0, description=f"implicit state dynamics constraint at node {node.index}")
-            # x_dot_q = self.x_dot(node.state, node.control)[6:10]
-            # phi_dot = 2 * ca.dot(node.state[6:10], x_dot_q)
+        self.constraint(next.state - next_state == 0, description=f"state dynamics constraint at node {node.index}")
+                
 
-            # alpha = 2.0  # damping
-            # beta = 2.0   # stiffness
-
-            # phi = ca.dot(node.state[6:10], node.state[6:10]) - 1
-            # stabilized_phi = 2 * alpha * phi_dot + beta**2 * phi
-
-            # self.constraint(stabilized_phi == 0, description="Baumgarte quaternion normalization")
-
-
-            self.constraint(ca.sumsqr(node.state[6:10])==1, description=f"quaternion norm constraint at node {node.index}")
-            # if self.progress:
-            #     self.constraint(ca.fabs(next.progress - node.progress) <= self.max_jump)
-
-        # elif self.progress and self.adaptive:
-        #     alpha = 1e-2
-        #     adaptive_weight = 1.0
-        #     tol = 1e-2
-        #     func_state = self.dynamics(node.state, node.control)
-        #     J = ca.jacobian(func_state, node.state)
-        #     prod = J @ func_state
-        #     error_surrogate = alpha * (1 / node.progress**2) * ca.dot(prod, J @ prod)
-        #     constraints += [error_surrogate <= tol]
-        #     loss += adaptive_weight * node.progress
-
-        else:
-            self.constraint(next.state - self.dynamics(node.state, node.control, dt_i) == 0, description=f"state dynamics constraint at node {node.index}")
+            
 
     @abstractmethod
     def loss(self, nodes:List[ControlNode], time:Optional[ca.MX] = None) -> ca.MX:
@@ -314,7 +333,7 @@ class ControlProblem(ABC):
         
         if self.progress:
             opti.set_initial(next_node.progress, 1/self.dt)
-            self.constraint(opti.bounded(1e0, next_node.progress, 1e5), description=f"positive progress rate at node {index}")
+            self.constraint(opti.bounded(5e1, next_node.progress, 1e3), description=f"positive progress rate at node {index}")
 
         state_guess = guess[:self.state_dim, index]
         control_guess = guess[self.state_dim:self.state_dim + self.control_dim, index]
@@ -338,7 +357,7 @@ class ControlProblem(ABC):
 
         if self.progress:
             opti.set_initial(current_node.progress, 1/self.dt)
-            self.constraint(opti.bounded(1e0, current_node.progress, 1e5), description=f"positive progress rate at node {0}")
+            self.constraint(opti.bounded(5e1, current_node.progress, 1e4), description=f"positive progress rate at node {0}")
         state_guess = guess[:self.state_dim, 0]
         control_guess = guess[self.state_dim:self.state_dim + self.control_dim, 0]
 
@@ -352,6 +371,8 @@ class ControlProblem(ABC):
     def _setup_variables(self, nodes:List[ControlNode]) -> None:
         self.state = ca.hcat([nodes[i].state for i in range(self.num_nodes + 1)])
         self.control = ca.hcat([nodes[i].control for i in range(self.num_nodes)])
+
+        self.opts.get('time', 'fixed')
         if self.progress:
             self.time = ca.sum1(ca.vertcat(*[1.0 / nodes[i].progress for i in range(self.num_nodes)]))
 

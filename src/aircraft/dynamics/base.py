@@ -43,6 +43,7 @@ class SixDOF(ABC):
         self.mass = opts.mass
         self.com = None
         self.LQR = LQR
+        self.normalise = False
         if self.LQR:
             assert setpoint is not None, "Cannot perform LQR without a valid setpoint"
             self.setpoint = setpoint
@@ -452,7 +453,7 @@ class SixDOF(ABC):
         num_steps = self.STEPS
 
         if num_steps == 1:
-            state = self.state_step(state, control_sym, dt)
+            state = self.state_step(state, control_sym, dt, normalise_quaternion=self.normalise)
         else:
 
             dt_scaled = dt / num_steps
@@ -462,6 +463,8 @@ class SixDOF(ABC):
             
             F = folded_update.fold(num_steps)
             state = F(input_to_fold)[:self.num_states]
+            if self.normalise:
+                state[6:10] = Quaternion(state[6:10]).normalize()
 
         return ca.Function(
             'state_update', 
