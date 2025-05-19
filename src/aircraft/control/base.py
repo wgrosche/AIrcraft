@@ -17,7 +17,7 @@ from aircraft.dynamics.base import SixDOF
 
 plt.ion()
 
-__all__ = ['ControlNode', 'SaveMixin', 'ControlProblem', 'VariableTimeMixin']
+__all__ = ['ControlNode', 'SaveMixin', 'ControlProblem']
 
 @dataclass
 class ControlNode:
@@ -29,10 +29,10 @@ class ControlNode:
         state (Optional[ca.MX]): Symbolic representation of the state at this node.
         control (Optional[ca.MX]): Symbolic representation of the control at this node.
     """
-    index:Optional[int] = None
-    state:Optional[ca.MX] = None
-    control:Optional[ca.MX] = None
-    progress:Optional[Union[ca.MX, float]] = 0.01
+    index:int
+    state:ca.MX
+    control:ca.MX
+    progress:Optional[Union[ca.MX, float]] = None
 
 class SaveMixin:
     """
@@ -44,66 +44,65 @@ class SaveMixin:
     """
     def _init_saving(self, filepath: Optional[str], force_overwrite: bool = True):
         self._save_enabled = filepath is not None
-        self._save_interval = 10  # can expose as parameter later
+        self._save_interval = 10
 
         self.h5file = None
-        self._save_path = filepath
-
         if self._save_enabled:
+            assert filepath is not None
             if force_overwrite and Path(filepath).exists():
                 Path(filepath).unlink()
 
             self.h5file = h5py.File(filepath, "a")
+
     def _save_progress(
         self,
         iteration: int,
-        states: list,
-        controls: list,
-        times: list
+        states: list[ca.MX],
+        controls: list[ca.MX],
+        times: list[ca.MX]
     ):
         if not self._save_enabled or self.h5file is None:
             return
 
         try:
-            for i, (state, control, time_val) in enumerate(zip(states[-10:], controls[-10:], times[-10:])):
-                grp_name = f'iteration_{iteration - 10 + i}'
-                grp = self.h5file.require_group(grp_name)
-                grp.attrs['timestamp'] = time.time()
-
-                for name, data in zip(['state', 'control', 'time'], [state, control, time_val]):
-                    if name in grp:
-                        del grp[name]
-                    # Only use compression for non-scalar data
-                    if hasattr(data, 'size') and data.size > 1:
-                        grp.create_dataset(name, data=data, compression='gzip')
-                    else:
-                        grp.create_dataset(name, data=data)
+            recent_data = zip(states[-10:], controls[-10:], times[-10:])
+            for i, (state, control, time_val) in enumerate(recent_data):
+                self._save_iteration_data(
+                    group_name=f'iteration_{iteration - 10 + i}',
+                    state=state,
+                    control=control,
+                    time_val=time_val
+                )
         except Exception as e:
             print(f"[SaveMixin] Error saving progress: {e}")
 
-    # def _save_progress(
-    #     self,
-    #     iteration: int,
-    #     states: list,
-    #     controls: list,
-    #     times: list
-    # ):
-    #     if not self._save_enabled or self.h5file is None:
-    #         return
 
-    #     try:
-    #         for i, (state, control, time_val) in enumerate(zip(states[-10:], controls[-10:], times[-10:])):
-    #             grp_name = f'iteration_{iteration - 10 + i}'
-    #             grp = self.h5file.require_group(grp_name)
-    #             grp.attrs['timestamp'] = time.time()
+    def _save_iteration_data(
+        self,
+        group_name: str,
+        state: ca.MX,
+        control: ca.MX,
+        time_val: ca.MX
+    ):
+        assert self.h5file is not None
+        grp = self.h5file.require_group(group_name)
+        grp.attrs['timestamp'] = time.time()
 
-    #             for name, data in zip(['state', 'control', 'time'], [state, control, time_val]):
-    #                 if name in grp:
-    #                     del grp[name]
-    #                 grp.create_dataset(name, data=data, compression='gzip')
-    #     except Exception as e:
-    #         print(f"[SaveMixin] Error saving progress: {e}")
+        data_items = {'state': state, 'control': control, 'time': time_val}
+        for name, data in data_items.items():
+            if name in grp:
+                del grp[name]
+            self._create_dataset_safely(grp, name, data)
 
+
+    def _create_dataset_safely(self, group, name: str, data):
+        try:
+            if hasattr(data, 'size') and isinstance(data.size, int) and data.size > 1:
+                group.create_dataset(name, data=data, compression='gzip')
+            else:
+                group.create_dataset(name, data=data)
+        except Exception as e:
+            print(f"[SaveMixin] Failed to create dataset '{name}': {e}")
 
 class ControlProblem(ABC):
     """
@@ -145,7 +144,7 @@ class ControlProblem(ABC):
     """
 
     def __init__(self, *, system:SixDOF, dt:float = 0.01, num_nodes:int, 
-                 opts:Optional[dict] = {}, x_dot = None, progress:bool = False, **kwargs):
+                 opts:Optional[dict] = None, progress:bool = False, **kwargs):
         """
         Initialize the control problem.
 
@@ -162,21 +161,21 @@ class ControlProblem(ABC):
         """
         self.opti = ca.Opti('nlp')
 
-        self.opts = opts
+        self.opts = opts if opts else {}
 
         if self.opts['normalisation'] == 'integration':
             system.normalise = True
         else:
             system.normalise = False
 
-        self.dynamics = system.state_update
-        self.state_dim = self.dynamics.size1_in(0)
-        self.control_dim = self.dynamics.size1_in(1)
-        self.x_dot = system.state_derivative
+        self.dynamics:ca.Function = system.state_update
+        self.state_dim:int = self.dynamics.size1_in(0)
+        self.control_dim:int = self.dynamics.size1_in(1)
+        self.x_dot:ca.Function = system.state_derivative
 
         self.num_nodes = num_nodes
 
-        self.verbose = opts.get('verbose', False)
+        self.verbose = self.opts.get('verbose', False)
         self.constraint_descriptions = []
 
         self.progress = progress
@@ -187,17 +186,17 @@ class ControlProblem(ABC):
             self.time = dt * num_nodes
             print("final time: ", self.time)
 
-        self.scale_state = opts.get('scale_state', None)
-        self.scale_control = opts.get('scale_control', None)
+        self.scale_state = self.opts.get('scale_state', None)
+        self.scale_control = self.opts.get('scale_control', None)
 
 
         self.state_guess_parameter = self.opti.parameter(self.state_dim, self.num_nodes + 1)
         self.control_guess_parameter = self.opti.parameter(self.control_dim, self.num_nodes + 1)
-        self.initial_state = opts.get('initial_state', None)
+        self.initial_state = self.opts.get('initial_state', None)
 
-        self.solver_opts = opts.get('solver_options', default_solver_options)
+        self.solver_opts = self.opts.get('solver_options', default_solver_options)
 
-        self.filepath = opts.get('savefile', None)
+        self.filepath = self.opts.get('savefile', None)
         if self.filepath:
             if os.path.exists(self.filepath):
                 os.remove(self.filepath)
@@ -261,10 +260,8 @@ class ControlProblem(ABC):
         
     
     def state_constraint(self, node: ControlNode, next: ControlNode, dt: Optional[ca.MX] = None) -> None:
-        dt_i = 1.0 / node.progress
+        dt_i = ca.DM(1.0) / node.progress
         normalisation = self.opts.get('quaternion', None)
-        # add dynamics constraint
-        assert hasattr(self, 'x_dot'), "you silly goose, you still haven't passed it?"
 
         if self.opts.get('integration', 'explicit') == 'explicit':
             next_state = self.dynamics(node.state, node.control, dt_i)
@@ -276,7 +273,10 @@ class ControlProblem(ABC):
             self.constraint(ca.dot(node.state[6:10], node.state[6:10]) == 1, description=f"quaternion norm constraint at node {node.index}")
 
         elif normalisation == 'baumgarte':
-            x_dot_q = self.x_dot(node.state, node.control)[6:10]
+            x_dot = self.x_dot(node.state, node.control)
+            assert isinstance(x_dot, ca.MX)
+            assert x_dot.size() == self.state_dim
+            x_dot_q = x_dot[6:10]
             phi_dot = 2 * ca.dot(node.state[6:10], x_dot_q)
 
             alpha = 2.0  # damping
