@@ -11,6 +11,8 @@ from aircraft.utils.utils import load_model, AircraftConfiguration
 from dataclasses import dataclass
 from aircraft.dynamics.base import SixDOFOpts, SixDOF
 
+__all__ = ['AircraftTrim', 'AircraftOpts', 'LinearAircraft', 'NeuralAircraft', 'PolynomialAircraft']
+
 @dataclass
 class AircraftOpts(SixDOFOpts):
     linear_path:Optional[Path] = None
@@ -25,7 +27,6 @@ class AircraftOpts(SixDOFOpts):
     def __post_init__(self):
         self.mass:float = self.aircraft_config.mass
     
-
 class Aircraft(SixDOF):
     """ 
     NN based flight dynamics for aircraft. 
@@ -375,8 +376,6 @@ class AircraftTrim(Aircraft):
 
         return inertia_tensor
     
-
-
 class LinearAircraft(Aircraft):
     def __init__(
             self,
@@ -487,7 +486,6 @@ class NeuralAircraft(Aircraft):
         assert isinstance(outputs, ca.MX), "model output not a ca.MX object"
         outputs = ca.vertcat(outputs.T)
         return ca.MX(outputs)
-
 
 class PolynomialAircraft(Aircraft):
     def __init__(

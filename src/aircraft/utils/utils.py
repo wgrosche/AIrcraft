@@ -10,6 +10,7 @@ from aircraft.surrogates.models import ScaledModel
 from scipy.spatial.transform import Rotation as R
 from pathlib import Path
 from typing import Union, Optional
+from liecasadi import Quaternion
 
 def load_model(
         filepath:Union[str, Path] = os.path.join(NETWORKPATH,'model-dynamics.pth'), 
@@ -62,23 +63,57 @@ def aero_to_state(q_bar, alpha, beta):
 
 
 class State:
-    def __init__(
-            self, 
-            orientation:np.ndarray = np.array([0, 0, 0, 1]), 
-            position:np.ndarray = np.array([0, 0, 0]),
-            velocity:np.ndarray = np.array([50, 0, 0]), 
-            angular_velocity:np.ndarray = np.array([0, 0, 0])):
+    def __init__(self,
+                 position=np.array([0, 0, 0]),
+                 velocity=np.array([50, 0, 0]),
+                 orientation=np.array([0, 0, 0, 1]),
+                 angular_velocity=np.array([0, 0, 0])):
         
-        self.orientation = np.array(orientation)
-        self.position = np.array(position)
-        self.velocity = np.array(velocity)
-        self.angular_velocity = np.array(angular_velocity)
+        types = {type(position), type(velocity), type(orientation), type(angular_velocity)}
+        assert len(types) == 1, "All components must be of the same type"
+        self.backend = types.pop()
+
+        self.position = self.backend(position)
+        self.velocity = self.backend(velocity)
+        self.orientation = self.backend(orientation)
+        self.angular_velocity = self.backend(angular_velocity)
 
     def __call__(self):
-        return np.concatenate([self.orientation, 
-                               self.position, 
-                               self.velocity, 
-                               self.angular_velocity])
+        return self.backend.concatenate([
+            self.orientation,
+            self.position,
+            self.velocity,
+            self.angular_velocity
+        ])
+
+    def to_numpy(self):
+        if self.backend == np.ndarray:
+            return self
+        else:
+            return State(
+                position=np.array(self.position),
+                velocity=np.array(self.velocity),
+                orientation=np.array(self.orientation),
+                angular_velocity=np.array(self.angular_velocity)
+            )
+
+    def to_casadi(self, symbolic=False):
+        target_type = ca.MX if symbolic else ca.DM
+        if self.backend in [ca.MX, ca.DM] and isinstance(self.position, target_type):
+            return self
+        else:
+            return State(
+                position=target_type(self.position),
+                velocity=target_type(self.velocity),
+                orientation=target_type(self.orientation),
+                angular_velocity=target_type(self.angular_velocity)
+            )
+
+    def as_vector(self):
+        return self.__call__()
+
+    def __repr__(self):
+        return f"State(pos={self.position}, vel={self.velocity}, ori={self.orientation}, omega={self.angular_velocity})"
     
 
 class Control:
@@ -202,7 +237,7 @@ class WaypointsConfiguration:
 class TrajectoryConfiguration:
     """ 
     """
-    def __init__(self, trajectory_dict:dict):
+    def __init__(self, trajectory_dict:dict|str|Path):
         """ Example Trajectory Dict:
          {
          "waypoints": {
@@ -235,6 +270,9 @@ class TrajectoryConfiguration:
          }
          } 
          """
+        if isinstance(trajectory_dict, str) or isinstance(trajectory_dict, Path):
+            trajectory_dict = json.load(open(trajectory_dict, 'r'))
+        assert isinstance(trajectory_dict, dict)
         waypoint_dict = trajectory_dict['waypoints']
         aircraft_dict = trajectory_dict['aircraft']
         state_dict = trajectory_dict['state']
@@ -268,17 +306,17 @@ class TrajectoryConfiguration:
 def perturb_quaternion(q:Quaternion, delta_theta=0.01):
     """ Perturbs a quaternion by a small rotation. """
     # Generate a small random rotation axis
-    
+    quat_coeffs = q.coeffs()
     axis = rng.standard_normal(3)
     axis /= np.linalg.norm(axis)  # Normalize to unit vector
     
     # Create small rotation quaternion
-    delta_q = R.from_rotvec(delta_theta * axis).as_quat()  # [x, y, z, w]
+    delta_q = R.from_rotvec(delta_theta * axis).as_quat(canonical=True)  # [x, y, z, w]
     
     # Apply rotation (Hamilton product)
-    q_perturbed = R.from_quat(q) * R.from_quat(delta_q)
+    q_perturbed = R.from_quat(quat_coeffs) * R.from_quat(delta_q)
     
-    return q_perturbed.as_quat()  # Return perturbed quaternion
+    return q_perturbed.as_quat(canonical=True)  # Return perturbed quaternion
 
 def main():
     traj_dict = json.load(open('data/glider/problem_definition.json'),)

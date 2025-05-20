@@ -18,7 +18,7 @@ class SixDOF(ABC):
     Baseclass for 6DOF Dynamics Simulation in a NED system
     """
     num_controls:int
-    physical_integration_substeps:int
+    
     com:Union[ca.DM, np.ndarray, ca.MX, list[float]]
     static_inertia_tensor:ca.DM
     def __init__(self, *, opts:Optional[SixDOFOpts] = None, lqr:bool = False, setpoint:Optional[np.ndarray]=None, **kwargs) -> None:
@@ -31,6 +31,7 @@ class SixDOF(ABC):
         self.mass = self.opts.mass
         self.lqr = lqr
         self.normalise = False
+        self.physical_integration_substeps:int = self.opts.physical_integration_substeps
         if self.lqr:
             assert setpoint is not None, "Cannot perform LQR without a valid setpoint"
             self.setpoint = setpoint
