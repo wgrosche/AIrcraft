@@ -25,6 +25,7 @@ class ControlNodeWaypoints(ControlNode):
             index = node.index,
             state = node.state,
             control = node.control,
+            progress = node.progress,
             lam = lam,
             mu = mu,
             nu = nu

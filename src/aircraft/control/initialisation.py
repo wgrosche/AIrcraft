@@ -2,7 +2,7 @@ import numpy as np
 import dubins # https://github.com/AgRoboticsResearch/pydubins.git
 from aircraft.utils.utils import TrajectoryConfiguration
 from scipy.interpolate import CubicSpline
-from dubins import DubinsPath
+from dubins import _DubinsPath
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 
@@ -108,7 +108,7 @@ def transform_heading_to_plane(theta:float, plane_normal:Vector, u_axis:Vector) 
     return u_angle
 
 def sample_dubins_path(
-        path:DubinsPath, 
+        path:_DubinsPath, 
         min_interval:float=0.001, 
         max_interval:float=0.1, 
         curvature_factor:float=1.0, 

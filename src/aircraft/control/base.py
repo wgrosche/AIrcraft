@@ -27,7 +27,7 @@ class ControlNode:
     index:int
     state:ca.MX
     control:ca.MX
-    progress:Optional[Union[ca.MX, float]] = None
+    progress:Union[ca.MX, float]
 
 @runtime_checkable
 class SaveProgressProtocol(Protocol):
@@ -101,6 +101,13 @@ class SaveMixin(SaveProgressProtocol):
         except Exception as e:
             print(f"[SaveMixin] Failed to create dataset '{name}': {e}")
 
+class PlottingMixin:
+    def __init__(self):
+        pass
+
+    def _plot(self):
+
+
 class ControlProblem(ABC):
     """
     Abstract base class for defining optimal control problems using CasADi's Opti framework.
@@ -160,7 +167,7 @@ class ControlProblem(ABC):
 
         self.opts = opts if opts else {}
 
-        if self.opts['normalisation'] == 'integration':
+        if self.opts['quaternion'] == 'integration':
             system.normalise = True
         else:
             system.normalise = False
@@ -179,8 +186,6 @@ class ControlProblem(ABC):
         self.dt = dt
         self.max_jump = 0.05
         
-        
-
         self.scale_state = self.opts.get('scale_state', None)
         self.scale_control = self.opts.get('scale_control', None)
 
@@ -274,7 +279,7 @@ class ControlProblem(ABC):
         elif normalisation == 'baumgarte':
             x_dot = self.x_dot(node.state, node.control)
             assert isinstance(x_dot, ca.MX)
-            assert x_dot.size() == self.state_dim
+            assert x_dot.size()[0] == self.state_dim, f"x_dot: {x_dot.size()[0]} state: {self.state_dim}"
             x_dot_q = x_dot[6:10]
             phi_dot = 2 * ca.dot(node.state[6:10], x_dot_q)
 
@@ -365,7 +370,7 @@ class ControlProblem(ABC):
     def _setup_variables(self, nodes:List[ControlNode]) -> None:
         self.state = ca.hcat([nodes[i].state for i in range(self.num_nodes + 1)])
         self.control = ca.hcat([nodes[i].control for i in range(self.num_nodes)])
-
+        self.times = ca.cumsum([1 / nodes[i].progress for i in range(self.num_nodes)])
         self.opts.get('time', 'fixed')
         if self.progress:
             self.time = ca.sum1(ca.vertcat(*[ca.MX(1.0) / nodes[i].progress for i in range(self.num_nodes)]))
@@ -419,8 +424,45 @@ class ControlProblem(ABC):
         self.opti.callback(lambda iteration: self.callback(iteration))
         if warm_start:
             self.opti.set_initial(warm_start.value_variables())
-        sol = self.opti.solve()
+        try:
+            sol = self.opti.solve()
+            success = True
+        except RuntimeError as e:
+            print("Solver failed:", e)
+            sol = self.opti.debug
+            success = False
+        stats = self.opti.stats()
+        print(self.extract_solver_metrics(stats, success))
         return sol
+    
+    def extract_solver_metrics(self, stats:dict, success:bool):
+        metrics = {}
+
+        # IPOPT-specific stats
+        ipopt_stats = stats.get('iter_count', None)
+        solver_stats = stats.get('solver_stats', {})
+
+        if 't_wall_total' in solver_stats:
+            metrics['total_time'] = solver_stats['t_wall_total']
+        if 't_proc_total' in solver_stats:
+            metrics['cpu_time'] = solver_stats['t_proc_total']
+        if 'return_status' in solver_stats:
+            metrics['status'] = solver_stats['return_status']
+        if 'iterations' in solver_stats:
+            metrics['iterations'] = solver_stats['iterations']
+        if 'objective' in solver_stats:
+            metrics['final_objective'] = solver_stats['objective']
+        if 'dual_inf' in solver_stats:
+            metrics['dual_inf'] = solver_stats['dual_inf']
+        if 'primal_inf' in solver_stats:
+            metrics['primal_inf'] = solver_stats['primal_inf']
+        if 'kkt' in solver_stats:
+            metrics['kkt_error'] = solver_stats['kkt']
+
+        # Include success flag
+        metrics['success'] = success
+
+        return metrics
     
     def log(self, iteration:int) -> None:
         """

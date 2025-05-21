@@ -39,9 +39,9 @@ class AircraftControl(ControlProblem):
         self.constraint(
             self.opti.bounded(20**2, ca.dot(v_rel, v_rel), 80**2), # type: ignore[arg-type]
             description="Speed constraint")
-        self.constraint(
-            self.opti.bounded(-np.deg2rad(90), self.aircraft.phi(node.state), np.deg2rad(90)), 
-            description="Roll constraint")
+        # self.constraint(
+        #     self.opti.bounded(-np.deg2rad(90), self.aircraft.phi(node.state), np.deg2rad(90)), 
+        #     description="Roll constraint")
         self.constraint(
             self.opti.bounded(-np.deg2rad(10), self.aircraft.beta(node.state, node.control), np.deg2rad(10)), 
             description="Sideslip constraint")
@@ -127,7 +127,7 @@ class AircraftControl(ControlProblem):
             trajectory_data = TrajectoryData(
                 state=np.array(self.opti.debug.value(self.state))[:, 1:],
                 control=np.array(self.opti.debug.value(self.control)),
-                time=np.array(self.opti.debug.value(self.time))
+                times=np.array(self.opti.debug.value(self.times))
             )
             self.plotter.plot(trajectory_data=trajectory_data)
             plt.draw()
@@ -139,7 +139,7 @@ class AircraftControl(ControlProblem):
         trajectory_data = TrajectoryData(
                 state=np.array(self.opti.debug.value(self.state))[:, :-1],
                 control=np.array(self.opti.debug.value(self.control)),
-                time=np.array(self.opti.debug.value(self.time))
+                times=np.array(self.opti.debug.value(self.times))
             )
         self.plotter.plot(trajectory_data=trajectory_data)
         plt.draw()

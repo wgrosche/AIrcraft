@@ -1,4 +1,4 @@
-from aircraft.control.aircraft import TrajectoryConfiguration
+from aircraft.utils.utils import TrajectoryConfiguration
 from pathlib import Path
 from aircraft.config import NETWORKPATH
 from aircraft.dynamics.aircraft import AircraftOpts, Aircraft
@@ -6,7 +6,8 @@ import numpy as np
 from tqdm import tqdm
 import casadi as ca
 import json
-from aircraft.control.aircraft import AircraftControl, WaypointControl, ControlNode
+from typing import Any
+from aircraft.control.aircraft import AircraftControl,  ControlNode
 from aircraft.control.base import SaveMixin#, VariableTimeMixin
 
 from aircraft.control.variable_time import ProgressTimeMixin
@@ -16,7 +17,7 @@ from aircraft.plotting.plotting import TrajectoryPlotter, TrajectoryData
 
 
 class Controller(AircraftControl, SaveMixin):#, ProgressTimeMixin):
-    def __init__(self, *, aircraft:Aircraft, num_nodes:int=298, dt:float=.01, opts:dict = {}, filepath:str = '', **kwargs:Aircraft):
+    def __init__(self, *, aircraft:Aircraft, num_nodes:int=298, dt:float=.01, opts:dict = {}, filepath:str|Path = '', **kwargs:Any):
         super().__init__(aircraft=aircraft, num_nodes=num_nodes, opts = opts, dt = dt, **kwargs)
         if filepath:
             self.save_path = filepath
@@ -79,7 +80,7 @@ class Controller(AircraftControl, SaveMixin):#, ProgressTimeMixin):
                 trajectory_data = TrajectoryData(
                     state=np.array(state_traj)[:, 1:],
                     control=np.array(self.opti.debug.value(self.control)),
-                    time=np.array(self.opti.debug.value(self.time))
+                    times=np.array(self.opti.debug.value(self.times))
                 )
                 self.plotter.plot(trajectory_data=trajectory_data)
                 plt.draw()
@@ -116,11 +117,10 @@ def main():
 
     aircraft_config = trajectory_config.aircraft
 
-    poly_path = Path(NETWORKPATH) / 'fitted_models_casadi.pkl'
-    opts = AircraftOpts(poly_path=poly_path, aircraft_config=aircraft_config, physical_integration_substeps=1)
+    # poly_path = Path(NETWORKPATH) / 'fitted_models_casadi.pkl'
+    opts = AircraftOpts(coeff_model_type='default', coeff_model_path='', aircraft_config=aircraft_config, physical_integration_substeps=1)
 
     aircraft = Aircraft(opts = opts)
-    aircraft.STEPS = 1
     trim_state_and_control = [0, 0, -200, 50, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
     aircraft.com = np.array(trim_state_and_control[-3:])
     filepath = Path(DATAPATH) / 'trajectories' / 'basic_test.h5'

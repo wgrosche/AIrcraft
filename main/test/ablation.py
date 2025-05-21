@@ -23,6 +23,7 @@ from aircraft.plotting.plotting import TrajectoryPlotter, TrajectoryData
 
 
 class Controller(AircraftControl, SaveMixin):#, ProgressTimeMixin):
+    goal:np.ndarray
     def __init__(self, *, aircraft, num_nodes=298, dt=.01, opts = {}, filepath:str = '', **kwargs):
         super().__init__(aircraft=aircraft, num_nodes=num_nodes, opts = opts, dt = dt, **kwargs)
         if filepath:
@@ -32,11 +33,11 @@ class Controller(AircraftControl, SaveMixin):#, ProgressTimeMixin):
         self.plotter = TrajectoryPlotter(aircraft)
         
 
-    def loss(self, nodes, time, goal:list = []):
+    def loss(self, nodes, time):
         control_loss = ca.sumsqr(self.control[: 1:] - self.control[:, -1])
-        if goal:
-            indices = len(goal)
-            distance_loss = 1000*ca.sumsqr(nodes[-1].state[:indices] - goal)
+        if self.goal:
+            indices = self.goal.shape[0]
+            distance_loss = 1000*ca.sumsqr(nodes[-1].state[:indices] - self.goal)
 
 
         height_loss = 

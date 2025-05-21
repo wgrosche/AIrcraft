@@ -19,9 +19,11 @@ from aircraft.utils.utils import load_model, TrajectoryConfiguration, AircraftCo
 
 from dataclasses import dataclass
 from aircraft.dynamics.base import SixDOFOpts, SixDOF
-from aircraft.dynamics.aircraft import *
+from aircraft.dynamics.aircraft import Aircraft, AircraftOpts
+from aircraft.dynamics.coefficient_models import PolynomialModel
 from aircraft.plotting.plotting import TrajectoryPlotter
 from argparse import ArgumentParser
+
 
 model_path = Path(NETWORKPATH) / 'model-dynamics.pth'
 poly_path = Path(NETWORKPATH) / 'fitted_models_casadi.pkl'
@@ -29,7 +31,7 @@ linear_path = Path(DATAPATH) / 'glider' / 'linearised.csv'
 traj_dict = json.load(open('data/glider/problem_definition.json'))
 trajectory_config = TrajectoryConfiguration(traj_dict)
 aircraft_config = trajectory_config.aircraft
-opts = AircraftOpts(linear_path=linear_path, poly_path=poly_path, nn_model_path=model_path, aircraft_config=aircraft_config)
+opts = AircraftOpts(coeff_model_type='default', coeff_model_path='', aircraft_config=aircraft_config)
 
 def setup_parser() -> ArgumentParser:
     parser = ArgumentParser(
@@ -43,33 +45,16 @@ def setup_parser() -> ArgumentParser:
 
     return parser
 
-def setup_aircraft(type:str, trimming:bool = False) -> SixDOF:
-    if trimming:
-        if type == 'polynomial':
-            aircraft = PolynomialAircraft(opts = opts)
-        elif type == 'linear':
-            aircraft = LinearAircraft(opts = opts)
-        elif type == 'neural':
-            aircraft = NeuralAircraft(opts = opts)
-        else:
-            raise ValueError("Invalid type")
-    else:
-        if type == 'polynomial':
-            aircraft = PolynomialAircraft(opts = opts)
-        elif type == 'linear':
-            aircraft = LinearAircraft(opts = opts)
-        elif type == 'neural':
-            aircraft = NeuralAircraft(opts = opts)
-        else:
-            raise ValueError("Invalid type")
+def setup_aircraft(type:str='', trimming:bool = False) -> SixDOF:
+
+    # aircraft = Aircraft(opts = opts, coefficient_model=lambda a: PolynomialModel(opts.poly_path, aircraft=a))
+    aircraft = Aircraft(opts = opts, coefficient_model=None)
     return aircraft
         
 
 def main():
-    
-    args = setup_parser().parse_args()
 
-    aircraft = setup_aircraft(args.type)
+    aircraft = Aircraft(opts = opts)
 
     trim_state_and_control = [0, 0, -200, 50, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
 
@@ -127,13 +112,13 @@ def main():
             state_list[:, i] = state.full().flatten()
             control_list[:, i] = control
             state = dyn(state, control, dt)
-            if args.get('perturb'):
-                if ele_pos:
-                    control[1] += 0.01
-                    ele_pos = False
-                else:
-                    control[1] -= 0.01
-                    ele_pos = True
+            # if args.get('perturb'):
+            #     if ele_pos:
+            #         control[1] += 0.01
+            #         ele_pos = False
+            #     else:
+            #         control[1] -= 0.01
+            #         ele_pos = True
                     
             t += 1
 

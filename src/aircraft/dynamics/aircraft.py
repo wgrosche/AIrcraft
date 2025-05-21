@@ -1,8 +1,9 @@
+from __future__ import annotations
 
 
 import casadi as ca
 from abc import abstractmethod
-from typing import Union, Tuple, Optional
+from typing import Union, Tuple, Optional, Callable, TYPE_CHECKING
 import numpy as np
 from pathlib import Path
 import pandas as pd
@@ -10,23 +11,48 @@ import pickle
 from aircraft.utils.utils import load_model, AircraftConfiguration
 from dataclasses import dataclass
 from aircraft.dynamics.base import SixDOFOpts, SixDOF
+from aircraft.dynamics.coefficient_models import LinearModel, CoefficientModel, DefaultModel, PolynomialModel, NeuralModel
 
-__all__ = ['AircraftTrim', 'AircraftOpts', 'LinearAircraft', 'NeuralAircraft', 'PolynomialAircraft']
+__all__ = ['AircraftTrim', 'AircraftOpts']
 
+if TYPE_CHECKING:
+    from aircraft.dynamics.aircraft import Aircraft 
+# @dataclass
+# class AircraftOpts(SixDOFOpts):
+#     linear_path:Optional[Path] = None
+#     poly_path:Optional[Path] = None
+#     nn_model_path:Optional[Path] = None
+#     aircraft_config:AircraftConfiguration = AircraftConfiguration({})
+#     realtime:bool = False # Work in progress implementation of faster nn 
+#     stall_angle_alpha:Tuple[float, float] = (float(np.deg2rad(-10)), float(np.deg2rad(10)))
+#     stall_angle_beta:Tuple[float, float] = (float(np.deg2rad(-10)), float(np.deg2rad(10)))
+#     stall_scaling:bool = True
+    
+#     def __post_init__(self):
+#         self.mass:float = self.aircraft_config.mass
+#         if self.linear_path is not None:
+#             assert isinstance(self.linear_path, str|Path)
+#             self.coefficient_model = (lambda a: LinearModel(self.linear_path, a))
+#         elif self.poly_path
+    
 @dataclass
 class AircraftOpts(SixDOFOpts):
-    linear_path:Optional[Path] = None
-    poly_path:Optional[Path] = None
-    nn_model_path:Optional[Path] = None
-    aircraft_config:AircraftConfiguration = AircraftConfiguration({})
-    realtime:bool = False # Work in progress implementation of faster nn 
-    stall_angle_alpha:Tuple[float, float] = (float(np.deg2rad(-10)), float(np.deg2rad(10)))
-    stall_angle_beta:Tuple[float, float] = (float(np.deg2rad(-10)), float(np.deg2rad(10)))
-    stall_scaling:bool = True
-    
+    coeff_model_type: str = "default"         # "linear", "poly", "nn", or "default"
+    coeff_model_path: Path|str = ''   # path to .csv, .pkl, .onnx, etc.
+    realtime: bool = False                    # optional kwargs
+    aircraft_config: AircraftConfiguration = AircraftConfiguration({})
+    stall_angle_alpha: Tuple[float, float] = (float(np.deg2rad(-10)), float(np.deg2rad(10)))
+    stall_angle_beta: Tuple[float, float] = (float(np.deg2rad(-10)), float(np.deg2rad(10)))
+    stall_scaling: bool = True
+
     def __post_init__(self):
-        self.mass:float = self.aircraft_config.mass
-    
+        from aircraft.dynamics.coefficient_models import COEFF_MODEL_REGISTRY
+        self.mass: float = self.aircraft_config.mass
+
+        # Prepare model factory for later
+        factory = COEFF_MODEL_REGISTRY.get(self.coeff_model_type, COEFF_MODEL_REGISTRY["default"])
+        self.coefficient_model = lambda aircraft: factory(self.coeff_model_path, aircraft, realtime=self.realtime)
+
 class Aircraft(SixDOF):
     """ 
     NN based flight dynamics for aircraft. 
@@ -106,7 +132,7 @@ class Aircraft(SixDOF):
         self.grav = self.opts.gravity
         self.stall_scaling = self.opts.stall_scaling
         self.initialise_aircraft(self.opts.aircraft_config)
-
+        self.coefficient_model = self.opts.coefficient_model(self) if self.opts.coefficient_model else DefaultModel(self)
         self.state
         self.control
 
@@ -238,20 +264,7 @@ class Aircraft(SixDOF):
         new_vel = self._v_frd_rel[0] 
         new_vel[0] += self.b * r / 4
         self._right_wing_qbar = 0.5 * 1.225 * ca.dot(new_vel, new_vel)
-        return ca.Function('right_wing_qbar', [self.state, self.control], [self._right_wing_qbar])
-    
-
-        
-
-    
-    @abstractmethod
-    def model_outputs(self, inputs:ca.DM) -> ca.MX:
-        """
-        Generates the forward pass of the aerodynamics surrogate ready for post-processing by coefficients
-        """
-        ...
-    
-
+        return ca.Function('right_wing_qbar', [self.state, self.control], [self._right_wing_qbar])   
     
     @property
     def coefficients(self) -> ca.Function:
@@ -275,13 +288,9 @@ class Aircraft(SixDOF):
             self._elevator
             )
         
-
-        outputs = self.model_outputs(inputs)
+        assert isinstance(inputs, ca.DM | ca.MX)
+        outputs = self.coefficient_model(inputs)
         
-        # Simplified rudder model
-        Cn_rudder = -0.1
-        outputs[5] += Cn_rudder * 6 * self._rudder * np.pi / 180
-
         if self.stall_scaling:
             # stall scaling
             stall_angle_alpha = np.deg2rad(10)
@@ -306,8 +315,6 @@ class Aircraft(SixDOF):
             [self.state, self.control], 
             [self._coefficients]
             )
-    
-
     
     @property
     def _forces_frd(self) -> ca.MX:
@@ -375,181 +382,3 @@ class AircraftTrim(Aircraft):
         inertia_tensor = self.static_inertia_tensor + mass * com_term
 
         return inertia_tensor
-    
-class LinearAircraft(Aircraft):
-    def __init__(
-            self,
-            *,
-            linear_path:Optional[Union[str, Path]] = None,
-            **kwargs
-            ):
-        
-        super().__init__(**kwargs)
-        self.fitted = False
-        if linear_path is not None:
-            self.linear_coeffs = ca.DM(np.array(pd.read_csv(linear_path)))
-            self.fitted = True
-        self.fitted_models = None
-
-    def model_outputs(self, inputs: ca.DM) -> ca.MX:
-        if self.fitted:
-            return ca.MX(ca.mtimes(self.linear_coeffs, ca.vertcat(inputs, 1)))
-
-        _, alpha, beta, aileron, elevator = ca.vertsplit(inputs)
-        
-        p, q, r = ca.vertsplit(self._omega_frd_ned)
-        
-        # Constants for control surface effectiveness
-        CD0 = 0.02
-        CD_alpha = 0.3
-
-        CL0 = 0.0
-        CL_alpha = 5.0  # lift per rad
-
-        CY_beta = -0.98
-
-        Cl_aileron = 0.08
-        Cl_p = -0.05  # roll damping
-
-        Cm_elevator = -1.2
-        Cm_q = -.5  # pitch damping
-
-        Cn_rudder = -0.1
-        Cn_r = -0.05  # yaw damping
-
-        # Core coefficient calculations
-        CD = CD0 + CD_alpha * alpha**2
-        CL = CL0 + CL_alpha * alpha
-        CY = CY_beta * beta
-
-        Cl = Cl_aileron * 4 * aileron  * np.pi / 180+ Cl_p * p
-        Cm = Cm_elevator * 5 * elevator  * np.pi / 180 + Cm_q * q
-        Cn = Cn_rudder * 6 * self._rudder * np.pi / 180 + Cn_r * r
-
-        return ca.MX(ca.vertcat(-CD, CY, -CL, Cl, Cm, Cn))
-
-    @property
-    def coefficients(self) -> ca.Function:
-        """
-        Returns simplified, hardcoded aerodynamic coefficients for testing.
-        Includes basic damping from angular rates (p, q, r).
-
-        Outputs: [CD, CY, CL, Cl, Cm, Cn] (drag, side force, lift, roll, pitch, yaw)
-        """
-        self._ensure_initialized(
-            'qbar', 'alpha', 'beta'
-        )
-
-        inputs = ca.vertcat(
-            self._qbar, 
-            self._alpha, 
-            self._beta, 
-            self._aileron, 
-            self._elevator
-            )
-        
-        self._coefficients = self.model_outputs(inputs)
-
-        return ca.Function(
-            'coefficients', 
-            [self.state, self.control], 
-            [self._coefficients]
-            )
-    
-class NeuralAircraft(Aircraft):
-    def __init__(
-            self,
-            *,
-            neural_path:Optional[Union[str, Path]] = None,
-            realtime:bool = False,
-            **kwargs
-            ):
-        
-        super().__init__(**kwargs)
-
-        try:
-            from l4casadi import L4CasADi
-            from l4casadi.realtime import RealTimeL4CasADi
-        except ImportError as e:
-            raise ImportError("Mode 'neural' requires `l4casadi`. Please install it to proceed.") from e
-
-        assert isinstance(neural_path, (str, Path)), "Must supply a valid model path for mode 'neural'"
-
-        model = load_model(filepath=neural_path)
-        if realtime:
-            self.model = RealTimeL4CasADi(model, approximation_order=1)
-        else:
-            self.model = L4CasADi(model, name='AeroModel', generate_jac_jac=True)
-
-    def model_outputs(self, inputs: ca.DM) -> ca.MX:
-        outputs = self.model(ca.reshape(inputs, 1, -1))
-        assert isinstance(outputs, ca.MX), "model output not a ca.MX object"
-        outputs = ca.vertcat(outputs.T)
-        return ca.MX(outputs)
-
-class PolynomialAircraft(Aircraft):
-    def __init__(
-            self,
-            *,
-            poly_path:Optional[Union[str, Path]] = None,
-            realtime:bool = False,
-            **kwargs
-            ):
-        assert isinstance(poly_path, Union[str, Path]), "must supply a valid linear path for mode 'polynomial'"
-        with open(poly_path, 'rb') as file:
-            self.fitted_models = pickle.load(file)
-        assert isinstance(self.fitted_models, dict)
-        
-        super().__init__(**kwargs)
-
-
-    def model_outputs(self, inputs: ca.DM) -> ca.MX:
-        """
-        Forward pass of the polynomial model to retrieve aerodynamic coefficients.
-
-        To calculate damping factors the effective velocities (under the angular rotation) of the relevant lifting surfaces are calculated and passed as inputs to the model.
-        """
-        outputs = ca.vertcat(*[self.fitted_models['casadi_functions'][i](inputs) for i in self.fitted_models['casadi_functions'].keys()])
-
-        # roll rate contribution with terms due to changed angle of attack and airspeed
-        left_wing_inputs = ca.vertcat(
-            self._left_wing_qbar, # may want to use qbar here instead
-            self._left_wing_alpha,
-            0,
-            0,
-            0
-        )
-
-        left_wing_lift_coeff = ca.vertcat(*[self.fitted_models['casadi_functions'][i](left_wing_inputs) for i in self.fitted_models['casadi_functions'].keys()])
-        right_wing_inputs = ca.vertcat(
-            self._right_wing_qbar, # may want to use qbar here instead
-            self._right_wing_alpha,
-            0,
-            0,
-            0
-        )
-        right_wing_lift_coeff = ca.vertcat(*[self.fitted_models['casadi_functions'][i](right_wing_inputs) for i in self.fitted_models['casadi_functions'].keys()])
-
-        outputs[3] += self.b / 4 * (right_wing_lift_coeff[2] / 2 - left_wing_lift_coeff[2] / 2) # span over 4 assumes wing lift attacks at centre of wing, coeffs/2 to adjust reference area as the lift of each wing should be halved relative to the whole plane
-        # pitch coefficient contribution due to pitch rate
-        elevator_inputs = ca.vertcat(
-            self._qbar,
-            self._elevator_alpha,
-            self._beta,
-            self._aileron,
-            self._elevator
-        )
-        elevator_damped_pitch_coeff = ca.vertcat(*[self.fitted_models['casadi_functions'][i](elevator_inputs) for i in self.fitted_models['casadi_functions'].keys()])
-        outputs[4] = elevator_damped_pitch_coeff[4]
-
-        # yaw coefficient contribution due to yaw rate
-        rudder_inputs = ca.vertcat(
-            self._qbar,
-            self._alpha,
-            self._rudder_beta,
-            self._aileron,
-            self._elevator
-        )  
-        rudder_damped_yaw_coeff = ca.vertcat(*[self.fitted_models['casadi_functions'][i](rudder_inputs) for i in self.fitted_models['casadi_functions'].keys()])
-        outputs[5] = rudder_damped_yaw_coeff[5]
-        return ca.MX(outputs)
