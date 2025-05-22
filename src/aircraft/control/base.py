@@ -106,7 +106,7 @@ class PlottingMixin:
         pass
 
     def _plot(self):
-
+        pass
 
 class ControlProblem(ABC):
     """
@@ -206,7 +206,7 @@ class ControlProblem(ABC):
         self.sol_control_list = []
         self.final_times = []
         
-        super().__init__(**kwargs)
+        super().__init__()#**kwargs)
 
     def _scale_variable(self, var, scale):
         return ca.DM(scale) * var if scale else var
@@ -370,7 +370,7 @@ class ControlProblem(ABC):
     def _setup_variables(self, nodes:List[ControlNode]) -> None:
         self.state = ca.hcat([nodes[i].state for i in range(self.num_nodes + 1)])
         self.control = ca.hcat([nodes[i].control for i in range(self.num_nodes)])
-        self.times = ca.cumsum([1 / nodes[i].progress for i in range(self.num_nodes)])
+        self.times = ca.cumsum(ca.vertcat(*[1 / nodes[i].progress for i in range(self.num_nodes)]))
         self.opts.get('time', 'fixed')
         if self.progress:
             self.time = ca.sum1(ca.vertcat(*[ca.MX(1.0) / nodes[i].progress for i in range(self.num_nodes)]))

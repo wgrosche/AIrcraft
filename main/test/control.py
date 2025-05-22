@@ -16,12 +16,12 @@ import matplotlib.pyplot as plt
 from aircraft.plotting.plotting import TrajectoryPlotter, TrajectoryData
 
 
-class Controller(AircraftControl, SaveMixin):#, ProgressTimeMixin):
+class Controller(AircraftControl):#, SaveMixin):#, ProgressTimeMixin):
     def __init__(self, *, aircraft:Aircraft, num_nodes:int=298, dt:float=.01, opts:dict = {}, filepath:str|Path = '', **kwargs:Any):
         super().__init__(aircraft=aircraft, num_nodes=num_nodes, opts = opts, dt = dt, **kwargs)
         if filepath:
             self.save_path = filepath
-        SaveMixin._init_saving(self, self.save_path, force_overwrite=True)
+        # SaveMixin._init_saving(self, self.save_path, force_overwrite=True)
         # ProgressTimeMixin._init_progress_time(self, self.opti, num_nodes)
         self.plotter = TrajectoryPlotter(aircraft)
         
@@ -29,7 +29,7 @@ class Controller(AircraftControl, SaveMixin):#, ProgressTimeMixin):
     def loss(self, nodes:ControlNode, time:ca.MX) -> ca.MX:
         control_loss = ca.sumsqr(self.control[: 1:] - self.control[:, -1])
         # self.constraint(ca.sumsqr(nodes[-1].state[:3] - [0, 30, -180])==0)
-        return 1000*ca.sumsqr(nodes[-1].state[:2] - [0, 30]) + control_loss + time - ca.sumsqr(self.state[:, 3])/100 - ca.sumsqr(self.state[:, 2])/100#time
+        return 1000*ca.sumsqr(nodes[-1].state[:3] - [0, 30, -180])# + control_loss# + time - ca.sumsqr(self.state[:, 3])/100 - ca.sumsqr(self.state[:, 2])/100#time
         # return 1000*ca.sumsqr(nodes[-1].state[:3] - [0, 100, -180]) + control_loss + time #time
     
     def initialise(self, initial_state):
@@ -72,43 +72,7 @@ class Controller(AircraftControl, SaveMixin):#, ProgressTimeMixin):
                 - Extracts quaternion components from state vector (indices 6:10)
                 - Plots trajectory using TrajectoryPlotter when iteration is a multiple of 50
             """
-            state_traj = self.opti.debug.value(self.state)  # shape (n_states, N+1)
-            # quat_norms = np.linalg.norm(state_traj[6:10, :], axis=0)
-            # print(f"Iteration: {iteration}", " Quaternion Norm: ", quat_norms)
-            if self.plotter and iteration % 50 == 0:
-                print("plotting")
-                trajectory_data = TrajectoryData(
-                    state=np.array(state_traj)[:, 1:],
-                    control=np.array(self.opti.debug.value(self.control)),
-                    times=np.array(self.opti.debug.value(self.times))
-                )
-                self.plotter.plot(trajectory_data=trajectory_data)
-                plt.draw()
-                self.plotter.figure.canvas.start_event_loop(0.0002)
-                plt.show()
-        
-                super().callback(iteration)
-    # def callback(self, iteration: int):
-    #     # J = self.opti.debug.value(ca.jacobian(self.opti.g, self.opti.x))
-    #     # plt.spy(J)
-    #     # plt.show(block = True)
-    #     # return None
-    #     # super().callback(iteration)
-    #     # print(f"Iteration: {iteration}", " Quaternion Norm: ", np.linalg.norm(self.opti.debug.value(self.state)[6:10, :], axis=0))
-    #     if self.plotter and iteration % 50 == 0:
-    #         print("plotting")
-    #         # if iteration==0:
-    #         trajectory_data = TrajectoryData(
-    #             state=np.array(self.opti.debug.value(self.state))[:, 1:],
-    #             control=np.array(self.opti.debug.value(self.control)),
-    #             time=np.array(self.opti.debug.value(self.time))
-    #         )
-    #         self.plotter.plot(trajectory_data=trajectory_data)
-    #         plt.draw()
-    #         self.plotter.figure.canvas.start_event_loop(0.0002)
-    #         plt.show()
-    
-    #         super().callback(iteration)
+            super().callback(iteration)
 
 def main():
     traj_dict = json.load(open('data/glider/problem_definition.json'))
@@ -125,8 +89,8 @@ def main():
     aircraft.com = np.array(trim_state_and_control[-3:])
     filepath = Path(DATAPATH) / 'trajectories' / 'basic_test.h5'
 
-    controller_opts = {'time':'fixed', 'quaternion':'baumgarte', 'integration':'implicit'}
-    controller = Controller(aircraft=aircraft, filepath=filepath, implicit=False, progress = False, opts = controller_opts)
+    controller_opts = {'time':'fixed', 'quaternion':'constraint', 'integration':'implicit'}
+    controller = Controller(aircraft=aircraft, filepath=filepath, implicit=True, progress = False, opts = controller_opts)
     guess = controller.initialise(ca.DM(trim_state_and_control[:aircraft.num_states]))
     controller.setup(guess)
     

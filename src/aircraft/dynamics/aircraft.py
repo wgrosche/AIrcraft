@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import casadi as ca
 from abc import abstractmethod
-from typing import Union, Tuple, Optional, Callable, TYPE_CHECKING
+from typing import Tuple, TYPE_CHECKING
 import numpy as np
 from pathlib import Path
 import pandas as pd
@@ -11,29 +11,13 @@ import pickle
 from aircraft.utils.utils import load_model, AircraftConfiguration
 from dataclasses import dataclass
 from aircraft.dynamics.base import SixDOFOpts, SixDOF
-from aircraft.dynamics.coefficient_models import LinearModel, CoefficientModel, DefaultModel, PolynomialModel, NeuralModel
+from aircraft.dynamics.coefficient_models import DefaultModel
 
 __all__ = ['AircraftTrim', 'AircraftOpts']
 
 if TYPE_CHECKING:
-    from aircraft.dynamics.aircraft import Aircraft 
-# @dataclass
-# class AircraftOpts(SixDOFOpts):
-#     linear_path:Optional[Path] = None
-#     poly_path:Optional[Path] = None
-#     nn_model_path:Optional[Path] = None
-#     aircraft_config:AircraftConfiguration = AircraftConfiguration({})
-#     realtime:bool = False # Work in progress implementation of faster nn 
-#     stall_angle_alpha:Tuple[float, float] = (float(np.deg2rad(-10)), float(np.deg2rad(10)))
-#     stall_angle_beta:Tuple[float, float] = (float(np.deg2rad(-10)), float(np.deg2rad(10)))
-#     stall_scaling:bool = True
-    
-#     def __post_init__(self):
-#         self.mass:float = self.aircraft_config.mass
-#         if self.linear_path is not None:
-#             assert isinstance(self.linear_path, str|Path)
-#             self.coefficient_model = (lambda a: LinearModel(self.linear_path, a))
-#         elif self.poly_path
+    from aircraft.dynamics.aircraft import Aircraft
+
     
 @dataclass
 class AircraftOpts(SixDOFOpts):
@@ -43,7 +27,7 @@ class AircraftOpts(SixDOFOpts):
     aircraft_config: AircraftConfiguration = AircraftConfiguration({})
     stall_angle_alpha: Tuple[float, float] = (float(np.deg2rad(-10)), float(np.deg2rad(10)))
     stall_angle_beta: Tuple[float, float] = (float(np.deg2rad(-10)), float(np.deg2rad(10)))
-    stall_scaling: bool = True
+    stall_scaling: bool = False
 
     def __post_init__(self):
         from aircraft.dynamics.coefficient_models import COEFF_MODEL_REGISTRY
