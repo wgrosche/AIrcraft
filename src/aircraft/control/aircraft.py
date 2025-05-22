@@ -123,7 +123,7 @@ class AircraftControl(ControlProblem):
     
     def callback(self, iteration: int):
         super().callback(iteration)
-        if self.plotter and iteration % 10 == 5:
+        if self.plotter and iteration % 50 == 5:
             trajectory_data = TrajectoryData(
                 state=np.array(self.opti.debug.value(self.state))[:, 1:],
                 control=np.array(self.opti.debug.value(self.control)),

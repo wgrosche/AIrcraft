@@ -28,8 +28,8 @@ class Controller(AircraftControl):#, SaveMixin):#, ProgressTimeMixin):
 
     def loss(self, nodes:ControlNode, time:ca.MX) -> ca.MX:
         control_loss = ca.sumsqr(self.control[: 1:] - self.control[:, -1])
-        # self.constraint(ca.sumsqr(nodes[-1].state[:3] - [0, 30, -180])==0)
-        return 1000*ca.sumsqr(nodes[-1].state[:3] - [0, 30, -180])# + control_loss# + time - ca.sumsqr(self.state[:, 3])/100 - ca.sumsqr(self.state[:, 2])/100#time
+        self.constraint(ca.sumsqr(nodes[-1].state[:3] - [0, 30, -180])==0)
+        return control_loss#1000*ca.sumsqr(nodes[-1].state[:3] - [0, 30, -180])# + control_loss# + time - ca.sumsqr(self.state[:, 3])/100 - ca.sumsqr(self.state[:, 2])/100#time
         # return 1000*ca.sumsqr(nodes[-1].state[:3] - [0, 100, -180]) + control_loss + time #time
     
     def initialise(self, initial_state):
