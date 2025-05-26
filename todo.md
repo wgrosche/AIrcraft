@@ -113,7 +113,7 @@ Final State:  [ 2.71825097e-10  3.00000000e+01 -1.80000000e+02 -3.73314043e+01
   4.45413540e-01  5.97477466e-01 -5.58006954e-01  7.18165869e-01
   1.04268472e+00]  Final Control:  [-4.99999779 -4.99999779 -4.9999978  -5.         -4.99999999 -5.00000001]  Final Forces:  [-51.5765, -156.479, -1472.69]
 
-Variable time (variable): Final time:
+Variable time (variable): Final time: 0.83 s (very strange results)
     traj_dict = json.load(open('data/glider/problem_definition.json'))
 
     trajectory_config = TrajectoryConfiguration(traj_dict)
@@ -142,3 +142,39 @@ Variable time (variable): Final time:
     plt.show(block = True)
 
 
+Number of Iterations....: 2200
+
+                                   (scaled)                 (unscaled)
+Objective...............:   4.2094131267795581e-01    1.2544051117803083e+02
+Dual infeasibility......:   8.5167225740273526e-03    2.5379833270601511e+00
+Constraint violation....:   1.4210854715202004e-14    2.8421709430404007e-14
+Variable bound violation:   0.0000000000000000e+00    0.0000000000000000e+00
+Complementarity.........:   1.0000000668132952e-11    2.9800001991036201e-09
+Overall NLP error.......:   1.0000000668132952e-11    2.5379833270601511e+00
+
+
+Number of objective function evaluations             = 2635
+Number of objective gradient evaluations             = 2201
+Number of equality constraint evaluations            = 2649
+Number of inequality constraint evaluations          = 2649
+Number of equality constraint Jacobian evaluations   = 2202
+Number of inequality constraint Jacobian evaluations = 2202
+Number of Lagrangian Hessian evaluations             = 2200
+Total seconds in IPOPT                               = 5470.085
+
+EXIT: Solved To Acceptable Level.
+      solver  :   t_proc      (avg)   t_wall      (avg)    n_eval
+callback_fun  |  14.24 s (  6.47ms)  15.00 s (  6.82ms)      2200
+       nlp_f  |  11.69ms (  4.44us)  11.12ms (  4.22us)      2635
+       nlp_g  |   2.47 s (931.20us)   2.57 s (969.00us)      2649
+  nlp_grad_f  |  34.14ms ( 15.50us)  34.27ms ( 15.56us)      2202
+  nlp_hess_l  | 176.98 s ( 80.48ms)   1.23ks (560.43ms)      2199
+   nlp_jac_g  |  45.23 s ( 20.53ms)  47.36 s ( 21.50ms)      2203
+       total  |   3.11ks (  3.11ks)   5.47ks (  5.47ks)         1
+{'success': True}
+state (13, 298) control (6, 298)
+lam:  None mu:  None nu:  None
+Final State:  [ 3.75432597e-32  3.00000000e+01 -1.80000000e+02 -3.76429340e+01
+  6.47602149e+01  2.58801853e+01 -2.83827959e-01 -6.36278543e-01
+  4.24668182e-01  5.78203029e-01 -5.56987777e-01  7.14029880e-01
+  1.04398353e+00]  Final Control:  [-4.9999613  -4.99996123 -4.99996145 -4.99999856 -4.99999694 -4.99999946]  Final Forces:  [-49.6078, -157.228, -1421.45]
