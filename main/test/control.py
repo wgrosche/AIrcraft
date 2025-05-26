@@ -23,13 +23,12 @@ class Controller(AircraftControl):#, SaveMixin):#, ProgressTimeMixin):
             self.save_path = filepath
         # SaveMixin._init_saving(self, self.save_path, force_overwrite=True)
         # ProgressTimeMixin._init_progress_time(self, self.opti, num_nodes)
-        self.plotter = TrajectoryPlotter(aircraft)
         
 
     def loss(self, nodes:ControlNode, time:ca.MX) -> ca.MX:
         control_loss = ca.sumsqr(self.control[: 1:] - self.control[:, -1])
         self.constraint(ca.sumsqr(nodes[-1].state[:3] - [0, 30, -180])==0)
-        return control_loss#1000*ca.sumsqr(nodes[-1].state[:3] - [0, 30, -180])# + control_loss# + time - ca.sumsqr(self.state[:, 3])/100 - ca.sumsqr(self.state[:, 2])/100#time
+        return control_loss + ca.sum(self.times)#1000*ca.sumsqr(nodes[-1].state[:3] - [0, 30, -180])# + control_loss# + time - ca.sumsqr(self.state[:, 3])/100 - ca.sumsqr(self.state[:, 2])/100#time
         # return 1000*ca.sumsqr(nodes[-1].state[:3] - [0, 100, -180]) + control_loss + time #time
     
     def initialise(self, initial_state):
@@ -89,10 +88,12 @@ def main():
     aircraft.com = np.array(trim_state_and_control[-3:])
     filepath = Path(DATAPATH) / 'trajectories' / 'basic_test.h5'
 
-    controller_opts = {'time':'fixed', 'quaternion':'constraint', 'integration':'implicit'}
-    controller = Controller(aircraft=aircraft, filepath=filepath, implicit=True, progress = False, opts = controller_opts)
+    # controller_opts = {'time':'fixed', 'quaternion':'', 'integration':'explicit'}
+    controller_opts = {'time':'variable', 'quaternion':'', 'integration':'explicit'}
+    controller = Controller(aircraft=aircraft, filepath=filepath, progress = False, opts = controller_opts)
     guess = controller.initialise(ca.DM(trim_state_and_control[:aircraft.num_states]))
     controller.setup(guess)
+    controller.logging = False
     
     controller.solve()
     final_state = controller.opti.debug.value(controller.state)[:, -1]

@@ -275,7 +275,10 @@ class TrajectoryPlotter:
         else:
             line = getattr(self, attr_name)
             line.set_ydata(y_data)
-            line.set_xdata(np.arange(len(y_data)))
+            if x_data is not None:
+                line.set_xdata(x_data)
+            else:
+                line.set_xdata(np.arange(len(y_data)))
 
     def plot_angles(self, trajectory_data: TrajectoryData):
         """

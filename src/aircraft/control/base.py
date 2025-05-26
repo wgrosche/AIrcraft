@@ -182,7 +182,7 @@ class ControlProblem(ABC):
         self.verbose = self.opts.get('verbose', False)
         self.constraint_descriptions = []
 
-        self.progress = progress
+        self.progress = self.opts.get('time', 'fixed') in ['progress', 'variable']
         self.dt = dt
         self.max_jump = 0.05
         
@@ -195,6 +195,7 @@ class ControlProblem(ABC):
         self.initial_state = self.opts.get('initial_state', None)
 
         self.solver_opts = self.opts.get('solver_options', default_solver_options)
+        self.logging = False
 
         self.filepath = self.opts.get('savefile', None)
         if self.filepath:
@@ -260,7 +261,7 @@ class ControlProblem(ABC):
         
     
     def state_constraint(self, node: ControlNode, next: ControlNode) -> None:
-        dt_i = ca.DM(1.0) / node.progress
+        dt_i = ca.DM(1.0) / node.progress if self.opts.get('time', 'fixed') in ['progress', 'fixed'] else ca.MX(node.progress)
         normalisation = self.opts.get('quaternion', None)
 
         if self.opts.get('integration', 'explicit') == 'explicit':
@@ -342,10 +343,17 @@ class ControlProblem(ABC):
         opti.set_initial(node.control, control_guess)
 
         # Progress constraint
-        if self.progress:
+        if self.opts.get('time', 'fixed') == 'progress':
             opti.set_initial(node.progress, 1 / self.dt)
             self.constraint(
                 opti.bounded(5e1, node.progress, 1e4),  # type: ignore[arg-type]
+                description=f"positive progress rate at node {index}"
+            )
+
+        elif self.opts.get('time', 'fixed') == 'variable':
+            opti.set_initial(node.progress, self.dt)
+            self.constraint(
+                opti.bounded(1e-4, node.progress, 5e-2),  # type: ignore[arg-type]
                 description=f"positive progress rate at node {index}"
             )
 
@@ -370,8 +378,11 @@ class ControlProblem(ABC):
     def _setup_variables(self, nodes:List[ControlNode]) -> None:
         self.state = ca.hcat([nodes[i].state for i in range(self.num_nodes + 1)])
         self.control = ca.hcat([nodes[i].control for i in range(self.num_nodes)])
-        self.times = ca.cumsum(ca.vertcat(*[1 / nodes[i].progress for i in range(self.num_nodes)]))
-        self.opts.get('time', 'fixed')
+        if self.opts.get('time', 'fixed') in ['fixed', 'progress']:
+            self.times = ca.cumsum(ca.vertcat(*[1 / nodes[i].progress for i in range(self.num_nodes)]))
+        else:
+            self.times = ca.cumsum(ca.vertcat(*[nodes[i].progress for i in range(self.num_nodes)]))
+        
         if self.progress:
             self.time = ca.sum1(ca.vertcat(*[ca.MX(1.0) / nodes[i].progress for i in range(self.num_nodes)]))
             assert isinstance(self.time, ca.MX)
@@ -410,14 +421,14 @@ class ControlProblem(ABC):
         self._setup_objective(nodes)
 
     def callback(self, iteration: int) -> None:
-        self.sol_state_list.append(self.opti.debug.value(self.state))
-        self.sol_control_list.append(self.opti.debug.value(self.control))
-        self.final_times.append(self.opti.debug.value(self.time))
+        # self.sol_state_list.append(self.opti.debug.value(self.state))
+        # self.sol_control_list.append(self.opti.debug.value(self.control))
+        # self.final_times.append(self.opti.debug.value(self.time))
 
-        if isinstance(self, SaveProgressProtocol):
-            self._save_progress(iteration, self.sol_state_list, self.sol_control_list, self.final_times)
-
-        self.log(iteration)
+        # if isinstance(self, SaveProgressProtocol):
+        #     self._save_progress(iteration, self.sol_state_list, self.sol_control_list, self.final_times)
+        if self.logging == True:
+            self.log(iteration)
 
     def solve(self, warm_start:Optional[ca.OptiSol] = None) -> ca.OptiSol:
         self.opti.solver('ipopt', self.solver_opts)
