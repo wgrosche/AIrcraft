@@ -90,7 +90,7 @@ def main():
 
     # controller_opts = {'time':'fixed', 'quaternion':'', 'integration':'explicit'}
     controller_opts = {'time':'variable', 'quaternion':'', 'integration':'explicit'}
-    controller = Controller(aircraft=aircraft, filepath=filepath, progress = False, opts = controller_opts)
+    controller = Controller(aircraft=aircraft, filepath=filepath, opts = controller_opts)
     guess = controller.initialise(ca.DM(trim_state_and_control[:aircraft.num_states]))
     controller.setup(guess)
     controller.logging = False
@@ -98,7 +98,8 @@ def main():
     controller.solve()
     final_state = controller.opti.debug.value(controller.state)[:, -1]
     final_control = controller.opti.debug.value(controller.control)[:, -1]
-    print("Final State: ", final_state, " Final Control: ", final_control, " Final Forces: ", aircraft.forces_frd(final_state, final_control))
+    final_time = controller.opti.debug.value(controller.times)[-1]
+    print("Final State: ", final_state, " Final Control: ", final_control, " Final Forces: ", aircraft.forces_frd(final_state, final_control), " Final Time: ", final_time)
     plt.show(block = True)
 
     

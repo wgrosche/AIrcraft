@@ -131,7 +131,6 @@ def sample_dubins_path(
     time_intervals = []
     total_length = path.path_length()
     s = 0
-    print(dir(path))
     def compute_curvature(s):
         segment_length = 0
         current_s = s

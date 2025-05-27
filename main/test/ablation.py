@@ -20,30 +20,80 @@ from aircraft.control.variable_time import ProgressTimeMixin
 from aircraft.config import DATAPATH
 import matplotlib.pyplot as plt
 from aircraft.plotting.plotting import TrajectoryPlotter, TrajectoryData
+from aircraft.dynamics.coefficient_models import COEFF_MODEL_REGISTRY
+"""
+Ablation table opts:
 
+[
+    {'time':'variable', 'quaternion':'', 'integration':'explicit'},
+    {'time':'progress', 'quaternion':'', 'integration':'explicit'},
+    {'time':'variable', 'quaternion':'', 'integration':'explicit'},
+    {'time':'variable', 'quaternion':'', 'integration':'explicit'},
+    {'time':'variable', 'quaternion':'', 'integration':'explicit'}
+    },
+]
+"""
+
+def dict_to_filename(opts):
+    # Replace empty strings with a placeholder (e.g., 'none')
+    safe_opts = {k: (v if v else 'none') for k, v in opts.items()}
+    # Create key-value string pairs like time_fixed, model_nn, etc.
+    return '_'.join(f"{k}_{safe_opts[k]}" for k in sorted(safe_opts))
+
+opts = []
+for time in ['fixed', 'progress', 'variable', 'adaptive']:
+    for quaternion in ['constraint', 'baumgarte', 'integration', '']:
+        for integration in ['explicit', 'implicit']:
+            for model in ['linear', 'poly', 'nn', 'default']:
+                for steps in ['1', '5', '10', '100']:
+                    opts.append({'time':time, 'quaternion':quaternion, 'integration':integration, 'model':model, 'steps':steps})
+model_path = {} 
+
+traj_dict = json.load(open('data/glider/problem_definition.json'))
+
+trajectory_config = TrajectoryConfiguration(traj_dict)
+
+aircraft_config = trajectory_config.aircraft
+
+def run_test_case(opts):
+    air_opts = AircraftOpts(coeff_model_type=opts.get('model'), 
+                            coeff_model_path=model_path.get(opts.get('model')), 
+                            aircraft_config=aircraft_config, 
+                            physical_integration_substeps=opts.get('steps'))
+
+    aircraft = Aircraft(opts = opts)
+    filepath = Path(DATAPATH) / 'trajectories' / f'ablation_{dict_to_filename(opts)}.h5'
+    controller = Controller(aircraft=aircraft, filepath=filepath, opts = opts)
+    trim_state_and_control = [0, 0, -200, 50, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
+    guess = controller.initialise(ca.DM(trim_state_and_control[:aircraft.num_states]))
+    controller.setup(guess)
+    sol = controller.solve()
+    final_state = controller.opti.debug.value(controller.state)[:, -1]
+    final_control = controller.opti.debug.value(controller.control)[:, -1]
+    final_time = controller.opti.debug.value(controller.times)[-1]
+    print("Final State: ", final_state, " Final Control: ", final_control, " Final Forces: ", aircraft.forces_frd(final_state, final_control), " Final Time: ", final_time)
+    evaluate_sol(sol)
 
 class Controller(AircraftControl, SaveMixin):#, ProgressTimeMixin):
     goal:np.ndarray
-    def __init__(self, *, aircraft, num_nodes=298, dt=.01, opts = {}, filepath:str = '', **kwargs):
+    def __init__(self, *, aircraft, num_nodes=300, dt=.01, opts = {}, filepath:str|Path = '', **kwargs):
         super().__init__(aircraft=aircraft, num_nodes=num_nodes, opts = opts, dt = dt, **kwargs)
         if filepath:
             self.save_path = filepath
         SaveMixin._init_saving(self, self.save_path, force_overwrite=True)
-        # ProgressTimeMixin._init_progress_time(self, self.opti, num_nodes)
-        self.plotter = TrajectoryPlotter(aircraft)
         
 
     def loss(self, nodes, time):
-        control_loss = ca.sumsqr(self.control[: 1:] - self.control[:, -1])
-        if self.goal:
-            indices = self.goal.shape[0]
-            distance_loss = 1000*ca.sumsqr(nodes[-1].state[:indices] - self.goal)
-
-
-        height_loss = 
-        # self.constraint(ca.sumsqr(nodes[-1].state[:3] - [0, 30, -180])==0)
-        return distance_loss + control_loss + time - ca.sumsqr(self.state[:, 3])/100 - ca.sumsqr(self.state[:, 2])/100#time
-        # return 1000*ca.sumsqr(nodes[-1].state[:3] - [0, 100, -180]) + control_loss + time #time
+        """
+        Try to scale everything to order 1
+        """
+        time_loss = self.times[-1]
+        control_loss = ca.sumsqr(self.control[: 1:] / 10 - self.control[:, -1] / 10)
+        indices = self.goal.shape[0]
+        goal_loss = ca.sumsqr(self.state[-1, :indices] - self.goal)
+        height_loss = ca.sumsqr(self.state[:, 2]/ 100) # we want to maximise negative height
+        speed_loss = - ca.sumsqr(self.state[:, 2] / 100) # we want to maximise body frame x velocity
+        return  time_loss + control_loss + goal_loss + height_loss + speed_loss
     
     def initialise(self, initial_state):
         """
@@ -69,68 +119,10 @@ class Controller(AircraftControl, SaveMixin):#, ProgressTimeMixin):
         return guess
     
 
-    def callback(self, iteration: int):
-            """
-            Callback method for tracking optimization progress and visualizing trajectory.
-    
-            This method is called during each iteration of the optimization process. It performs two main tasks:
-            1. Prints the quaternion norm for each node to help diagnose potential quaternion normalization issues
-            2. Periodically plots the trajectory at specified intervals (every 50 iterations)
-    
-            Args:
-                iteration (int): Current iteration number of the optimization process
-    
-            Notes:
-                - Quaternion norm is calculated using numpy's linalg.norm function
-                - Extracts quaternion components from state vector (indices 6:10)
-                - Plots trajectory using TrajectoryPlotter when iteration is a multiple of 50
-            """
-            state_traj = self.opti.debug.value(self.state)  # shape (n_states, N+1)
-            # quat_norms = np.linalg.norm(state_traj[6:10, :], axis=0)
-            # print(f"Iteration: {iteration}", " Quaternion Norm: ", quat_norms)
-            if self.plotter and iteration % 50 == 0:
-                print("plotting")
-                trajectory_data = TrajectoryData(
-                    state=np.array(state_traj)[:, 1:],
-                    control=np.array(self.opti.debug.value(self.control)),
-                    time=np.array(self.opti.debug.value(self.time))
-                )
-                self.plotter.plot(trajectory_data=trajectory_data)
-                plt.draw()
-                self.plotter.figure.canvas.start_event_loop(0.0002)
-                plt.show()
-        
-                super().callback(iteration)
-
 def main():
-    traj_dict = json.load(open('data/glider/problem_definition.json'))
-    trajectory_config = TrajectoryConfiguration(traj_dict)
-    aircraft_config = trajectory_config.aircraft
-    poly_path = Path(NETWORKPATH) / 'fitted_models_casadi.pkl'
-
-    opts = AircraftOpts(poly_path=poly_path, aircraft_config=aircraft_config, physical_integration_substeps=1)
-
-
-    aircraft = Aircraft(opts = opts)
-    aircraft.STEPS = 1
-    trim_state_and_control = [0, 0, -200, 50, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
-    aircraft.com = np.array(trim_state_and_control[-3:])
-
-    filepath = Path(DATAPATH) / 'trajectories' / 'ablation.h5'
-
-    controller = Controller(aircraft=aircraft, filepath=filepath, implicit=False, progress = False)
-    guess = controller.initialise(ca.DM(trim_state_and_control[:aircraft.num_states]))
-    controller.setup(guess)
-    
-    controller.solve()
-    final_state = controller.opti.debug.value(controller.state)[:, -1]
-    final_control = controller.opti.debug.value(controller.control)[:, -1]
-
-
-    print("Final State: ", final_state, " Final Control: ", final_control, " Final Forces: ", aircraft.forces_frd(final_state, final_control))
-
-    plt.show(block = True)
-
+    for i, opt in enumerate(opts):
+        print(f'Running test case {i} with opts: {opt}')
+        run_test_case(opts = opt)
     
     
     
