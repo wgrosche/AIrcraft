@@ -14,7 +14,13 @@ class AircraftControl(ControlProblem):
     def __init__(self, *, aircraft: Aircraft, **kwargs) -> None:
 
         self.aircraft = aircraft
-        self.plotter = TrajectoryPlotter(aircraft)
+        if kwargs.get('plotting', True):
+            if not hasattr(self, 'plotter') or self.plotter is None:
+                # Initialize the plotter if it doesn't exist
+                self.plotter = TrajectoryPlotter(aircraft)
+            else:
+                # Reuse the existing plotter
+                self.plotter.aircraft = aircraft
         self.control_limits = kwargs.get('control_limits', {"aileron": [-5, 5], "elevator": [-5, 5], "rudder": [-5, 5]})
 
         super().__init__(system=aircraft, **kwargs)

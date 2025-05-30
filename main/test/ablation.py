@@ -59,10 +59,10 @@ def dict_to_filename(opts):
     return '_'.join(f"{k}_{safe_opts[k]}" for k in sorted(safe_opts))
 
 opts = []
-for time in ['fixed', 'progress', 'variable']:#, 'adaptive']:
+for time in ['fixed', 'progress']:#, 'variable']:#, 'adaptive']:
     for quaternion in ['constraint', 'baumgarte', 'integration', '']:
         for integration in ['explicit', 'implicit']:
-            for model in ['linear', 'poly', 'nn', 'default']:
+            for model in ['default', 'poly']: #'linear', 'nn', 
                 for steps in [1]:
                     opts.append({'time':time, 'quaternion':quaternion, 'integration':integration, 'model':model, 'steps':steps})
 
@@ -105,7 +105,7 @@ def run_test_case(opts, goal = [0, 100]):
     filepath = Path(DATAPATH) / 'trajectories' / f'ablation_{dict_to_filename(opts)}.h5'
 
     try:
-        controller = Controller(aircraft=aircraft, filepath=filepath, opts = opts)
+        controller = Controller(aircraft=aircraft, filepath=filepath, opts = opts, plotting = False)
         controller.goal = ca.DM(goal)
         trim_state_and_control = [0, 0, -200, 50, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
         guess = controller.initialise(ca.DM(trim_state_and_control[:aircraft.num_states]))
@@ -113,11 +113,11 @@ def run_test_case(opts, goal = [0, 100]):
         print(f"Error initializing controller: {e}")
         return None
     
-    try:
-        controller.setup(guess)
-    except RuntimeError as e:
-        print(f"Error setting up the optimization problem: {e}")
-        return None
+    # try:
+    controller.setup(guess)
+    # except RuntimeError as e:
+    #     print(f"Error setting up the optimization problem: {e}")
+    #     return None
     try:
         sol = controller.solve()
     except RuntimeError as e:
@@ -145,10 +145,10 @@ class Controller(AircraftControl, SaveMixin):#, ProgressTimeMixin):
         time_loss = self.times[-1]
         control_loss = ca.sumsqr(self.control[: 1:] / 10 - self.control[:, -1] / 10)
         indices = self.goal.shape[0]
-        goal_loss = ca.sumsqr(self.state[-1, :indices] - self.goal)
+        goal_loss = ca.sumsqr(self.state[-1, :indices] - self.goal.T)
         height_loss = ca.sumsqr(self.state[:, 2]/ 100) # we want to maximise negative height
         speed_loss = - ca.sumsqr(self.state[:, 2] / 100) # we want to maximise body frame x velocity
-        return  time_loss + control_loss + goal_loss + height_loss + speed_loss
+        return  goal_loss #time_loss + control_loss + goal_loss + height_loss + speed_loss
     
     def initialise(self, initial_state):
         """
@@ -172,6 +172,10 @@ class Controller(AircraftControl, SaveMixin):#, ProgressTimeMixin):
 
 
         return guess
+    def callback(self, iteration: int):
+        """
+        """
+        pass
     
 
 def main():
