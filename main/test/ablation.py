@@ -5,7 +5,24 @@ Study comparing convergence impact of:
  - Variable time implementation
 """
 
-from aircraft.control.aircraft import TrajectoryConfiguration
+# from aircraft.utils.utils import TrajectoryConfiguration
+# from pathlib import Path
+# from aircraft.config import NETWORKPATH
+# from aircraft.dynamics.aircraft import AircraftOpts, Aircraft
+# import numpy as np
+# from tqdm import tqdm
+# import casadi as ca
+# import json
+# from aircraft.control.aircraft import AircraftControl, WaypointControl
+# from aircraft.control.base import SaveMixin#, VariableTimeMixin
+
+# from aircraft.control.variable_time import ProgressTimeMixin
+# from aircraft.config import DATAPATH
+# import matplotlib.pyplot as plt
+# from aircraft.plotting.plotting import TrajectoryPlotter, TrajectoryData
+# from aircraft.dynamics.coefficient_models import COEFF_MODEL_REGISTRY
+
+from aircraft.utils.utils import TrajectoryConfiguration
 from pathlib import Path
 from aircraft.config import NETWORKPATH
 from aircraft.dynamics.aircraft import AircraftOpts, Aircraft
@@ -13,7 +30,8 @@ import numpy as np
 from tqdm import tqdm
 import casadi as ca
 import json
-from aircraft.control.aircraft import AircraftControl, WaypointControl
+from typing import Any
+from aircraft.control.aircraft import AircraftControl,  ControlNode
 from aircraft.control.base import SaveMixin#, VariableTimeMixin
 
 from aircraft.control.variable_time import ProgressTimeMixin
@@ -41,38 +59,75 @@ def dict_to_filename(opts):
     return '_'.join(f"{k}_{safe_opts[k]}" for k in sorted(safe_opts))
 
 opts = []
-for time in ['fixed', 'progress', 'variable', 'adaptive']:
+for time in ['fixed', 'progress', 'variable']:#, 'adaptive']:
     for quaternion in ['constraint', 'baumgarte', 'integration', '']:
         for integration in ['explicit', 'implicit']:
             for model in ['linear', 'poly', 'nn', 'default']:
-                for steps in ['1', '5', '10', '100']:
+                for steps in [1]:
                     opts.append({'time':time, 'quaternion':quaternion, 'integration':integration, 'model':model, 'steps':steps})
-model_path = {} 
 
+NETWORKPATH = Path(NETWORKPATH)
+model_path:dict[str, Path] = {
+    'linear': NETWORKPATH / 'linearised.csv',
+    'poly': NETWORKPATH / 'fitted_models_casadi.pkl',
+    'nn': NETWORKPATH / 'model-dynamics.pth',
+    'default': ''
+} 
 traj_dict = json.load(open('data/glider/problem_definition.json'))
 
 trajectory_config = TrajectoryConfiguration(traj_dict)
 
 aircraft_config = trajectory_config.aircraft
 
-def run_test_case(opts):
+def evaluate_sol(sol, filename, plotter):
+    """
+    Evaluate the solution and plot the trajectory.
+    """
+    state = sol['state']
+    control = sol['control']
+    times = sol['times']
+    
+    # Plotting
+    data = TrajectoryData(state=state, control=control, times=times)
+    
+    plotter.plot_trajectory(data)
+    
+    # Save the trajectory
+    plotter.save_trajectory(data, filename=filename)
+
+def run_test_case(opts, goal = [0, 100]):
     air_opts = AircraftOpts(coeff_model_type=opts.get('model'), 
                             coeff_model_path=model_path.get(opts.get('model')), 
                             aircraft_config=aircraft_config, 
                             physical_integration_substeps=opts.get('steps'))
 
-    aircraft = Aircraft(opts = opts)
+    aircraft = Aircraft(opts = air_opts)
     filepath = Path(DATAPATH) / 'trajectories' / f'ablation_{dict_to_filename(opts)}.h5'
-    controller = Controller(aircraft=aircraft, filepath=filepath, opts = opts)
-    trim_state_and_control = [0, 0, -200, 50, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
-    guess = controller.initialise(ca.DM(trim_state_and_control[:aircraft.num_states]))
-    controller.setup(guess)
-    sol = controller.solve()
+
+    try:
+        controller = Controller(aircraft=aircraft, filepath=filepath, opts = opts)
+        controller.goal = ca.DM(goal)
+        trim_state_and_control = [0, 0, -200, 50, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
+        guess = controller.initialise(ca.DM(trim_state_and_control[:aircraft.num_states]))
+    except RuntimeError as e:
+        print(f"Error initializing controller: {e}")
+        return None
+    
+    try:
+        controller.setup(guess)
+    except RuntimeError as e:
+        print(f"Error setting up the optimization problem: {e}")
+        return None
+    try:
+        sol = controller.solve()
+    except RuntimeError as e:
+        print(f"Error solving the optimization problem: {e}")
+        return None
     final_state = controller.opti.debug.value(controller.state)[:, -1]
     final_control = controller.opti.debug.value(controller.control)[:, -1]
     final_time = controller.opti.debug.value(controller.times)[-1]
     print("Final State: ", final_state, " Final Control: ", final_control, " Final Forces: ", aircraft.forces_frd(final_state, final_control), " Final Time: ", final_time)
-    evaluate_sol(sol)
+    # evaluate_sol(sol, filepath)
 
 class Controller(AircraftControl, SaveMixin):#, ProgressTimeMixin):
     goal:np.ndarray
