@@ -71,7 +71,7 @@ model_path:dict[str, Path] = {
     'linear': NETWORKPATH / 'linearised.csv',
     'poly': NETWORKPATH / 'fitted_models_casadi.pkl',
     'nn': NETWORKPATH / 'model-dynamics.pth',
-    'default': ''
+    'default': Path(NETWORKPATH)
 } 
 traj_dict = json.load(open('data/glider/problem_definition.json'))
 
@@ -95,11 +95,13 @@ def evaluate_sol(sol, filename, plotter):
     # Save the trajectory
     plotter.save_trajectory(data, filename=filename)
 
-def run_test_case(opts, goal = [0, 100]):
+def run_test_case(opts, goal = [0, 100, 180]):
+    aircraft_config.aero_centre_offset = [0.0131991, -1.78875e-08, 0.00313384]
     air_opts = AircraftOpts(coeff_model_type=opts.get('model'), 
-                            coeff_model_path=model_path.get(opts.get('model')), 
+                            coeff_model_path=model_path.get(opts.get('model'), ''), 
                             aircraft_config=aircraft_config, 
                             physical_integration_substeps=opts.get('steps'))
+    
 
     aircraft = Aircraft(opts = air_opts)
     filepath = Path(DATAPATH) / 'trajectories' / f'ablation_{dict_to_filename(opts)}.h5'
@@ -148,15 +150,15 @@ class Controller(AircraftControl, SaveMixin):#, ProgressTimeMixin):
         goal_loss = ca.sumsqr(self.state[-1, :indices] - self.goal.T)
         height_loss = ca.sumsqr(self.state[:, 2]/ 100) # we want to maximise negative height
         speed_loss = - ca.sumsqr(self.state[:, 2] / 100) # we want to maximise body frame x velocity
-        return  goal_loss #time_loss + control_loss + goal_loss + height_loss + speed_loss
+        return  goal_loss + time_loss + control_loss + height_loss + speed_loss
     
     def initialise(self, initial_state):
         """
         Initialize the optimization problem with initial state.
         """
         guess = np.zeros((self.state_dim + self.control_dim, self.num_nodes + 1))
-        guess[13, :] = 1
-        guess[14, :] = 1
+        guess[13, :] = 0
+        guess[14, :] = 0
         guess[:self.state_dim, 0] = initial_state.toarray().flatten()
         # dt_initial = self.dt
         # dt_initial = 0.01#2 / self.num_nodes
@@ -179,8 +181,13 @@ class Controller(AircraftControl, SaveMixin):#, ProgressTimeMixin):
     
 
 def main():
+    first_run = True
     for i, opt in enumerate(opts):
         print(f'Running test case {i} with opts: {opt}')
+        if first_run:
+            first_run = False
+            continue
+        
         run_test_case(opts = opt)
     
     

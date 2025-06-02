@@ -259,7 +259,6 @@ class ControlProblem(ABC):
         """
         pass
         
-    
     def state_constraint(self, node: ControlNode, next: ControlNode) -> None:
         dt_i = ca.DM(1.0) / node.progress if self.opts.get('time', 'fixed') in ['progress', 'fixed'] else ca.MX(node.progress)
         normalisation = self.opts.get('quaternion', None)

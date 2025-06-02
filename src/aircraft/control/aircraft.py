@@ -142,6 +142,10 @@ class AircraftControl(ControlProblem):
 
     def solve(self, warm_start: Optional[ca.OptiSol] = None):
         sol = super().solve(warm_start=warm_start)
+        
+        return sol
+    
+    def plot(self, sol:ca.OptiSol) -> None:
         trajectory_data = TrajectoryData(
                 state=np.array(self.opti.debug.value(self.state))[:, :-1],
                 control=np.array(self.opti.debug.value(self.control)),
@@ -150,4 +154,3 @@ class AircraftControl(ControlProblem):
         self.plotter.plot(trajectory_data=trajectory_data)
         plt.draw()
         self.plotter.figure.canvas.start_event_loop(0.0002)
-        return sol
