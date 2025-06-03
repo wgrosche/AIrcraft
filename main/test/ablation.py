@@ -145,7 +145,7 @@ def run_test_case(opts, goal = [50, 0]): # first run was [50, 0]
     final_control = controller.opti.debug.value(controller.control)[:, -1]
     final_time = controller.opti.debug.value(controller.times)[-1]
     print("Final State: ", final_state, " Final Control: ", final_control, " Final Forces: ", aircraft.forces_frd(final_state, final_control), " Final Time: ", final_time)
-    evaluate_sol(sol, Path(DATAPATH) / 'trajectories' / 'sol_summary_ipopt_changes.txt', title = dict_to_filename(opts), controller = controller)
+    evaluate_sol(sol, Path(DATAPATH) / 'trajectories' / f'sol_summary_ipopt_changes_{goal_txt}.txt', title = dict_to_filename(opts), controller = controller)
 
 class Controller(AircraftControl, SaveMixin):#, ProgressTimeMixin):
     goal:np.ndarray
