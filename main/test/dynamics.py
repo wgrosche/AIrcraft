@@ -93,6 +93,7 @@ def main():
     dt = .01
     tf = 1
     state_list = np.zeros((aircraft.num_states, int(tf / dt)))
+    times_list = np.zeros((int(tf / dt)))
     t = 0
     ele_pos = True
     ail_pos = True
@@ -112,6 +113,7 @@ def main():
             state_list[:, i] = state.full().flatten()
             control_list[:, i] = control
             state = dyn(state, control, dt)
+            times_list[i] = i * dt
             # if args.get('perturb'):
             #     if ele_pos:
             #         control[1] += 0.01
@@ -129,6 +131,7 @@ def main():
             grp = h5file.create_group('iteration_0')
             grp.create_dataset('state', data=state_list[:, :t])
             grp.create_dataset('control', data=control_list[:, :t])
+            grp.create_dataset('times', data=times_list[:t])
     
     
     filepath = os.path.join("data", "trajectories", "simulation.h5")

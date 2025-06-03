@@ -22,8 +22,10 @@ else:
 
 default_solver_options = {'ipopt': {'max_iter': 10000,
                                     'tol': 1e-6,
-                                    'acceptable_tol': 1e-6,
+                                    "constr_viol_tol": 1e-6,
+                                    'acceptable_tol': 1e-5,
                                     'acceptable_obj_change_tol': 1e-6,
+                                    "acceptable_constr_viol_tol": 1e-5,
                                     'hessian_approximation': 'exact', #'limited-memory',
                                     'linear_solver': 'mumps',
                                     # 'jacobian_approximation': 'exact',  # Use exact Jacobian as well
@@ -34,10 +36,12 @@ default_solver_options = {'ipopt': {'max_iter': 10000,
                                     'mumps_permuting_scaling': 7,   # Use a more robust scaling strategy
                                     'max_cpu_time': 1e4,             # Increase the maximum CPU time
                                     'print_level': 5,
+                                    "nlp_scaling_method": "gradient-based",  # or "user-scaling" if you provide scale factors
+                                    "obj_scaling_factor": 1.0,
                                     'theta_max_fact':100,
                                     'mu_strategy': 'adaptive',
-                                    'mu_oracle': 'probing',
-                                    'mu_init': 1e-2,
+                                    'mu_oracle': 'quality-function',
+                                    'mu_init': 1e-1,
                                     'barrier_tol_factor': 0.1,  # Make barrier updates more aggressive
                                     },
                         'print_time': 10,

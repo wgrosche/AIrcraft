@@ -74,7 +74,7 @@ class TrajectoryData:
             try:
                 # Access the group for the current iteration
                 grp = h5file[f'iteration_{iteration}']
-                assert isinstance(grp, dict)
+                # assert isinstance(grp, dict)
                 self.state = grp.get('state')[:] if 'state' in grp else None
                 self.control = grp.get('control')[:] if 'control' in grp else None
                 self.times = grp.get('times')[:] if 'times' in grp else None
@@ -93,6 +93,7 @@ class TrajectoryData:
                 self.iteration = None
 
         return self
+
 
 class PlotAxes:
     def __init__(self, fig:Figure):

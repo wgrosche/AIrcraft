@@ -79,23 +79,38 @@ trajectory_config = TrajectoryConfiguration(traj_dict)
 
 aircraft_config = trajectory_config.aircraft
 
-def evaluate_sol(sol, filename, plotter):
+def evaluate_sol(sol, filename, title, controller):
     """
     Evaluate the solution and plot the trajectory.
+    Save the optimization summary to a file.
     """
-    state = sol['state']
-    control = sol['control']
-    times = sol['times']
-    
-    # Plotting
-    data = TrajectoryData(state=state, control=control, times=times)
-    
-    plotter.plot_trajectory(data)
-    
-    # Save the trajectory
-    plotter.save_trajectory(data, filename=filename)
+    state = sol.value(controller.state)
+    control = sol.value(controller.control)
+    times = sol.value(controller.times)
 
-def run_test_case(opts, goal = [0, 100, 180]):
+    stats = None
+    if controller is not None:
+        stats = controller.opti.stats()
+
+    # Write summary to file
+    with open(filename, 'a') as f:
+        if title:
+            f.write(f"# {title}\n\n")
+        f.write("=== Solution Summary ===\n")
+        f.write(f"Final Time: {times[-1]}\n")
+        f.write(f"Final State:\n{state[:,-1]}\n")
+        f.write(f"Final Control:\n{control[:,-1]}\n")
+        # f.write(f"Success: {success}\n")
+        if stats is not None:
+            f.write(f"Status: {stats.get('return_status')}\n")
+            f.write(f"Iterations: {stats.get('iter_count')}\n")
+            f.write(f"Final objective: {stats.get('f')}\n")
+            f.write(f"Solver time (s): {stats.get('t_proc_total')}\n")
+        f.write("\n" + "-"*40 + "\n")
+            # f.write("\n" + metrics)
+
+
+def run_test_case(opts, goal = [50, 0]): # first run was [50, 0]
     aircraft_config.aero_centre_offset = [0.0131991, -1.78875e-08, 0.00313384]
     air_opts = AircraftOpts(coeff_model_type=opts.get('model'), 
                             coeff_model_path=model_path.get(opts.get('model'), ''), 
@@ -104,7 +119,8 @@ def run_test_case(opts, goal = [0, 100, 180]):
     
 
     aircraft = Aircraft(opts = air_opts)
-    filepath = Path(DATAPATH) / 'trajectories' / f'ablation_{dict_to_filename(opts)}.h5'
+    goal_txt = f"{goal[0]}_{goal[1]}"
+    filepath = Path(DATAPATH) / 'trajectories' / f'ablation_{dict_to_filename(opts)}_{goal_txt}.h5'
 
     try:
         controller = Controller(aircraft=aircraft, filepath=filepath, opts = opts, plotting = False)
@@ -129,11 +145,11 @@ def run_test_case(opts, goal = [0, 100, 180]):
     final_control = controller.opti.debug.value(controller.control)[:, -1]
     final_time = controller.opti.debug.value(controller.times)[-1]
     print("Final State: ", final_state, " Final Control: ", final_control, " Final Forces: ", aircraft.forces_frd(final_state, final_control), " Final Time: ", final_time)
-    # evaluate_sol(sol, filepath)
+    evaluate_sol(sol, Path(DATAPATH) / 'trajectories' / 'sol_summary_ipopt_changes.txt', title = dict_to_filename(opts), controller = controller)
 
 class Controller(AircraftControl, SaveMixin):#, ProgressTimeMixin):
     goal:np.ndarray
-    def __init__(self, *, aircraft, num_nodes=300, dt=.01, opts = {}, filepath:str|Path = '', **kwargs):
+    def __init__(self, *, aircraft, num_nodes=100, dt=.01, opts = {}, filepath:str|Path = '', **kwargs):
         super().__init__(aircraft=aircraft, num_nodes=num_nodes, opts = opts, dt = dt, **kwargs)
         if filepath:
             self.save_path = filepath
@@ -144,13 +160,17 @@ class Controller(AircraftControl, SaveMixin):#, ProgressTimeMixin):
         """
         Try to scale everything to order 1
         """
+        
         time_loss = self.times[-1]
-        control_loss = ca.sumsqr(self.control[: 1:] / 10 - self.control[:, -1] / 10)
+        control_loss = ca.sumsqr(self.control[:, 1:] / 10 - self.control[:, :-1] / 10)
         indices = self.goal.shape[0]
-        goal_loss = ca.sumsqr(self.state[-1, :indices] - self.goal.T)
-        height_loss = ca.sumsqr(self.state[:, 2]/ 100) # we want to maximise negative height
-        speed_loss = - ca.sumsqr(self.state[:, 2] / 100) # we want to maximise body frame x velocity
-        return  goal_loss + time_loss + control_loss + height_loss + speed_loss
+        goal_loss = 10 * ca.sumsqr(self.state[:indices, -1] - self.goal)
+        height_loss = ca.sumsqr(self.state[2, :]/ 100) # we want to maximise negative height
+        speed_loss = - ca.sumsqr(self.state[3, :] / 100) # we want to maximise body frame x velocity
+        loss = goal_loss
+        if not isinstance(self.times[-1], float):
+            loss += time_loss
+        return  loss# + time_loss + control_loss + height_loss + speed_loss
     
     def initialise(self, initial_state):
         """
@@ -177,11 +197,17 @@ class Controller(AircraftControl, SaveMixin):#, ProgressTimeMixin):
     def callback(self, iteration: int):
         """
         """
-        pass
+        
+        # print(state[:self.goal.shape[0], -1] - self.goal)
+        # print(self.opti.debug.value(self.dt))
+        if iteration % 100 == 0:
+            state = self.opti.debug.value(self.state)
+            print("Distance to goal: ", np.linalg.norm(state[:self.goal.shape[0], -1] - self.goal))
+        # print("Final State: ", state[:, -1])
     
 
 def main():
-    first_run = True
+    first_run = False
     for i, opt in enumerate(opts):
         print(f'Running test case {i} with opts: {opt}')
         if first_run:
