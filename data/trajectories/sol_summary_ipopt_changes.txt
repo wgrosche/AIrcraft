@@ -502,3 +502,39 @@ Final objective: None
 Solver time (s): 900.782848
 
 ----------------------------------------
+# integration_implicit_model_poly_quaternion_integration_steps_1_time_progress
+
+=== Solution Summary ===
+Final Time: 0.17047561620696472
+Final State:
+[ 4.99998966e+01  1.93552144e-12 -1.99999978e+02  2.14097252e+04
+  1.96330830e+00  3.02864780e+00 -1.23809020e-01 -6.59990340e-03
+  3.20877789e-02  9.54315578e-01  1.00239029e+02 -2.57853334e+02
+ -4.36771735e+01]
+Final Control:
+[ 2.79515592e-01  1.05114810e+00 -2.77876874e-01  2.63975018e+07
+ -2.41919286e+06  3.12087133e+05]
+Status: NonIpopt_Exception_Thrown
+Iterations: 926
+Final objective: None
+Solver time (s): 5076.28799
+
+----------------------------------------
+# integration_explicit_model_default_quaternion_none_steps_1_time_progress
+
+=== Solution Summary ===
+Final Time: 0.5196300630689474
+Final State:
+[ 5.00328649e+01 -6.15309296e-03 -2.09002684e+02  2.53859263e+03
+ -4.31294888e-03  1.14755946e+01  2.42062724e-03 -8.73320630e-01
+ -3.51527756e-03  9.00497753e-01  1.58587851e-01 -2.47600922e+04
+  1.50382002e+00]
+Final Control:
+[ 1.80709554e-03  3.53605510e-01  6.53341631e-03  2.93161278e+05
+ -2.18970450e+00  1.34626593e+04]
+Status: NonIpopt_Exception_Thrown
+Iterations: 769
+Final objective: None
+Solver time (s): 39.839325
+
+----------------------------------------
