@@ -449,6 +449,6 @@ class SixDOF(ABC):
 
         return ca.Function(
             'state_update', 
-            [self.state, self.control, dt], 
+            [self.state, self.control, self.dt_sym], 
             [state]
             )

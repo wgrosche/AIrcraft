@@ -574,3 +574,21 @@ Final objective: None
 Solver time (s): 41259.358205
 
 ----------------------------------------
+# integration_explicit_model_default_quaternion_constraint_steps_1_time_fixed
+
+=== Solution Summary ===
+Final Time: 2.99999999999998
+Final State:
+[ 5.00143414e+01  3.17242299e-03 -9.84504082e+00  7.33463657e+01
+ -2.08003235e+00  3.18734128e+01  4.98927094e-01 -3.50103500e-02
+  1.04818738e-01  8.59569233e-01  3.55829033e-01  1.02644804e+00
+ -1.03445206e+00]
+Final Control:
+[   3.10980566   -4.72081362    4.80096851  101.80007732  -77.53433212
+ 1087.2892163 ]
+Status: Maximum_Iterations_Exceeded
+Iterations: 10000
+Final objective: None
+Solver time (s): 1992.383623
+
+----------------------------------------

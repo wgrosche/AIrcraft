@@ -104,13 +104,13 @@ def evaluate_sol(sol, filename, title, controller):
         if stats is not None:
             f.write(f"Status: {stats.get('return_status')}\n")
             f.write(f"Iterations: {stats.get('iter_count')}\n")
-            f.write(f"Final objective: {stats.get('f')}\n")
+            f.write(f"Final objective: {stats.get('objective')}\n")
             f.write(f"Solver time (s): {stats.get('t_proc_total')}\n")
         f.write("\n" + "-"*40 + "\n")
             # f.write("\n" + metrics)
 
 
-def run_test_case(opts, goal = [50, 0]): # first run was [50, 0]
+def run_test_case(opts, goal = [0, 50], num_nodes=300): # first run was [50, 0]
     aircraft_config.aero_centre_offset = [0.0131991, -1.78875e-08, 0.00313384]
     air_opts = AircraftOpts(coeff_model_type=opts.get('model'), 
                             coeff_model_path=model_path.get(opts.get('model'), ''), 
@@ -119,11 +119,12 @@ def run_test_case(opts, goal = [50, 0]): # first run was [50, 0]
     
 
     aircraft = Aircraft(opts = air_opts)
+    aircraft.com = [0.0131991, -1.78875e-08, 0.00313384]
     goal_txt = f"{goal[0]}_{goal[1]}"
     filepath = Path(DATAPATH) / 'trajectories' / f'ablation_{dict_to_filename(opts)}_{goal_txt}.h5'
 
     try:
-        controller = Controller(aircraft=aircraft, filepath=filepath, opts = opts, plotting = False)
+        controller = Controller(aircraft=aircraft, filepath=filepath, opts = opts, plotting = False, num_nodes=num_nodes)
         controller.goal = ca.DM(goal)
         trim_state_and_control = [0, 0, -200, 50, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
         guess = controller.initialise(ca.DM(trim_state_and_control[:aircraft.num_states]))
@@ -149,7 +150,7 @@ def run_test_case(opts, goal = [50, 0]): # first run was [50, 0]
 
 class Controller(AircraftControl, SaveMixin):#, ProgressTimeMixin):
     goal:np.ndarray
-    def __init__(self, *, aircraft, num_nodes=100, dt=.01, opts = {}, filepath:str|Path = '', **kwargs):
+    def __init__(self, *, aircraft, num_nodes=300, dt=.01, opts = {}, filepath:str|Path = '', **kwargs):
         super().__init__(aircraft=aircraft, num_nodes=num_nodes, opts = opts, dt = dt, **kwargs)
         if filepath:
             self.save_path = filepath
@@ -170,6 +171,8 @@ class Controller(AircraftControl, SaveMixin):#, ProgressTimeMixin):
         loss = goal_loss
         if not isinstance(self.times[-1], float):
             loss += time_loss
+
+        loss += control_loss + height_loss + speed_loss
         return  loss# + time_loss + control_loss + height_loss + speed_loss
     
     def initialise(self, initial_state):
@@ -214,7 +217,7 @@ def main():
             first_run = False
             continue
         
-        run_test_case(opts = opt)
+        run_test_case(opts = opt, num_nodes=300, goal=[50, 0])
     
     
     

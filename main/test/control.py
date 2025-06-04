@@ -17,7 +17,7 @@ from aircraft.plotting.plotting import TrajectoryPlotter, TrajectoryData
 
 
 class Controller(AircraftControl):#, SaveMixin):#, ProgressTimeMixin):
-    def __init__(self, *, aircraft:Aircraft, num_nodes:int=298, dt:float=.01, opts:dict = {}, filepath:str|Path = '', **kwargs:Any):
+    def __init__(self, *, aircraft:Aircraft, num_nodes:int=300, dt:float=.01, opts:dict = {}, filepath:str|Path = '', **kwargs:Any):
         super().__init__(aircraft=aircraft, num_nodes=num_nodes, opts = opts, dt = dt, **kwargs)
         if filepath:
             self.save_path = filepath
@@ -26,9 +26,12 @@ class Controller(AircraftControl):#, SaveMixin):#, ProgressTimeMixin):
         
 
     def loss(self, nodes:ControlNode, time:ca.MX) -> ca.MX:
-        control_loss = ca.sumsqr(self.control[: 1:] - self.control[:, -1])
-        self.constraint(ca.sumsqr(nodes[-1].state[:3] - [0, 30, -180])==0)
-        return control_loss + ca.sum1(self.times)#1000*ca.sumsqr(nodes[-1].state[:3] - [0, 30, -180])# + control_loss# + time - ca.sumsqr(self.state[:, 3])/100 - ca.sumsqr(self.state[:, 2])/100#time
+        control_loss = ca.sumsqr(self.control[:, 1:] - self.control[:, -1])
+        self.goal = ca.DM([0, 30])
+        indices = self.goal.shape[0]
+        goal_loss = 10 * ca.sumsqr(self.state[:indices, -1] - self.goal)
+        self.constraint(ca.sumsqr(nodes[-1].state[:indices] - self.goal)==0)
+        return control_loss + self.times[-1] #+ goal_loss#1000*ca.sumsqr(nodes[-1].state[:3] - [0, 30, -180])# + control_loss# + time - ca.sumsqr(self.state[:, 3])/100 - ca.sumsqr(self.state[:, 2])/100#time
         # return 1000*ca.sumsqr(nodes[-1].state[:3] - [0, 100, -180]) + control_loss + time #time
     
     def initialise(self, initial_state):
@@ -80,8 +83,8 @@ def main():
 
     aircraft_config = trajectory_config.aircraft
 
-    # poly_path = Path(NETWORKPATH) / 'fitted_models_casadi.pkl'
-    opts = AircraftOpts(coeff_model_type='default', coeff_model_path='', aircraft_config=aircraft_config, physical_integration_substeps=1)
+    poly_path = Path(NETWORKPATH) / 'fitted_models_casadi.pkl'
+    opts = AircraftOpts(coeff_model_type='', coeff_model_path='', aircraft_config=aircraft_config, physical_integration_substeps=1)
 
     aircraft = Aircraft(opts = opts)
     trim_state_and_control = [0, 0, -200, 50, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
@@ -89,13 +92,14 @@ def main():
     filepath = Path(DATAPATH) / 'trajectories' / 'basic_test.h5'
 
     # controller_opts = {'time':'fixed', 'quaternion':'', 'integration':'explicit'}
-    controller_opts = {'time':'variable', 'quaternion':'', 'integration':'explicit'}
+    controller_opts = {'time':'progress', 'quaternion':'integration', 'integration':'explicit'}
     controller = Controller(aircraft=aircraft, filepath=filepath, opts = controller_opts)
     guess = controller.initialise(ca.DM(trim_state_and_control[:aircraft.num_states]))
     controller.setup(guess)
     controller.logging = False
     
-    controller.solve()
+    sol = controller.solve()
+    # print("Solution Status: ", sol.stats())
     final_state = controller.opti.debug.value(controller.state)[:, -1]
     final_control = controller.opti.debug.value(controller.control)[:, -1]
     final_time = controller.opti.debug.value(controller.times)[-1]

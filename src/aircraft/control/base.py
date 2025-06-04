@@ -27,7 +27,7 @@ class ControlNode:
     index:int
     state:ca.MX
     control:ca.MX
-    progress:Union[ca.MX, float]
+    progress:Union[ca.MX, float] # sqrt of the progress/time variable (to assure positivity)
 
 @runtime_checkable
 class SaveProgressProtocol(Protocol):
@@ -184,6 +184,7 @@ class ControlProblem(ABC):
 
         self.progress = self.opts.get('time', 'fixed') in ['progress', 'variable']
         self.dt = dt
+        self.dt_bounds = self.opts.get('dt_bounds', (1e-4, 1e-2))  # Default bounds for dt if not specified
         self.max_jump = 0.05
         
         self.scale_state = self.opts.get('scale_state', None)
@@ -260,33 +261,32 @@ class ControlProblem(ABC):
         pass
         
     def state_constraint(self, node: ControlNode, next: ControlNode) -> None:
-        dt_i = ca.DM(1.0) / node.progress if self.opts.get('time', 'fixed') in ['progress', 'fixed'] else ca.MX(node.progress)
-        normalisation = self.opts.get('quaternion', None)
+        dt_i = ca.DM(1.0) / node.progress**2 if self.opts.get('time', 'fixed') in ['progress', 'fixed'] else ca.MX(node.progress)**2
 
         if self.opts.get('integration', 'explicit') == 'explicit':
             next_state = self.dynamics(node.state, node.control, dt_i)
             self.constraint(next.state - next_state == 0, description=f"state dynamics constraint at node {node.index}")
 
         elif self.opts.get('integration', 'explicit') == 'implicit':
-            next_state = node.state + dt_i  * self.x_dot(next.state, node.control)
+            next_state = node.state + dt_i * self.x_dot(next.state, node.control)
             self.constraint(next.state - next_state == 0, description=f"state dynamics constraint at node {node.index}")
         else:
             raise NotImplementedError("Must choose integration mode from ['implicit', 'explicit']")
         
-        if normalisation == 'constraint':
-            self.constraint(ca.dot(node.state[6:10], node.state[6:10]) == 1, description=f"quaternion norm constraint at node {node.index}")
+        if self.opts.get('quaternion', None) == 'constraint':
+            self.constraint(ca.dot(next.state[6:10], next.state[6:10]) == 1, description=f"quaternion norm constraint at node {node.index}")
 
-        elif normalisation == 'baumgarte':
-            x_dot = self.x_dot(node.state, node.control)
+        elif self.opts.get('quaternion', None) == 'baumgarte':
+            x_dot = self.x_dot(next.state, next.control)
             assert isinstance(x_dot, ca.MX)
             assert x_dot.size()[0] == self.state_dim, f"x_dot: {x_dot.size()[0]} state: {self.state_dim}"
             x_dot_q = x_dot[6:10]
-            phi_dot = 2 * ca.dot(node.state[6:10], x_dot_q)
+            phi_dot = 2 * ca.dot(next.state[6:10], x_dot_q)
 
             alpha = 2.0  # damping
             beta = 2.0   # stiffness
 
-            phi = ca.dot(node.state[6:10], node.state[6:10]) - 1
+            phi = ca.dot(next.state[6:10], next.state[6:10]) - 1
             stabilized_phi = 2 * alpha * phi_dot + beta**2 * phi
 
             self.constraint(stabilized_phi == 0, description="Baumgarte quaternion normalization")
@@ -295,16 +295,16 @@ class ControlProblem(ABC):
             self.constraint(next.progress == node.progress)#self.max_jump)
 
         elif self.opts.get('time', 'fixed') == 'adaptive':
-            assert node.progress is not None, "cannot run adaptive without progress variable"
+            assert next.progress is not None, "cannot run adaptive without progress variable"
             alpha = 1e-2
             adaptive_weight = 1.0
             tol = 1e-2
-            func_state = self.dynamics(node.state, node.control)
-            J = ca.jacobian(func_state, node.state)
+            func_state = self.dynamics(next.state, next.control)
+            J = ca.jacobian(func_state, next.state)
             prod = J @ func_state
-            error_surrogate = alpha * (1 / node.progress**2) * ca.dot(prod, J @ prod)
+            error_surrogate = alpha * (1 / next.progress**4) * ca.dot(prod, J @ prod)
             self.constraint(error_surrogate <= tol, description="Error bound for adaptive timestepping")
-            self.opti.minimize(adaptive_weight * node.progress)
+            self.opti.minimize(adaptive_weight * next.progress**2)
             
         
                 
@@ -329,8 +329,8 @@ class ControlProblem(ABC):
         state = self._scale_variable(opti.variable(self.state_dim), self.scale_state)
         control = self._scale_variable(opti.variable(self.control_dim), self.scale_control)
         progress = (
-            self._scale_variable(opti.variable(), 1 / self.dt)
-            if self.progress else 1 / self.dt
+            self._scale_variable(opti.variable(), ca.sqrt(1 / self.dt))
+            if self.progress else ca.sqrt(1 / self.dt)
         )
 
         node = ControlNode(index=index, state=state, control=control, progress=progress)
@@ -343,22 +343,28 @@ class ControlProblem(ABC):
 
         # Progress constraint
         if self.opts.get('time', 'fixed') == 'progress':
-            opti.set_initial(node.progress, 1 / self.dt)
+            opti.set_initial(node.progress, ca.sqrt(1 / self.dt))
             self.constraint(
-                opti.bounded(5e1, node.progress, 1e4),  # type: ignore[arg-type]
+                opti.bounded(
+                    ca.sqrt(1 / self.dt_bounds[1]), 
+                    node.progress, 
+                    ca.sqrt(1 / self.dt_bounds[0])
+                    ),  # type: ignore[arg-type]
                 description=f"positive progress rate at node {index}"
             )
 
         elif self.opts.get('time', 'fixed') == 'variable':
-            opti.set_initial(node.progress, self.dt)
+            opti.set_initial(node.progress, ca.sqrt(self.dt))
             self.constraint(
-                opti.bounded(1e-4, node.progress, 5e-2),  # type: ignore[arg-type]
+                opti.bounded(ca.sqrt(self.dt_bounds[0]), 
+                             node.progress, 
+                             ca.sqrt(self.dt_bounds[1])),  # type: ignore[arg-type]
                 description=f"positive progress rate at node {index}"
             )
 
         # State constraint only on initial node
         if enforce_state_constraint:
-            self.constraint(node.state == self.state_guess_parameter[:, 0])
+            self.constraint(node.state == self.state_guess_parameter[:, index])
 
         return node
 
@@ -378,12 +384,12 @@ class ControlProblem(ABC):
         self.state = ca.hcat([nodes[i].state for i in range(self.num_nodes + 1)])
         self.control = ca.hcat([nodes[i].control for i in range(self.num_nodes)])
         if self.opts.get('time', 'fixed') in ['fixed', 'progress']:
-            self.times = ca.cumsum(ca.vertcat(*[1 / nodes[i].progress for i in range(self.num_nodes)]))
+            self.times = ca.cumsum(ca.vertcat(*[1 / nodes[i].progress**2 for i in range(self.num_nodes)]))
         else:
-            self.times = ca.cumsum(ca.vertcat(*[nodes[i].progress for i in range(self.num_nodes)]))
+            self.times = ca.cumsum(ca.vertcat(*[nodes[i].progress**2 for i in range(self.num_nodes)]))
         
         if self.progress:
-            self.time = ca.sum1(ca.vertcat(*[ca.MX(1.0) / nodes[i].progress for i in range(self.num_nodes)]))
+            self.time = ca.sum1(ca.vertcat(*[ca.MX(1.0) / nodes[i].progress**2 for i in range(self.num_nodes)]))
             assert isinstance(self.time, ca.MX)
 
         else:
@@ -407,9 +413,10 @@ class ControlProblem(ABC):
         """
         guess = guess if guess is not None else np.zeros((self.state_dim + self.control_dim, self.num_nodes + 1))
 
+        
         self.opti.set_value(self.state_guess_parameter, guess[:self.state_dim, :])
         self.opti.set_value(self.control_guess_parameter, guess[self.state_dim:self.state_dim + self.control_dim, :])
-
+        
         current_node = self._setup_initial_node(guess)
         nodes = [current_node]
 
@@ -519,7 +526,7 @@ class ControlProblem(ABC):
         return {
             "state": sol.value(self.state),
             "control": sol.value(self.control),
-            "time": sol.value(self.time) if hasattr(self, 'time') else None
+            "times": sol.value(self.times) if hasattr(self, 'times') else None
         }
 
 

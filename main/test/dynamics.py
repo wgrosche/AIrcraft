@@ -31,7 +31,7 @@ linear_path = Path(DATAPATH) / 'glider' / 'linearised.csv'
 traj_dict = json.load(open('data/glider/problem_definition.json'))
 trajectory_config = TrajectoryConfiguration(traj_dict)
 aircraft_config = trajectory_config.aircraft
-opts = AircraftOpts(coeff_model_type='default', coeff_model_path='', aircraft_config=aircraft_config)
+opts = AircraftOpts(coeff_model_type='poly', coeff_model_path=poly_path, aircraft_config=aircraft_config)
 
 def setup_parser() -> ArgumentParser:
     parser = ArgumentParser(
@@ -90,7 +90,7 @@ def main():
 
     print("Jacobian of state derivatives w.r.t. elevator:")
     print(jacobian_elevator_val)
-    dt = .01
+    dt = .001
     tf = 1
     state_list = np.zeros((aircraft.num_states, int(tf / dt)))
     times_list = np.zeros((int(tf / dt)))
