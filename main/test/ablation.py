@@ -166,7 +166,7 @@ class Controller(AircraftControl, SaveMixin):#, ProgressTimeMixin):
         control_loss = ca.sumsqr(self.control[:, 1:] / 10 - self.control[:, :-1] / 10)
         indices = self.goal.shape[0]
         goal_loss = 10 * ca.sumsqr(self.state[:indices, -1] - self.goal)
-        height_loss = ca.sumsqr(self.state[2, :]/ 100) # we want to maximise negative height
+        height_loss = - ca.sumsqr(self.state[2, :]/ 100) # YOU SQUARED IT negative height
         speed_loss = - ca.sumsqr(self.state[3, :] / 100) # we want to maximise body frame x velocity
         loss = goal_loss
         if not isinstance(self.times[-1], float):

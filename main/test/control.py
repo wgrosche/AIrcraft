@@ -25,14 +25,23 @@ class Controller(AircraftControl):#, SaveMixin):#, ProgressTimeMixin):
         # ProgressTimeMixin._init_progress_time(self, self.opti, num_nodes)
         
 
-    def loss(self, nodes:ControlNode, time:ca.MX) -> ca.MX:
-        control_loss = ca.sumsqr(self.control[:, 1:] - self.control[:, -1])
-        self.goal = ca.DM([0, 30])
+    def loss(self, nodes, time):
+        """
+        Try to scale everything to order 1
+        """
+        self.goal = ca.DM([0, 50])
+        time_loss = self.times[-1]
+        control_loss = ca.sumsqr(self.control[:, 1:] / 10 - self.control[:, :-1] / 10)
         indices = self.goal.shape[0]
         goal_loss = 10 * ca.sumsqr(self.state[:indices, -1] - self.goal)
-        self.constraint(ca.sumsqr(nodes[-1].state[:indices] - self.goal)==0)
-        return control_loss + self.times[-1] #+ goal_loss#1000*ca.sumsqr(nodes[-1].state[:3] - [0, 30, -180])# + control_loss# + time - ca.sumsqr(self.state[:, 3])/100 - ca.sumsqr(self.state[:, 2])/100#time
-        # return 1000*ca.sumsqr(nodes[-1].state[:3] - [0, 100, -180]) + control_loss + time #time
+        height_loss = ca.sumsqr((self.state[2, :] - self.state[2, 0]) / 100) 
+        speed_loss = - ca.sum2(self.state[3, :] / 100) # we want to maximise body frame x velocity
+        loss = goal_loss
+        if not isinstance(self.times[-1], float):
+            loss += time_loss
+
+        loss += control_loss + height_loss + speed_loss
+        return  loss# + time_loss + control_loss + height_loss + speed_loss
     
     def initialise(self, initial_state):
         """
