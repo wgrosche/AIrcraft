@@ -163,6 +163,7 @@ def generate_3d_dubins_path(
     path_points = []
     all_time_intervals = []
     for i in range(len(waypoints) - 1):
+        print(waypoints[i])
         point1, theta1 = waypoints[i]
         point2, theta2 = waypoints[i + 1]
 
@@ -218,7 +219,7 @@ def setup_waypoints(x_initial:Point, waypoints:Points) -> DubinsPoints:
     initial_heading = np.arctan2(v_initial[1], v_initial[0])
     
     # Initialize list with initial position and heading
-    waypoints_with_dubins = [[p_initial[0], p_initial[1], p_initial[2]], initial_heading]
+    waypoints_with_dubins = [[(p_initial[0], p_initial[1], p_initial[2]), initial_heading]]
     
     # Add waypoints with propagated headings
     for i in range(1, len(waypoints)):
@@ -229,13 +230,13 @@ def setup_waypoints(x_initial:Point, waypoints:Points) -> DubinsPoints:
             heading = np.arctan2(dy, dx)
         else:
             # For last waypoint, keep the heading from previous segment
-            heading = waypoints_with_dubins[-1][3]
+            heading = waypoints_with_dubins[-1][1]
             
         waypoints_with_dubins.append((
-            waypoints[i][0],
+            ([waypoints[i][0],
             waypoints[i][1], 
-            waypoints[i][2],
-            heading
+            waypoints[i][2]],
+            heading)
         ))
     
     return waypoints_with_dubins
@@ -253,9 +254,9 @@ def visualize_3d_dubins_path(waypoints:Points, trajectory, orientations:Optional
 
 
     # Plot the waypoints
-    waypoints_x = [p[0] for p in waypoints]
-    waypoints_y = [p[1] for p in waypoints]
-    waypoints_z = [-p[2] for p in waypoints]
+    waypoints_x = [p[0] for p, heading in waypoints]
+    waypoints_y = [p[1] for p, heading in waypoints]
+    waypoints_z = [-p[2] for p, heading in waypoints]
 
     ax.scatter(waypoints_x, waypoints_y, waypoints_z, color='red', label='Waypoints', s=50) # type: ignore
 

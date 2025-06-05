@@ -211,7 +211,7 @@ class ControlProblem(ABC):
         super().__init__()#**kwargs)
 
     def _scale_variable(self, var, scale):
-        return ca.DM(scale) * var if scale else var
+        return ca.MX(scale) * var if scale else var
 
     def constraint(self, expr, description=None) -> None:
         """
@@ -261,8 +261,8 @@ class ControlProblem(ABC):
         pass
         
     def state_constraint(self, node: ControlNode, next: ControlNode) -> None:
-        dt_i = ca.DM(1.0) / node.progress**2 if self.opts.get('time', 'fixed') in ['progress', 'fixed'] else ca.MX(node.progress)**2
-
+        dt_i = 1.0 / node.progress**2 if self.opts.get('time', 'fixed') in ['progress', 'fixed'] else ca.MX(node.progress)**2
+        # print(node.progress.is_symbolic())
         if self.opts.get('integration', 'explicit') == 'explicit':
             next_state = self.dynamics(node.state, node.control, dt_i)
             self.constraint(next.state - next_state == 0, description=f"state dynamics constraint at node {node.index}")
@@ -325,14 +325,17 @@ class ControlProblem(ABC):
 
     def _make_node(self, index: int, guess: np.ndarray, enforce_state_constraint: bool = False) -> ControlNode:
         opti = self.opti
-
+        # print(type(self.scale_control))
         state = self._scale_variable(opti.variable(self.state_dim), self.scale_state)
         control = self._scale_variable(opti.variable(self.control_dim), self.scale_control)
-        progress = (
-            self._scale_variable(opti.variable(), ca.sqrt(1 / self.dt))
-            if self.progress else ca.sqrt(1 / self.dt)
-        )
-
+        # print(self.progress)
+        if self.progress:
+            # print(type(np.sqrt(1 / self.dt)))
+            progress = self._scale_variable(opti.variable(1), ca.MX(1 / self.dt))
+            # assert progress.is_symbolic()
+        else:
+            progress =  ca.sqrt(1 / self.dt)
+        
         node = ControlNode(index=index, state=state, control=control, progress=progress)
 
         # Set initial guesses

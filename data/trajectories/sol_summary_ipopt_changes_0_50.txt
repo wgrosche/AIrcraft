@@ -798,3 +798,20 @@ Final objective: None
 Solver time (s): 42.9819
 
 ----------------------------------------
+# integration_explicit_model_default_quaternion_constraint_steps_1_time_fixed
+
+=== Solution Summary ===
+Final Time: 2.99999999999998
+Final State:
+[ 1.34945777e+02  1.44337577e+00 -2.00968384e+02  4.04128337e+01
+  7.62142630e-01 -9.38922033e-01 -4.20078141e-03  2.05442692e-02
+  9.49695273e-03  9.99735012e-01 -2.09055273e-03  2.65404209e-02
+ -2.44588560e-04]
+Final Control:
+[-0.01191054 -0.03986617 -0.0012587   0.          0.          0.        ]
+Status: NonIpopt_Exception_Thrown
+Iterations: 107
+Final objective: None
+Solver time (s): 285.583844
+
+----------------------------------------

@@ -126,6 +126,7 @@ class PolynomialModel(CoefficientModel):
         rud_inputs = ca.vertcat(a._qbar, a._alpha, a._rudder_beta, a._aileron, a._elevator)
         outputs[5] = ca.vertcat(*[fm[k](rud_inputs) for k in fm])[5]
 
-        Cn_rudder = -0.1
+        # Cn_rudder = -0.01
+        Cn_rudder = 0
         outputs[5] += Cn_rudder * 6 * a._rudder * np.pi / 180
         return ca.MX(outputs)

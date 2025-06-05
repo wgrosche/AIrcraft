@@ -90,7 +90,7 @@ def main():
 
     print("Jacobian of state derivatives w.r.t. elevator:")
     print(jacobian_elevator_val)
-    dt = .001
+    dt = .01
     tf = 1
     state_list = np.zeros((aircraft.num_states, int(tf / dt)))
     times_list = np.zeros((int(tf / dt)))

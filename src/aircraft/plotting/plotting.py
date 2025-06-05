@@ -170,17 +170,17 @@ class TrajectoryPlotter:
         Transforms axes into the frame defined by quaternion:4xN
         """
         # Convert quaternion from x,y,z,w to w,x,y,z format
-        quaternion = np.roll(quaternion, 1, axis=0)
+        # quaternion = np.roll(quaternion, 1, axis=0)
         
         # Ensure the quaternion is normalized
         quaternion = quaternion / np.linalg.norm(quaternion, axis=0)
         
-        rotation = R.from_quat(quaternion.T)
+        rotation = R.from_quat(quaternion.T).inv()
         
         # Create orthogonal basis vectors
         x_axis = rotation.apply(np.array([1, 0, 0]))
         y_axis = rotation.apply(np.array([0, 1, 0]))
-        z_axis = rotation.apply(np.array([0, 0, -1]))
+        z_axis = rotation.apply(np.array([0, 0, 1]))
         
         return (x_axis, y_axis, z_axis)
     
@@ -228,19 +228,18 @@ class TrajectoryPlotter:
             self._quivers = {
                 'x': ax.quiver(position[0, ::step], position[1, ::step], position[2, ::step],
                             x_axis[::step, 0], x_axis[::step, 1], x_axis[::step, 2],
-                            color='r', length=1, label='Forward', normalize=True),
+                            color='r', length=3, label='Forward', normalize=True),
                 'y': ax.quiver(position[0, ::step], position[1, ::step], position[2, ::step],
                             y_axis[::step, 0], y_axis[::step, 1], y_axis[::step, 2],
-                            color='g', length=1, label='Right', normalize=True),
+                            color='g', length=3, label='Right', normalize=True),
                 'z': ax.quiver(position[0, ::step], position[1, ::step], position[2, ::step],
                             z_axis[::step, 0], z_axis[::step, 1], z_axis[::step, 2],
-                            color='b', length=1, label='Down', normalize=True),
+                            color='b', length=3, label='Down', normalize=True),
             }
-        # In your plot_position method, modify the else block for quivers:
         else:
             for axis, data in zip(['x', 'y', 'z'], [x_axis, y_axis, z_axis]):
                 starts = np.array([position[0, ::step], position[1, ::step], position[2, ::step]]).T
-                ends = starts + data[::step] * 10  # Scale factor of 10 matches your original length
+                ends = starts + data[::step] * 3
                 segments = np.stack([starts, ends], axis=1)
                 self._quivers[axis].set_segments(segments)
 

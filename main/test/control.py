@@ -29,18 +29,18 @@ class Controller(AircraftControl):#, SaveMixin):#, ProgressTimeMixin):
         """
         Try to scale everything to order 1
         """
-        self.goal = ca.DM([0, 50])
+        self.goal = ca.DM([0, 0, -100])
         time_loss = self.times[-1]
-        control_loss = ca.sumsqr(self.control[:, 1:] / 10 - self.control[:, :-1] / 10)
+        control_loss = ca.sumsqr(self.control[:, 1:] / 10 - self.control[:, :-1] / 10) / self.num_nodes
         indices = self.goal.shape[0]
-        goal_loss = 10 * ca.sumsqr(self.state[:indices, -1] - self.goal)
-        height_loss = ca.sumsqr((self.state[2, :] - self.state[2, 0]) / 100) 
-        speed_loss = - ca.sum2(self.state[3, :] / 100) # we want to maximise body frame x velocity
+        goal_loss = 10000 * ca.sumsqr(self.state[:indices, -1] - self.goal)
+        height_loss = 0#ca.sumsqr((self.state[2, -1] - self.state[2, 0]))# / self.num_nodes
+        speed_loss = - ca.sum2(self.state[3, :] / 100) / self.num_nodes # we want to maximise body frame x velocity
         loss = goal_loss
         if not isinstance(self.times[-1], float):
             loss += time_loss
 
-        loss += control_loss + height_loss + speed_loss
+        loss += control_loss+ height_loss + speed_loss
         return  loss# + time_loss + control_loss + height_loss + speed_loss
     
     def initialise(self, initial_state):
@@ -48,8 +48,8 @@ class Controller(AircraftControl):#, SaveMixin):#, ProgressTimeMixin):
         Initialize the optimization problem with initial state.
         """
         guess = np.zeros((self.state_dim + self.control_dim, self.num_nodes + 1))
-        guess[13, :] = 1
-        guess[14, :] = 1
+        guess[13, :] = 0
+        guess[14, :] = 3
         guess[:self.state_dim, 0] = initial_state.toarray().flatten()
         # dt_initial = self.dt
         # dt_initial = 0.01#2 / self.num_nodes
@@ -93,7 +93,7 @@ def main():
     aircraft_config = trajectory_config.aircraft
 
     poly_path = Path(NETWORKPATH) / 'fitted_models_casadi.pkl'
-    opts = AircraftOpts(coeff_model_type='', coeff_model_path='', aircraft_config=aircraft_config, physical_integration_substeps=1)
+    opts = AircraftOpts(coeff_model_type='poly', coeff_model_path=poly_path, aircraft_config=aircraft_config, physical_integration_substeps=1)
 
     aircraft = Aircraft(opts = opts)
     trim_state_and_control = [0, 0, -200, 50, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
@@ -102,7 +102,7 @@ def main():
 
     # controller_opts = {'time':'fixed', 'quaternion':'', 'integration':'explicit'}
     controller_opts = {'time':'progress', 'quaternion':'integration', 'integration':'explicit'}
-    controller = Controller(aircraft=aircraft, filepath=filepath, opts = controller_opts)
+    controller = Controller(aircraft=aircraft, filepath=filepath, opts = controller_opts, num_nodes=300)
     guess = controller.initialise(ca.DM(trim_state_and_control[:aircraft.num_states]))
     controller.setup(guess)
     controller.logging = False

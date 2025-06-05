@@ -307,11 +307,11 @@ class Aircraft(SixDOF):
         forces = self._coefficients[:3] * self._qbar * self.S
 
         # antialign drag and velocity with smoothed sign flip
-        epsilon = 1e-2
-        smoothed_sign = ca.tanh(self._v_frd_rel[0] / epsilon)
-        forces[0] = smoothed_sign * forces[0]
-
-        forces += self._thrust
+        # epsilon = 1e-2
+        # smoothed_sign = ca.tanh(self._v_frd_rel[0] / epsilon)
+        # forces[0] = smoothed_sign * forces[0]
+        forces[0] *= ca.sign(self._v_frd_rel[0])
+        # forces += self._thrust
 
         return forces
     
