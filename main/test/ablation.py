@@ -110,7 +110,7 @@ def evaluate_sol(sol, filename, title, controller):
             # f.write("\n" + metrics)
 
 
-def run_test_case(opts, goal = [0, 50], num_nodes=300): # first run was [50, 0]
+def run_test_case(opts, goal = [30, 0], num_nodes=300): # first run was [50, 0]
     aircraft_config.aero_centre_offset = [0.0131991, -1.78875e-08, 0.00313384]
     air_opts = AircraftOpts(coeff_model_type=opts.get('model'), 
                             coeff_model_path=model_path.get(opts.get('model'), ''), 
@@ -217,7 +217,7 @@ def main():
             first_run = False
             continue
         
-        run_test_case(opts = opt, num_nodes=300, goal=[50, 0])
+        run_test_case(opts = opt, num_nodes=300, goal=[0, 50])
     
     
     
