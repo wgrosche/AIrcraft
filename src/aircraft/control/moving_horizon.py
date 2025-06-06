@@ -115,12 +115,13 @@ import numpy as np
 from dataclasses import dataclass
 import casadi as ca
 from aircraft.control.base import ControlProblem, ControlNode
-from aircraft.control.aircraft import AircraftControl
+# from aircraft.control.aircraft import AircraftControl
 from dataclasses import dataclass
 from typing import Optional, List
 from aircraft.control.initialisation import DubinsInitialiser
 from aircraft.plotting.plotting import TrajectoryData
 import matplotlib.pyplot as plt
+
 @dataclass
 class MPCCNode(ControlNode):
     progress: Optional[ca.MX] = None

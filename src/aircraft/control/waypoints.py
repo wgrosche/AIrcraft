@@ -9,6 +9,7 @@ from typing import List, Optional
 from dataclasses import dataclass
 
 from aircraft.utils.utils import TrajectoryConfiguration
+from aircraft.dynamics.base import SixDOF
 
 @dataclass
 class ControlNodeWaypoints(ControlNode):
@@ -24,11 +25,11 @@ class ControlNodeWaypoints(ControlNode):
             index = node.index,
             state = node.state,
             control = node.control,
+            progress = node.progress,
             lam = lam,
             mu = mu,
             nu = nu
         )
-    
 
 
 class WaypointControl(ControlProblem):
@@ -37,10 +38,13 @@ class WaypointControl(ControlProblem):
 
     TODO: Modify so that it only implements waypoint constraints to create a family tree of control classes
     """
-    def __init__(self, dynamics:ca.Function, trajectory_config:TrajectoryConfiguration, opts:Optional[dict] = {}):
+    def __init__(self, *, system:SixDOF, trajectory_config:TrajectoryConfiguration, opts:Optional[dict] = None, **kwargs):
         """
         To be implemented
         """
+        if opts is None:
+            opts = {}
+
         max_control_nodes = opts.get('max_control_nodes', 100)
         # to calculate the num of nodes needed we use the dubins path from initialisation.py and add a tolerance
         num_nodes = np.min(max_control_nodes, 100)
@@ -48,7 +52,7 @@ class WaypointControl(ControlProblem):
         self.trajectory = trajectory_config
         self.num_waypoints = len(trajectory_config.waypoints.waypoints)
 
-        super().__init__(dynamics, num_nodes, opts)
+        super().__init__(system=system, num_nodes = num_nodes, opts=opts, **kwargs)
 
 
     def waypoint_constraint(self, node:ControlNodeWaypoints, next:ControlNodeWaypoints):

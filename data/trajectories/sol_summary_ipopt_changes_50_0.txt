@@ -1,0 +1,1149 @@
+# integration_explicit_model_default_quaternion_constraint_steps_1_time_fixed
+
+=== Solution Summary ===
+Final Time: 1.0000000000000007
+Final State:
+[ 5.00000000e+01 -1.29300594e-14 -2.00369206e+02  3.12908765e+02
+ -3.38871668e-04  9.41054066e+01  5.85054124e-06  2.29843731e+00
+ -1.76044740e-06  1.93369593e+00 -1.64612376e-01 -5.23302961e+04
+  4.98621235e-02]
+Final Control:
+[-1.04288428e-07  1.18163000e-01 -5.90052041e-08  6.56001315e+04
+ -1.22573577e-01  7.06831271e+03]
+Status: Solve_Succeeded
+Iterations: 30
+Final objective: None
+Solver time (s): 4.639241
+
+----------------------------------------
+# integration_explicit_model_poly_quaternion_constraint_steps_1_time_fixed
+
+=== Solution Summary ===
+Final Time: 1.0000000000000007
+Final State:
+[ 5.00155008e+01  2.20846776e-07 -2.04811211e+02  5.39978703e+02
+ -9.06238228e-05 -1.18114791e+02  1.31206816e-06  1.22528931e-01
+  2.88096673e-08  9.92563162e-01  2.03413265e-06  2.48232335e+01
+  6.45865364e-05]
+Final Control:
+[ 2.00129439e-06 -1.03396649e-01  4.08107560e-07  1.02155092e+05
+ -1.91485226e-02 -2.68065969e+03]
+Status: Solved_To_Acceptable_Level
+Iterations: 27
+Final objective: None
+Solver time (s): 40.794871
+
+----------------------------------------
+# integration_implicit_model_default_quaternion_constraint_steps_1_time_fixed
+
+=== Solution Summary ===
+Final Time: 1.0000000000000007
+Final State:
+[ 5.00000000e+01 -7.51089313e-13 -1.99498400e+02  1.36630726e+02
+  3.46348307e-05  1.22187009e+00 -2.98163035e-10  9.76366589e-04
+ -1.09237167e-08  9.99999047e-01 -6.12954794e-08  1.95262893e-01
+ -2.22644857e-06]
+Final Control:
+[2.03336333e-07 5.15965441e-01 1.89570941e-05 1.78071157e+04
+ 8.22345933e-03 2.97434481e+02]
+Status: Solve_Succeeded
+Iterations: 15
+Final objective: None
+Solver time (s): 0.43231
+
+----------------------------------------
+# integration_implicit_model_poly_quaternion_constraint_steps_1_time_fixed
+
+=== Solution Summary ===
+Final Time: 1.0000000000000007
+Final State:
+[ 4.99287742e+01  3.12237421e-02 -1.99828741e+02  1.48299308e+02
+  3.32984922e+00  3.39214398e+01  4.44821226e-02 -2.12454845e-02
+  3.68080846e-03  9.97531570e-01  8.92564369e+00 -4.41420091e+00
+  7.63756584e-01]
+Final Control:
+[ 4.86978565e+00 -4.93286830e+00  2.38409106e-02  2.14870012e+04
+  8.82199543e+02  8.78506844e+03]
+Status: Solved_To_Acceptable_Level
+Iterations: 242
+Final objective: None
+Solver time (s): 161.340872
+
+----------------------------------------
+# integration_explicit_model_default_quaternion_baumgarte_steps_1_time_fixed
+
+=== Solution Summary ===
+Final Time: 1.0000000000000007
+Final State:
+[ 5.00000000e+01  9.79108263e-15 -2.00265473e+02  3.12765499e+02
+ -3.54645136e-04  9.45617440e+01  5.91160793e-06  2.29794292e+00
+ -1.80733983e-06  1.93586064e+00 -1.64590952e-01 -5.23550956e+04
+  4.98404860e-02]
+Final Control:
+[-5.43290661e-07  2.16315997e-02  3.35828442e-07  6.56013036e+04
+ -1.22537633e-01  7.06319740e+03]
+Status: Solve_Succeeded
+Iterations: 72
+Final objective: None
+Solver time (s): 10.739242
+
+----------------------------------------
+# integration_explicit_model_poly_quaternion_baumgarte_steps_1_time_fixed
+
+=== Solution Summary ===
+Final Time: 1.0000000000000007
+Final State:
+[ 4.97797023e+01  7.65045840e-02 -1.99373116e+02 -6.49277169e+01
+ -8.21596741e+01  3.37361568e+01  7.59242488e-01 -4.66262160e-02
+  4.68904739e-03  8.69087749e-01  1.78927495e+02 -2.43259215e+01
+ -2.33689827e+01]
+Final Control:
+[-1.47976795e+00 -1.19855913e+00  8.81947622e-01 -1.60265055e+04
+ -2.53262772e+03 -7.68769124e+02]
+Status: Restoration_Failed
+Iterations: 1905
+Final objective: None
+Solver time (s): 845.861743
+
+----------------------------------------
+# integration_implicit_model_default_quaternion_baumgarte_steps_1_time_fixed
+
+=== Solution Summary ===
+Final Time: 1.0000000000000007
+Final State:
+[ 4.99994824e+01  5.07618104e-09 -2.00280926e+02  2.21730642e+02
+  1.46874536e-04 -3.98083769e+00 -1.17962244e-09  2.33385464e-03
+  8.04995246e-09  9.99996182e-01 -1.19535937e-07  2.95847681e-01
+  1.38063798e-06]
+Final Control:
+[-7.30231936e-08 -1.90291540e-01 -1.08187295e-07  3.51720226e+04
+  3.36028990e-02 -1.07694979e+03]
+Status: Solve_Succeeded
+Iterations: 7
+Final objective: None
+Solver time (s): 0.276202
+
+----------------------------------------
+# integration_implicit_model_poly_quaternion_baumgarte_steps_1_time_fixed
+
+=== Solution Summary ===
+Final Time: 1.0000000000000007
+Final State:
+[ 4.79909963e+01 -3.29960378e-03 -2.00468595e+02  4.57998730e+01
+  1.88166775e-03 -3.37506799e-01  1.57636608e-04 -2.68315254e-03
+ -1.40530750e-05  9.99996335e-01 -9.53589706e-04 -6.52841649e-02
+  1.99460231e-03]
+Final Control:
+[-1.92296629e-03  6.92086099e-01 -3.77912012e-03  1.77322078e+01
+ -1.52040165e-02  8.52131265e-01]
+Status: Solved_To_Acceptable_Level
+Iterations: 534
+Final objective: None
+Solver time (s): 269.106891
+
+----------------------------------------
+# integration_explicit_model_default_quaternion_integration_steps_1_time_fixed
+
+=== Solution Summary ===
+Final Time: 1.0000000000000007
+Final State:
+[ 5.00000000e+01 -4.80715615e-19 -2.00168490e+02  3.24202937e+02
+ -3.57525205e-04  9.92623182e+01  2.38073432e-06  7.68520389e-01
+ -8.81184195e-07  6.39825298e-01 -2.00596376e-01 -5.27167329e+04
+  6.75910132e-02]
+Final Control:
+[-4.26665428e-09 -4.84954024e-03 -8.00354694e-08  6.70124805e+04
+ -1.34788131e-01  8.19057880e+03]
+Status: Solve_Succeeded
+Iterations: 6
+Final objective: None
+Solver time (s): 0.429512
+
+----------------------------------------
+# integration_explicit_model_poly_quaternion_integration_steps_1_time_fixed
+
+=== Solution Summary ===
+Final Time: 1.0000000000000007
+Final State:
+[ 4.99999985e+01  2.84539830e-14 -2.00007894e+02  4.84965223e+01
+ -1.94121137e-08 -1.81776563e-02 -9.48144673e-05 -1.12448587e-02
+  3.30037286e-05  9.99936770e-01  3.70092334e-04 -9.80287030e-01
+ -3.91776918e-04]
+Final Control:
+[ 7.06254253e-05  4.45092520e+00 -4.83793867e-05  5.54120205e+01
+ -3.52158984e-03 -8.90145859e-01]
+Status: Solve_Succeeded
+Iterations: 11
+Final objective: None
+Solver time (s): 1.523263
+
+----------------------------------------
+# integration_implicit_model_default_quaternion_integration_steps_1_time_fixed
+
+=== Solution Summary ===
+Final Time: 1.0000000000000007
+Final State:
+[ 4.99999996e+01 -2.47078555e-15 -1.99982575e+02  2.13845350e+02
+ -1.03392763e-04  6.11041717e+00 -2.40448832e-09  7.85406136e-03
+  7.11460275e-08  9.99968299e-01  6.97537384e-08  1.99938405e-01
+  5.95239375e-07]
+Final Control:
+[-3.16176312e-08 -4.45881577e-02 -1.11180773e-06  3.35347981e+04
+ -3.02483440e-02  3.26257998e+03]
+Status: Solve_Succeeded
+Iterations: 7
+Final objective: None
+Solver time (s): 0.218497
+
+----------------------------------------
+# integration_implicit_model_poly_quaternion_integration_steps_1_time_fixed
+
+=== Solution Summary ===
+Final Time: 1.0000000000000007
+Final State:
+[ 4.99999418e+01  1.12499373e-12 -1.99999936e+02  4.91891885e+01
+ -1.68153980e-05 -1.09094989e-02 -6.93730101e-05 -1.03310069e-02
+  1.40146653e-05  9.99925380e-01  1.71967152e-04 -7.89555822e-01
+ -4.22038319e-04]
+Final Control:
+[ 5.81031008e-05  4.97318114e+00 -1.90421056e-05  1.09117146e+02
+ -2.54719138e-03 -1.62086665e+00]
+Status: Solve_Succeeded
+Iterations: 12
+Final objective: None
+Solver time (s): 1.452189
+
+----------------------------------------
+# integration_explicit_model_default_quaternion_none_steps_1_time_fixed
+
+=== Solution Summary ===
+Final Time: 1.0000000000000007
+Final State:
+[ 5.00000000e+01  1.76422115e-25 -2.00168679e+02  3.24274979e+02
+ -3.58769592e-04  9.92476010e+01  6.97295778e-06  2.22191489e+00
+ -2.60886608e-06  1.84990726e+00 -2.03054108e-01 -5.26796165e+04
+  6.88776764e-02]
+Final Control:
+[-4.29655193e-09 -4.85389835e-03 -8.06108246e-08  6.70124415e+04
+ -1.35786606e-01  8.19594907e+03]
+Status: Solve_Succeeded
+Iterations: 5
+Final objective: None
+Solver time (s): 0.342802
+
+----------------------------------------
+# integration_explicit_model_poly_quaternion_none_steps_1_time_fixed
+
+=== Solution Summary ===
+Final Time: 1.0000000000000007
+Final State:
+[ 4.99999985e+01  2.84988765e-14 -2.00007906e+02  4.84965096e+01
+ -1.85352920e-08 -1.82444819e-02 -9.46105737e-05 -1.12350952e-02
+  3.29600294e-05  9.99936924e-01  3.69025424e-04 -9.78466278e-01
+ -3.90261121e-04]
+Final Control:
+[ 7.05364692e-05  4.44295899e+00 -4.81695353e-05  5.54120269e+01
+ -3.51707960e-03 -8.89668493e-01]
+Status: Solve_Succeeded
+Iterations: 11
+Final objective: None
+Solver time (s): 1.494178
+
+----------------------------------------
+# integration_implicit_model_default_quaternion_none_steps_1_time_fixed
+
+=== Solution Summary ===
+Final Time: 1.0000000000000007
+Final State:
+[ 4.99999996e+01 -2.47078555e-15 -1.99982575e+02  2.13845350e+02
+ -1.03392763e-04  6.11041717e+00 -2.40448832e-09  7.85406136e-03
+  7.11460275e-08  9.99968299e-01  6.97537383e-08  1.99938405e-01
+  5.95239375e-07]
+Final Control:
+[-3.16176315e-08 -4.45881577e-02 -1.11180773e-06  3.35347981e+04
+ -3.02483440e-02  3.26257998e+03]
+Status: Solve_Succeeded
+Iterations: 7
+Final objective: None
+Solver time (s): 0.190112
+
+----------------------------------------
+# integration_implicit_model_poly_quaternion_none_steps_1_time_fixed
+
+=== Solution Summary ===
+Final Time: 1.0000000000000007
+Final State:
+[ 4.99999418e+01  1.12499373e-12 -1.99999936e+02  4.91891885e+01
+ -1.68153980e-05 -1.09094989e-02 -6.93730102e-05 -1.03310069e-02
+  1.40146653e-05  9.99925380e-01  1.71967153e-04 -7.89555822e-01
+ -4.22038319e-04]
+Final Control:
+[ 5.81031008e-05  4.97318114e+00 -1.90421056e-05  1.09117146e+02
+ -2.54719138e-03 -1.62086665e+00]
+Status: Solve_Succeeded
+Iterations: 12
+Final objective: None
+Solver time (s): 1.124291
+
+----------------------------------------
+# integration_explicit_model_default_quaternion_constraint_steps_1_time_progress
+
+=== Solution Summary ===
+Final Time: 0.667037465039445
+Final State:
+[ 3.25805191e+01 -8.06488181e-03 -2.00098219e+02  4.55573617e+01
+ -3.78978305e-01 -1.04022289e+02 -1.76027371e-03  3.41977930e-02
+  2.12441454e-03  1.00091931e+00  1.91117455e-01 -3.94813549e+01
+ -1.97201302e-02]
+Final Control:
+[ 3.85595791e-01 -1.56313175e-01  3.24998444e-02  1.37056445e+01
+ -1.52127726e-01 -3.56021192e+04]
+Status: Solved_To_Acceptable_Level
+Iterations: 338
+Final objective: None
+Solver time (s): 561.118169
+
+----------------------------------------
+# integration_explicit_model_poly_quaternion_constraint_steps_1_time_progress
+
+=== Solution Summary ===
+Final Time: 1.0355056022086633
+Final State:
+[ 4.92884441e+01  4.70579491e-03 -2.03901051e+02  3.97538022e+01
+ -8.30481084e-02  4.93225517e+01  8.17901779e-04  4.77120339e-02
+  5.97310308e-04  9.98811664e-01 -6.93972925e-03 -1.62524987e+01
+  1.22128922e-02]
+Final Control:
+[ 1.67027065e-02 -1.50454625e-01  3.25070069e-03 -1.81437619e+03
+  1.29265534e-01  8.43874352e+03]
+Status: Solved_To_Acceptable_Level
+Iterations: 285
+Final objective: None
+Solver time (s): 386.233804
+
+----------------------------------------
+# integration_implicit_model_default_quaternion_constraint_steps_1_time_progress
+
+=== Solution Summary ===
+Final Time: 0.964296304954293
+Final State:
+[ 4.99991450e+01  3.85049506e-08 -2.00095320e+02  2.07972231e+02
+  1.38972764e-04 -1.56427481e+01 -8.70398361e-08 -3.25111783e-03
+  5.50190979e-07  9.99989828e-01 -1.50991308e-05 -6.48406375e-01
+ -2.66899544e-04]
+Final Control:
+[-1.43879153e-04  4.99951177e+00  1.33078025e-03  3.30050210e+04
+ -2.28336864e-02 -6.13334707e+03]
+Status: Solve_Succeeded
+Iterations: 73
+Final objective: None
+Solver time (s): 65.011944
+
+----------------------------------------
+# integration_implicit_model_poly_quaternion_constraint_steps_1_time_progress
+
+=== Solution Summary ===
+Final Time: 0.015800791715973737
+Final State:
+[ 4.99999914e+01 -2.26496818e-14 -1.99970005e+02  3.08522398e+05
+  1.86475471e-04  9.46631431e+01  9.58752373e-06 -1.10990541e-02
+  3.31102891e-06  9.99875622e-01  1.21365729e-01 -1.41837216e+02
+  4.19213226e-02]
+Final Control:
+[ 2.57292263e-05  6.39156861e-01 -2.98760505e-05  4.21120269e+09
+ -4.42593971e+04  6.03651591e+07]
+Status: Solve_Succeeded
+Iterations: 230
+Final objective: None
+Solver time (s): 446.996283
+
+----------------------------------------
+# integration_explicit_model_default_quaternion_baumgarte_steps_1_time_progress
+
+=== Solution Summary ===
+Final Time: 0.9303006311787185
+Final State:
+[ 4.37637496e+01  1.43735862e-02 -1.99507977e+02  4.41372382e+01
+ -3.57833945e+00  1.61851684e+01  5.55361521e-03 -2.75153938e-03
+ -3.03525893e-03  9.99989271e-01  7.83214578e-02 -1.61751261e+00
+ -1.94886366e-01]
+Final Control:
+[ 8.78280821e-05 -1.50777713e-02 -1.31227523e-03 -1.81065796e+02
+ -7.21092256e+02  3.68885427e+03]
+Status: Solved_To_Acceptable_Level
+Iterations: 1176
+Final objective: None
+Solver time (s): 1170.927643
+
+----------------------------------------
+# integration_explicit_model_poly_quaternion_baumgarte_steps_1_time_progress
+
+=== Solution Summary ===
+Final Time: 1.4033172344536
+Final State:
+[ 2.71552872e+01  2.08821745e+00 -2.21085091e+02 -1.44234560e+03
+  2.18434901e+02  2.46374691e+02 -3.71099098e+01  4.46017118e+01
+ -3.82450079e+01  6.00797779e+01  1.77320979e+02  5.08687928e+03
+  2.02007848e+02]
+Final Control:
+[ 4.91429987e+00 -4.99999437e+00 -8.57538895e-02  4.28278954e+05
+ -2.07582104e+04  3.86917152e+05]
+Status: Maximum_Iterations_Exceeded
+Iterations: 10000
+Final objective: None
+Solver time (s): 4697.588831
+
+----------------------------------------
+# integration_implicit_model_default_quaternion_baumgarte_steps_1_time_progress
+
+=== Solution Summary ===
+Final Time: 0.010000001298081719
+Final State:
+[ 5.00000000e+01  1.83252809e-11 -1.99759308e+02  4.92777811e+05
+  1.07547140e+01  2.00524763e+03  4.66431151e-08  5.21064997e-06
+ -5.62534861e-06  1.00000000e+00  6.10152312e-04  9.72840368e-02
+ -1.07630495e-01]
+Final Control:
+[ 5.46495107e-03 -3.98788722e-01  5.13904230e-01  1.05622092e+10
+  1.47627312e+06  7.62209469e+08]
+Status: Solve_Succeeded
+Iterations: 1764
+Final objective: None
+Solver time (s): 2070.08603
+
+----------------------------------------
+# integration_implicit_model_poly_quaternion_baumgarte_steps_1_time_progress
+
+=== Solution Summary ===
+Final Time: 1.04722648377488
+Final State:
+[ 4.99989675e+01 -1.75185917e-06 -2.00629791e+02  4.53470112e+01
+ -1.49424416e-04 -5.43762051e-01  1.62563822e-07  2.49759226e-04
+  4.47795256e-07  9.99999941e-01  1.26010699e-05  4.53345490e-02
+  6.41105765e-05]
+Final Control:
+[ 3.29557303e-05 -3.22632029e-03 -1.02794135e-04  4.87915840e+00
+ -2.24023333e-04  8.54286034e-01]
+Status: Solve_Succeeded
+Iterations: 50
+Final objective: None
+Solver time (s): 24.183409
+
+----------------------------------------
+# integration_explicit_model_default_quaternion_integration_steps_1_time_progress
+
+=== Solution Summary ===
+Final Time: 0.18868838894845383
+Final State:
+[ 4.99959345e+01  4.01901494e-02 -2.34863851e+02 -3.32036370e+03
+  3.33062280e+04 -5.87032551e+04 -5.47503042e-02 -4.48582442e-01
+  2.57915428e-02  1.01604019e+00  2.83489230e+03  2.14655413e+04
+  2.07582679e+03]
+Final Control:
+[-4.11275184e+00  1.07635083e+01  1.59152819e+00  1.87940597e+06
+ -2.54187323e+04 -4.32000629e+05]
+Status: Maximum_Iterations_Exceeded
+Iterations: 10000
+Final objective: None
+Solver time (s): 1002.80606
+
+----------------------------------------
+# integration_explicit_model_poly_quaternion_integration_steps_1_time_progress
+
+=== Solution Summary ===
+Final Time: 0.3073434725458763
+Final State:
+[ 4.65863048e+01 -3.13508541e+01 -1.82780904e+02  1.81457471e+05
+ -1.67140593e+04 -1.74535470e+05  4.50607516e-01  7.33366530e-02
+  3.83639584e-02 -3.80702878e-01 -1.00908189e+04  3.17668498e+04
+ -3.64490662e+03]
+Final Control:
+[ 5.41725017e+00 -4.14855696e+00 -1.21240611e-01  2.35344988e+07
+ -8.70998576e+05  1.47448205e+06]
+Status: Restoration_Failed
+Iterations: 8154
+Final objective: None
+Solver time (s): 2824.551196
+
+----------------------------------------
+# integration_implicit_model_default_quaternion_integration_steps_1_time_progress
+
+=== Solution Summary ===
+Final Time: 0.01275546119656122
+Final State:
+[ 3.29136438e+00 -6.95771506e-06 -2.49170528e+02  1.67962774e+04
+  3.52474048e+00  5.75243544e+04 -3.07322212e-04  1.15098619e-03
+  1.11187997e-03 -6.77402212e-04  4.35469481e-02 -1.01006469e+01
+ -1.81477182e-01]
+Final Control:
+[-1.49936753e-03 -1.01193480e+00 -1.25722865e-02 -2.06022202e+09
+ -6.71744121e+04 -2.66004951e+09]
+Status: Maximum_Iterations_Exceeded
+Iterations: 10000
+Final objective: None
+Solver time (s): 691.846512
+
+----------------------------------------
+# integration_implicit_model_poly_quaternion_integration_steps_1_time_progress
+
+=== Solution Summary ===
+Final Time: 0.012470605230004657
+Final State:
+[ 4.99999932e+01  1.45715423e-10 -1.99989677e+02  3.93022972e+05
+ -5.78053409e+00  1.21866722e+02 -1.10470062e-02 -1.10940139e-02
+  2.69598423e-04  9.99397715e-01  3.33420577e+00 -4.80584978e+02
+  1.20007807e+02]
+Final Control:
+[ 4.30943730e-04  6.53667382e-01 -2.53335319e-03  6.80008392e+09
+ -3.30119700e+06  1.02156929e+08]
+Status: Solve_Succeeded
+Iterations: 4395
+Final objective: None
+Solver time (s): 32997.269187
+
+----------------------------------------
+# integration_explicit_model_default_quaternion_none_steps_1_time_progress
+
+=== Solution Summary ===
+Final Time: 0.628233346563952
+Final State:
+[ 4.39725054e+01 -4.12921417e-02 -1.99775670e+02  2.00755020e+02
+ -3.14844433e+01  2.81170210e+02 -1.69776720e-01  2.33443189e-01
+ -1.08991341e-01 -3.10691373e-01 -4.33880338e+02 -1.42472957e+04
+  4.04851673e+01]
+Final Control:
+[ 2.15848492e-01  1.18152032e-01  1.39663296e+00  1.08661311e+05
+ -1.10256801e+01  2.00558866e+04]
+Status: Maximum_Iterations_Exceeded
+Iterations: 10000
+Final objective: None
+Solver time (s): 1043.939589
+
+----------------------------------------
+# integration_explicit_model_poly_quaternion_none_steps_1_time_progress
+
+=== Solution Summary ===
+Final Time: 0.19900711868319085
+Final State:
+[ 4.59956690e+01  2.45495059e-01 -1.92845157e+02  1.36521413e+05
+ -6.95844266e+04 -3.27014601e+05  7.09505655e-01  1.44641743e-01
+ -5.03390343e-02  9.36679220e-02  1.45350821e+04  1.60357646e+05
+  9.35752909e+03]
+Final Control:
+[-1.97402902e+00 -2.11712440e+00  1.77507865e-01  3.18476280e+07
+  8.08809568e+05  1.92136165e+06]
+Status: Restoration_Failed
+Iterations: 1647
+Final objective: None
+Solver time (s): 2635.822865
+
+----------------------------------------
+# integration_implicit_model_default_quaternion_none_steps_1_time_progress
+
+=== Solution Summary ===
+Final Time: 0.013793887284870803
+Final State:
+[ 2.17819856e+00 -3.86884912e-04 -2.05528235e+02 -3.40611881e+02
+ -1.03687195e+01 -2.05676867e+03  2.34930107e-05  1.61830819e-04
+  1.53189228e-04  1.65097415e-05 -9.22743370e-02 -1.03820493e+02
+  1.98221087e-01]
+Final Control:
+[-3.51469566e-01 -4.42148849e+00  2.52814702e-02 -1.39661677e+09
+  1.27312495e+05 -7.04195545e+06]
+Status: Maximum_Iterations_Exceeded
+Iterations: 10000
+Final objective: None
+Solver time (s): 1789.293872
+
+----------------------------------------
+# integration_implicit_model_poly_quaternion_none_steps_1_time_progress
+
+=== Solution Summary ===
+Final Time: 0.012448558002711902
+Final State:
+[ 4.99999933e+01  1.50835869e-10 -1.99989671e+02  3.93733068e+05
+ -5.76956743e+00  1.22021598e+02 -1.49435770e-02 -1.11275523e-02
+ -1.04689194e-03  9.99346376e-01 -5.89871625e+01 -4.81593592e+02
+  1.03479196e+02]
+Final Control:
+[-9.85432094e-03  6.54855410e-01  9.41175016e-03  6.82447832e+09
+  2.52971268e+07  9.82669183e+07]
+Status: Solve_Succeeded
+Iterations: 5006
+Final objective: None
+Solver time (s): 41259.358205
+
+----------------------------------------
+# integration_explicit_model_default_quaternion_constraint_steps_1_time_fixed
+
+=== Solution Summary ===
+Final Time: 2.99999999999998
+Final State:
+[ 5.00143414e+01  3.17242299e-03 -9.84504082e+00  7.33463657e+01
+ -2.08003235e+00  3.18734128e+01  4.98927094e-01 -3.50103500e-02
+  1.04818738e-01  8.59569233e-01  3.55829033e-01  1.02644804e+00
+ -1.03445206e+00]
+Final Control:
+[   3.10980566   -4.72081362    4.80096851  101.80007732  -77.53433212
+ 1087.2892163 ]
+Status: Maximum_Iterations_Exceeded
+Iterations: 10000
+Final objective: None
+Solver time (s): 1992.383623
+
+----------------------------------------
+# integration_explicit_model_poly_quaternion_constraint_steps_1_time_fixed
+
+=== Solution Summary ===
+Final Time: 2.99999999999998
+Final State:
+[ 4.99781739e+01  8.54092224e-04 -1.72051999e+02 -3.12703355e+01
+ -5.66193648e-01 -9.58279832e+00 -1.00679405e-02  9.93166929e-01
+ -5.71723640e-03  1.16126675e-01  2.16771102e-02  1.83436456e+00
+ -7.49951810e-02]
+Final Control:
+[  0.05277264  -2.28968169   0.02665446  10.7502397   -0.11084206
+ -14.80932608]
+Status: Maximum_Iterations_Exceeded
+Iterations: 10000
+Final objective: None
+Solver time (s): 4465.816264
+
+----------------------------------------
+# integration_implicit_model_default_quaternion_constraint_steps_1_time_fixed
+
+=== Solution Summary ===
+Final Time: 2.99999999999998
+Final State:
+[ 1.33451276e+02 -1.31120320e-01 -1.99241240e+02  3.93069698e+01
+ -6.02790361e-02 -3.49514044e-01 -3.57945927e-04  7.83767569e-04
+ -7.73105436e-04  9.99999330e-01  2.51827237e-05 -2.11542943e-04
+ -2.52607266e-04]
+Final Control:
+[-8.98775049e-04  5.62461050e-02  7.90204501e-03 -2.18463361e+01
+  8.31123639e-01 -2.65392096e+01]
+Status: Solved_To_Acceptable_Level
+Iterations: 825
+Final objective: None
+Solver time (s): 4738.102105
+
+----------------------------------------
+# integration_implicit_model_poly_quaternion_constraint_steps_1_time_fixed
+
+=== Solution Summary ===
+Final Time: 2.99999999999998
+Final State:
+[ 1.27885867e+02  7.37964501e-01 -2.04994063e+02  3.52478683e+01
+ -1.14589667e+00 -7.09088829e-01  5.01439651e-06  1.25371848e-03
+ -1.93829964e-05  9.99999214e-01 -1.51245242e-05  1.54447714e-04
+  8.55399968e-06]
+Final Control:
+[-1.86355640e-02  4.39175544e-01 -1.29993899e-01 -2.42094611e+01
+  3.81188559e-01 -9.18884320e+00]
+Status: Error_In_Step_Computation
+Iterations: 1539
+Final objective: None
+Solver time (s): 2158.814852
+
+----------------------------------------
+# integration_explicit_model_default_quaternion_baumgarte_steps_1_time_fixed
+
+=== Solution Summary ===
+Final Time: 2.99999999999998
+Final State:
+[ 1.35334254e+02  1.80827645e-01 -2.04220274e+02  4.02665103e+01
+  1.01193313e+00 -6.38962981e+00  8.55394057e-02  9.08361179e-02
+  4.83938185e-03  9.92173569e-01  7.52614564e-02  1.07801768e-01
+  2.33686510e-02]
+Final Control:
+[ 0.67266205 -0.40451404 -0.11297983 -0.44055739 -0.00471351 -0.0246495 ]
+Status: Maximum_CpuTime_Exceeded
+Iterations: 5042
+Final objective: None
+Solver time (s): 42868.86047
+
+----------------------------------------
+# integration_explicit_model_poly_quaternion_baumgarte_steps_1_time_fixed
+
+=== Solution Summary ===
+Final Time: 2.99999999999998
+Final State:
+[ 5.00031053e+01  2.92165439e-05 -4.23205883e+01  4.70497759e+01
+  1.14342427e+01  5.80554851e+00  4.25682267e-01  1.23511883e-02
+ -1.24069282e-01 -8.96241524e-01  2.16801354e+00 -4.27347317e+00
+ -4.84100316e-01]
+Final Control:
+[ 2.37570954e+00 -2.89484006e+00  3.91187791e-01  4.56106995e+01
+ -4.63742039e+00  5.79205439e+02]
+Status: Maximum_Iterations_Exceeded
+Iterations: 10000
+Final objective: None
+Solver time (s): 6040.412114
+
+----------------------------------------
+# integration_implicit_model_default_quaternion_baumgarte_steps_1_time_fixed
+
+=== Solution Summary ===
+Final Time: 2.99999999999998
+Final State:
+[ 1.32977592e+02 -3.84004420e-04 -2.00053137e+02  3.80665283e+01
+ -5.18210047e-04  1.95490552e-01  6.70710443e-05  3.79760468e-04
+ -1.11566110e-05  9.99999926e-01 -1.30671093e-05 -6.61447421e-06
+ -7.87799226e-05]
+Final Control:
+[-1.73544184e-03  2.38110346e-02  1.04746752e-03 -4.52187222e+01
+ -4.59673620e-05 -1.04725159e+01]
+Status: Solved_To_Acceptable_Level
+Iterations: 349
+Final objective: None
+Solver time (s): 2071.43289
+
+----------------------------------------
+# integration_implicit_model_poly_quaternion_baumgarte_steps_1_time_fixed
+
+=== Solution Summary ===
+Final Time: 2.99999999999998
+Final State:
+[ 1.28727092e+02 -6.40162031e-02 -2.04642771e+02  3.64700854e+01
+ -1.95636725e-02 -8.96373541e-01  6.14628028e-05  1.73289625e-03
+  1.07708335e-04  9.99998491e-01 -7.43456892e-06  1.90394900e-04
+ -3.53230683e-05]
+Final Control:
+[-2.97806847e-04  4.67406314e-01 -2.01684391e-03 -1.78947624e+01
+  6.99733961e-02 -3.34066453e+00]
+Status: Error_In_Step_Computation
+Iterations: 1261
+Final objective: None
+Solver time (s): 1657.521036
+
+----------------------------------------
+# integration_explicit_model_default_quaternion_integration_steps_1_time_fixed
+
+=== Solution Summary ===
+Final Time: 2.99999999999998
+Final State:
+[ 5.00154675e+01  3.55810289e-03 -9.84087721e+00  7.67317132e+01
+ -7.64941674e-01  2.23755763e+01  1.39745919e-01 -5.34163840e-02
+  1.21321713e-01  9.81274075e-01  1.00243195e+03  2.04063986e+02
+ -4.95994752e+01]
+Final Control:
+[   4.99963441   -4.74822805    4.99702677  114.4976247   -79.95551956
+ 1236.81571033]
+Status: Solve_Succeeded
+Iterations: 8033
+Final objective: None
+Solver time (s): 1734.902177
+
+----------------------------------------
+# integration_explicit_model_poly_quaternion_integration_steps_1_time_fixed
+
+=== Solution Summary ===
+Final Time: 2.99999999999998
+Final State:
+[ 5.00036034e+01  9.41570336e-05 -3.29792436e+01  7.95172003e+01
+ -7.71663180e+00  4.81475043e+00 -9.79890993e-01  9.61831433e-03
+  7.62456679e-02  1.84140513e-01 -2.21850928e+03  3.04846871e+02
+  6.95404297e+01]
+Final Control:
+[-5.38969749e-01 -7.14517560e-01  4.51578513e-01  1.56377584e+02
+  2.84280779e+02  1.62133571e+03]
+Status: Solve_Succeeded
+Iterations: 1289
+Final objective: None
+Solver time (s): 572.539725
+
+----------------------------------------
+# integration_implicit_model_default_quaternion_integration_steps_1_time_fixed
+
+=== Solution Summary ===
+Final Time: 2.99999999999998
+Final State:
+[ 4.99827753e+01  9.49797894e-04 -1.33165077e+01 -7.75940727e+01
+  2.33457805e-01  1.94659549e+01 -6.89076426e-02 -9.07683494e-01
+  3.46329698e-01  1.92956091e-01 -5.62451013e-01 -1.09355892e+00
+  9.69493644e-01]
+Final Control:
+[  -4.99181985    4.99853277   -4.49776383   14.85283154   53.38540598
+ 1262.7864516 ]
+Status: Solve_Succeeded
+Iterations: 6086
+Final objective: None
+Solver time (s): 421.80514
+
+----------------------------------------
+# integration_implicit_model_poly_quaternion_integration_steps_1_time_fixed
+
+=== Solution Summary ===
+Final Time: 2.99999999999998
+Final State:
+[ 5.00014290e+01  3.58098420e-04 -3.42229655e+01  8.03597854e+01
+ -5.35461564e+00  9.99669324e-01 -4.09864961e-02 -3.29253229e-03
+ -1.91932924e-04 -3.71870934e-02 -1.53972444e+01 -8.17678335e+00
+ -1.68335825e+00]
+Final Control:
+[-5.68179232e-01 -1.62884744e+00 -1.72059660e-01  2.28675789e+02
+  1.58338524e+02  1.35057391e+03]
+Status: Solve_Succeeded
+Iterations: 1334
+Final objective: None
+Solver time (s): 160.899645
+
+----------------------------------------
+# integration_explicit_model_default_quaternion_none_steps_1_time_fixed
+
+=== Solution Summary ===
+Final Time: 2.99999999999998
+Final State:
+[ 6.27823812e+01 -3.80354784e-01 -5.55112289e+01  2.38223252e+01
+  5.31842598e+00  5.46881627e+01 -1.50471165e-06  4.85515976e-05
+ -1.42369068e-05 -8.11629189e-05  2.03663455e+02  2.28337358e+01
+ -3.73287360e+00]
+Final Control:
+[-6.11507665e-01 -5.83341552e-01  6.80230917e-01 -4.17702841e-01
+ -6.92369084e+00  8.16477983e+02]
+Status: Maximum_Iterations_Exceeded
+Iterations: 10000
+Final objective: None
+Solver time (s): 2053.311146
+
+----------------------------------------
+# integration_explicit_model_poly_quaternion_none_steps_1_time_fixed
+
+=== Solution Summary ===
+Final Time: 2.99999999999998
+Final State:
+[ 5.00053732e+01  1.97204734e-04 -3.30173882e+01  7.98219290e+01
+ -7.72398689e+00  3.63728565e+00  1.59244971e+00 -4.62657693e-02
+ -1.36992368e-01 -2.16107128e-01 -2.11772085e+03  2.35303432e+02
+  7.09105946e+01]
+Final Control:
+[-9.31927264e-01 -1.92769891e+00  4.03160837e-01  1.95325736e+02
+  1.28225795e+02  1.51844063e+03]
+Status: Solve_Succeeded
+Iterations: 995
+Final objective: None
+Solver time (s): 436.85508
+
+----------------------------------------
+# integration_implicit_model_default_quaternion_none_steps_1_time_fixed
+
+=== Solution Summary ===
+Final Time: 2.99999999999998
+Final State:
+[ 4.99936027e+01  4.68998586e-04 -5.51178075e+01 -3.23932993e+00
+ -9.12883296e+00  5.22615613e+01  2.31367691e-01 -6.99194820e-01
+  1.73750975e-01  6.51233266e-01  4.33772589e-03 -9.46458815e-02
+  7.24409263e-02]
+Final Control:
+[ 3.43068379e-02  4.26112098e-01 -3.62047817e-01  2.39538088e+01
+ -2.62835732e+01  1.30260440e+02]
+Status: Maximum_Iterations_Exceeded
+Iterations: 10000
+Final objective: None
+Solver time (s): 839.640736
+
+----------------------------------------
+# integration_implicit_model_poly_quaternion_none_steps_1_time_fixed
+
+=== Solution Summary ===
+Final Time: 2.99999999999998
+Final State:
+[ 4.99990685e+01  3.74679982e-04 -3.20913783e+01  8.03106092e+01
+ -5.70460520e+00  6.54131151e-01 -3.20058800e-02 -2.11980090e-03
+ -5.90450895e-04 -2.75063518e-02 -1.72067846e+01 -7.30449725e+00
+ -1.20658310e+00]
+Final Control:
+[-3.84982949e-01 -2.40019644e+00 -9.60986563e-02  2.38308434e+02
+  2.06791968e+02  1.30086094e+03]
+Status: Solve_Succeeded
+Iterations: 1110
+Final objective: None
+Solver time (s): 141.488387
+
+----------------------------------------
+# integration_explicit_model_default_quaternion_constraint_steps_1_time_progress
+
+=== Solution Summary ===
+Final Time: 1.0150225619226798
+Final State:
+[ 5.00003696e+01  1.15961127e-02 -1.93706133e+02  4.71793659e+01
+  1.47555988e-01  4.08593795e+00 -3.22601037e-02 -5.07499858e-02
+  3.76135766e-03  9.98183138e-01 -1.02666372e-02  7.21810968e-02
+ -3.41124028e-02]
+Final Control:
+[ -0.08905296  -0.24625408   0.16185545  -9.20457542  -0.51164638
+ -56.20756466]
+Status: Solve_Succeeded
+Iterations: 1582
+Final objective: None
+Solver time (s): 9070.106773
+
+----------------------------------------
+# integration_explicit_model_poly_quaternion_constraint_steps_1_time_progress
+
+=== Solution Summary ===
+Final Time: 0.9870082833406983
+Final State:
+[ 3.88796466e+01 -2.52824689e-01 -1.61883045e+02  5.43949808e+01
+ -2.00980380e+00  2.28083777e+01  3.77330445e-02 -1.95499083e-01
+ -7.66370378e-02  9.76976505e-01 -1.55838034e-01  9.10742992e-01
+  9.29743186e-01]
+Final Control:
+[ 1.30681301e-01 -3.23424031e-02  4.53951758e-02  9.05707532e+00
+  1.18748304e+00 -5.35813316e+01]
+Status: Maximum_CpuTime_Exceeded
+Iterations: 9658
+Final objective: None
+Solver time (s): 32282.478753
+
+----------------------------------------
+# integration_implicit_model_default_quaternion_constraint_steps_1_time_progress
+
+=== Solution Summary ===
+Final Time: 0.2531028176992613
+Final State:
+[ 1.27653902e+01  2.21432312e-02 -2.00255840e+02  5.02370859e+01
+  1.47103764e-01 -2.40031753e+00  1.80020939e-03 -1.81091367e-05
+  1.48521091e-03  9.99997277e-01 -5.69042387e-03  2.50129267e-02
+  1.82911918e-03]
+Final Control:
+[-7.03827225e-02  5.69310249e-02 -1.56988460e-02 -3.16773162e+00
+  5.74040537e-05 -1.62284362e+02]
+Status: Infeasible_Problem_Detected
+Iterations: 207
+Final objective: None
+Solver time (s): 385.828098
+
+----------------------------------------
+# integration_implicit_model_poly_quaternion_constraint_steps_1_time_progress
+
+=== Solution Summary ===
+Final Time: 0.5832435037174136
+Final State:
+[ 2.82980896e+01  1.50395066e-02 -2.00395611e+02  4.66649659e+01
+ -1.13339564e-02 -4.39043795e-01  7.83306335e-04 -2.00065892e-03
+ -5.80272379e-06  9.99997692e-01  8.37157655e-03  5.07906256e-03
+ -7.51357886e-04]
+Final Control:
+[-0.00490285  0.25937292 -0.17251568 -4.7596666   0.00481689  2.18851657]
+Status: Maximum_CpuTime_Exceeded
+Iterations: 9728
+Final objective: None
+Solver time (s): 45894.678951
+
+----------------------------------------
+# integration_explicit_model_default_quaternion_baumgarte_steps_1_time_progress
+
+=== Solution Summary ===
+Final Time: 2.9999998792864533
+Final State:
+[ 1.37285126e+02  3.36466206e-02 -1.96124589e+02  4.18571591e+01
+  2.67355772e-02  1.39749270e+00 -3.89199524e-02 -7.37029717e-03
+  2.77374724e-03  9.99211300e-01 -5.58614089e-02  6.03601071e-02
+  6.68537006e-03]
+Final Control:
+[-0.49815794 -0.20347005 -0.02605325 -1.54096272  0.00189446 -0.03708761]
+Status: Infeasible_Problem_Detected
+Iterations: 1311
+Final objective: None
+Solver time (s): 4772.641694
+
+----------------------------------------
+# integration_explicit_model_poly_quaternion_baumgarte_steps_1_time_progress
+
+=== Solution Summary ===
+Final Time: 2.9999906984534572
+Final State:
+[ 5.00001822e+01  4.22455623e-04 -4.60586191e+01  4.53515269e+01
+  1.24596929e+01 -4.65367009e+00 -8.28303758e-01  9.17582108e-03
+  9.61671676e-02  5.51905904e-01  1.66120315e+00 -3.42058761e+00
+ -7.75579733e-02]
+Final Control:
+[ 1.86671286e+00 -3.97392175e+00 -3.39068103e-01  3.40616513e+01
+ -2.67372356e+00  5.33805699e+02]
+Status: Maximum_Iterations_Exceeded
+Iterations: 10000
+Final objective: None
+Solver time (s): 16423.331132
+
+----------------------------------------
+# integration_implicit_model_default_quaternion_baumgarte_steps_1_time_progress
+
+=== Solution Summary ===
+Final Time: 1.0631645535540268
+Final State:
+[ 4.81827294e+01  5.93221064e-06 -1.99870271e+02  4.10390307e+01
+  3.82441222e-05  3.47078922e-01 -2.26824326e-07  7.97903122e-06
+  2.67679761e-07  1.00000000e+00 -4.83060459e-06  1.21940468e-07
+ -1.60788207e-06]
+Final Control:
+[-2.06732723e-04  5.78495837e-02  5.72608933e-05 -4.57405668e+00
+ -7.04348332e-05 -5.89537007e+00]
+Status: Restoration_Failed
+Iterations: 1097
+Final objective: None
+Solver time (s): 4783.102628
+
+----------------------------------------
+# integration_implicit_model_poly_quaternion_baumgarte_steps_1_time_progress
+
+=== Solution Summary ===
+Final Time: 2.9996233086393156
+Final State:
+[ 5.02694810e+01 -2.16126894e-02 -2.49645985e+01 -3.53006497e+01
+ -7.26307820e+00  7.13328894e+01 -7.01467193e-02 -8.03426910e-01
+ -4.50543662e-02  5.89660077e-01  1.42561518e-01 -1.93559625e-01
+  2.45412473e-03]
+Final Control:
+[-1.93362071e-01 -4.99972000e+00 -8.50346884e-01  1.15769807e+02
+ -5.58929350e+01  8.40113009e+02]
+Status: Maximum_Iterations_Exceeded
+Iterations: 10000
+Final objective: None
+Solver time (s): 1318.380225
+
+----------------------------------------
+# integration_explicit_model_default_quaternion_integration_steps_1_time_progress
+
+=== Solution Summary ===
+Final Time: 2.999999977228374
+Final State:
+[ 4.99826258e+01 -1.02207061e-03 -1.40937434e+01 -7.78751616e+01
+ -4.43323476e-01  1.81605567e+01  5.47369665e-02 -8.49404965e-01
+ -4.77349996e-01  2.18293501e-01  1.92080155e+02 -1.87991765e+01
+ -1.00516817e+01]
+Final Control:
+[   4.99676873    4.99926114    4.64391559   13.17472646  -53.61632057
+ 1226.43410954]
+Status: Solve_Succeeded
+Iterations: 256
+Final objective: None
+Solver time (s): 87.510524
+
+----------------------------------------
+# integration_explicit_model_poly_quaternion_integration_steps_1_time_progress
+
+=== Solution Summary ===
+Final Time: 3.0000000597116467
+Final State:
+[ 5.00037215e+01  9.94786248e-05 -3.30169103e+01  7.94854505e+01
+ -7.85821814e+00  5.12114316e+00 -9.87646471e-01  1.46694249e-02
+  7.65288617e-02  1.35950689e-01 -2.22901666e+03  3.11090929e+02
+  6.97936096e+01]
+Final Control:
+[-5.57221542e-01 -8.78179629e-01  4.88101889e-01  1.55751256e+02
+  2.83306180e+02  1.62123011e+03]
+Status: Solve_Succeeded
+Iterations: 872
+Final objective: None
+Solver time (s): 404.68911
+
+----------------------------------------
+# integration_implicit_model_default_quaternion_integration_steps_1_time_progress
+
+=== Solution Summary ===
+Final Time: 2.999999301760059
+Final State:
+[ 4.99827754e+01 -9.49924666e-04 -1.33162882e+01 -7.75935854e+01
+ -2.33052074e-01  1.94675208e+01  6.88965080e-02 -9.07676020e-01
+ -3.46346099e-01  1.92967854e-01  5.61660560e-01 -1.09322928e+00
+ -9.69988665e-01]
+Final Control:
+[   4.98467009    4.99680554    4.50014479   14.84650474  -53.38622201
+ 1262.78506831]
+Status: Solve_Succeeded
+Iterations: 185
+Final objective: None
+Solver time (s): 20.196933
+
+----------------------------------------
+# integration_implicit_model_poly_quaternion_integration_steps_1_time_progress
+
+=== Solution Summary ===
+Final Time: 3.0000000574073487
+Final State:
+[ 4.99989108e+01  4.56087147e-04 -3.13840561e+01  8.01198976e+01
+ -9.02647792e+00 -7.12354433e-01 -4.59993559e-02  5.44611132e-03
+ -3.37160035e-03 -2.57586397e-02 -1.21073341e+01 -3.15534463e+00
+  1.91192488e+00]
+Final Control:
+[ 9.29762335e-01 -1.48335182e+00 -1.84750515e+00  2.39252626e+02
+  1.76943456e+02  1.29734466e+03]
+Status: Solve_Succeeded
+Iterations: 684
+Final objective: None
+Solver time (s): 81.107636
+
+----------------------------------------
+# integration_explicit_model_default_quaternion_none_steps_1_time_progress
+
+=== Solution Summary ===
+Final Time: 3.000000059673444
+Final State:
+[ 5.00154752e+01 -3.55861594e-03 -9.84300434e+00  7.66154473e+01
+  8.44195297e-01  2.33917901e+01 -3.22675759e+00  3.02044938e-01
+ -5.74220283e-02  1.94210900e+00  1.37736649e+03  3.34186562e+02
+ -7.63531961e+01]
+Final Control:
+[  -4.99991033   -4.55198461   -4.99670575  114.52624382   79.96996993
+ 1236.80823176]
+Status: Solve_Succeeded
+Iterations: 7293
+Final objective: None
+Solver time (s): 1577.117576
+
+----------------------------------------
+# integration_explicit_model_poly_quaternion_none_steps_1_time_progress
+
+=== Solution Summary ===
+Final Time: 0.9037559512885726
+Final State:
+[ 4.34745073e+01  2.25205793e+00 -4.56465805e+01  4.32645173e+01
+  5.07991528e-01 -1.17491036e+01  3.57602333e-01 -1.49214714e-02
+ -5.51828722e-02 -1.26481471e-01  5.04967472e+00 -1.02913785e+01
+  1.16053434e+00]
+Final Control:
+[ 2.15699415e-01 -2.36976354e-01 -2.39659670e-01  3.91136180e+01
+  6.54994565e+01  6.57931764e+02]
+Status: Restoration_Failed
+Iterations: 2344
+Final objective: None
+Solver time (s): 1276.046894
+
+----------------------------------------
+# integration_implicit_model_default_quaternion_none_steps_1_time_progress
+
+=== Solution Summary ===
+Final Time: 3.0000000409061838
+Final State:
+[ 4.99827753e+01 -9.49679812e-04 -1.33166160e+01 -7.75943948e+01
+ -2.33428850e-01  1.94653046e+01  6.89005463e-02 -9.07689727e-01
+ -3.46315113e-01  1.92954504e-01  5.63172324e-01 -1.09381101e+00
+ -9.68407334e-01]
+Final Control:
+[   4.99840656    4.99989479    4.4925704    14.85669768  -53.3852316
+ 1262.78698134]
+Status: Solve_Succeeded
+Iterations: 170
+Final objective: None
+Solver time (s): 16.913182
+
+----------------------------------------
+# integration_implicit_model_poly_quaternion_none_steps_1_time_progress
+
+=== Solution Summary ===
+Final Time: 3.0000000564499785
+Final State:
+[ 5.00020612e+01  2.73131660e-04 -3.18779647e+01  7.99357917e+01
+ -6.48087318e+00 -2.73336075e+00 -1.66237072e-02 -1.67072876e-03
+  2.74973834e-04 -1.56697017e-02 -2.26382332e+01 -6.75178456e+00
+ -5.75604243e+00]
+Final Control:
+[-4.06929802e-02  2.45320512e-02  6.48576273e-01  1.82391622e+02
+  1.82409978e+02  1.51566426e+03]
+Status: Solve_Succeeded
+Iterations: 1015
+Final objective: None
+Solver time (s): 119.4724
+
+----------------------------------------

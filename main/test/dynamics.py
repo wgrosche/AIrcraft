@@ -19,36 +19,44 @@ from aircraft.utils.utils import load_model, TrajectoryConfiguration, AircraftCo
 
 from dataclasses import dataclass
 from aircraft.dynamics.base import SixDOFOpts, SixDOF
-from aircraft.dynamics.aircraft import AircraftOpts, Aircraft
+from aircraft.dynamics.aircraft import Aircraft, AircraftOpts
+from aircraft.dynamics.coefficient_models import PolynomialModel
+from aircraft.plotting.plotting import TrajectoryPlotter
+from argparse import ArgumentParser
 
+
+model_path = Path(NETWORKPATH) / 'model-dynamics.pth'
+poly_path = Path(NETWORKPATH) / 'fitted_models_casadi.pkl'
+linear_path = Path(DATAPATH) / 'glider' / 'linearised.csv'
+traj_dict = json.load(open('data/glider/problem_definition.json'))
+trajectory_config = TrajectoryConfiguration(traj_dict)
+aircraft_config = trajectory_config.aircraft
+opts = AircraftOpts(coeff_model_type='poly', coeff_model_path=poly_path, aircraft_config=aircraft_config)
+
+def setup_parser() -> ArgumentParser:
+    parser = ArgumentParser(
+                    prog='Dynamics Example',
+                    description='Runs a simulation of the glider for different settings',
+                    epilog='Enjoy!')
+    
+    parser.add_argument('--perturb', action='store_true', help='adds perturbation between simulation steps', type=bool)
+    parser.add_argument('--trimmed', action='store_true', help='finds trim condition at specified initial velocity and then simulates', type=bool)
+    parser.add_argument('--type', action='store_true', help="type of aircraft to simulate, can choose from ['polynomial', 'linear', 'neural']", type=str)
+
+    return parser
+
+def setup_aircraft(type:str='', trimming:bool = False) -> SixDOF:
+
+    # aircraft = Aircraft(opts = opts, coefficient_model=lambda a: PolynomialModel(opts.poly_path, aircraft=a))
+    aircraft = Aircraft(opts = opts, coefficient_model=None)
+    return aircraft
+        
 
 def main():
-    from aircraft.plotting.plotting import TrajectoryPlotter
-
-    mode = 1
-    model = load_model()
-    traj_dict = json.load(open('data/glider/problem_definition.json'))
-
-    trajectory_config = TrajectoryConfiguration(traj_dict)
-
-    aircraft_config = trajectory_config.aircraft
-
-    if mode == 0:
-        model_path = Path(NETWORKPATH) / 'model-dynamics.pth'
-        opts = AircraftOpts(nn_model_path=model_path, aircraft_config=aircraft_config)
-    elif mode == 1:
-        poly_path = Path(NETWORKPATH) / 'fitted_models_casadi.pkl'
-        opts = AircraftOpts(poly_path=poly_path, aircraft_config=aircraft_config, physical_integration_substeps=1)
-    elif mode == 2:
-        linear_path = Path(DATAPATH) / 'glider' / 'linearised.csv'
-        opts = AircraftOpts(linear_path=linear_path, aircraft_config=aircraft_config)
 
     aircraft = Aircraft(opts = opts)
 
-    perturbation = False
-    
-    trim_state_and_control = [0, 0, -200, 50, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]#[0, 0, 0, 50, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
-    # trim_state_and_control = [0, 0, 0, 30, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
+    trim_state_and_control = [0, 0, -200, 50, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
 
     if trim_state_and_control is not None:
         state = ca.vertcat(trim_state_and_control[:aircraft.num_states])
@@ -85,6 +93,7 @@ def main():
     dt = .01
     tf = 1
     state_list = np.zeros((aircraft.num_states, int(tf / dt)))
+    times_list = np.zeros((int(tf / dt)))
     t = 0
     ele_pos = True
     ail_pos = True
@@ -104,6 +113,14 @@ def main():
             state_list[:, i] = state.full().flatten()
             control_list[:, i] = control
             state = dyn(state, control, dt)
+            times_list[i] = i * dt
+            # if args.get('perturb'):
+            #     if ele_pos:
+            #         control[1] += 0.01
+            #         ele_pos = False
+            #     else:
+            #         control[1] -= 0.01
+            #         ele_pos = True
                     
             t += 1
 
@@ -114,6 +131,7 @@ def main():
             grp = h5file.create_group('iteration_0')
             grp.create_dataset('state', data=state_list[:, :t])
             grp.create_dataset('control', data=control_list[:, :t])
+            grp.create_dataset('times', data=times_list[:t])
     
     
     filepath = os.path.join("data", "trajectories", "simulation.h5")

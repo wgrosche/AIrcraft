@@ -1,23 +1,18 @@
 import casadi as ca
 import numpy as np
-from typing import List, Optional, Union
 from dataclasses import dataclass
 import os
-import matplotlib.pyplot as plt
 import h5py
-from typing import Type, List
+from typing import List, Protocol, runtime_checkable, Optional, Union
 import logging
-import os
 from datetime import datetime
 from pathlib import Path
-import time
-from aircraft.config import default_solver_options, BASEPATH, NETWORKPATH, DATAPATH, DEVICE, rng
 from abc import ABC, abstractmethod
+
+from aircraft.config import default_solver_options, DATAPATH
 from aircraft.dynamics.base import SixDOF
 
-plt.ion()
-
-__all__ = ['ControlNode', 'SaveMixin', 'ControlProblem', 'VariableTimeMixin']
+__all__ = ['ControlNode', 'SaveMixin', 'ControlProblem']
 
 @dataclass
 class ControlNode:
@@ -29,12 +24,16 @@ class ControlNode:
         state (Optional[ca.MX]): Symbolic representation of the state at this node.
         control (Optional[ca.MX]): Symbolic representation of the control at this node.
     """
-    index:Optional[int] = None
-    state:Optional[ca.MX] = None
-    control:Optional[ca.MX] = None
-    progress:Optional[Union[ca.MX, float]] = 0.01
+    index:int
+    state:ca.MX
+    control:ca.MX
+    progress:Union[ca.MX, float] # sqrt of the progress/time variable (to assure positivity)
 
-class SaveMixin:
+@runtime_checkable
+class SaveProgressProtocol(Protocol):
+    def _save_progress(self, iteration: int, states:list[ca.MX], controls:list[ca.MX], times:list[ca.MX]) -> None: ...
+
+class SaveMixin(SaveProgressProtocol):
     """
     A mixin that enables saving progress of an optimization problem to an HDF5 file.
 
@@ -42,68 +41,72 @@ class SaveMixin:
         _init_saving(filepath, force_overwrite): Initializes saving and opens the file.
         _save_progress(iteration, states, controls, times): Writes a snapshot of the latest progress to the HDF5 file.
     """
-    def _init_saving(self, filepath: Optional[str], force_overwrite: bool = True):
-        self._save_enabled = filepath is not None
-        self._save_interval = 10  # can expose as parameter later
+    def _init_saving(self, filepath:Union[str, Path], force_overwrite: bool = True) -> None:
+        self._save_enabled:bool = True
+        self._save_interval:int = 10
 
-        self.h5file = None
-        self._save_path = filepath
+        if force_overwrite and Path(filepath).exists():
+            Path(filepath).unlink()
 
-        if self._save_enabled:
-            if force_overwrite and Path(filepath).exists():
-                Path(filepath).unlink()
+        self.h5file = h5py.File(filepath, "a")
+        assert isinstance(self.h5file, h5py.File)
 
-            self.h5file = h5py.File(filepath, "a")
     def _save_progress(
         self,
         iteration: int,
-        states: list,
-        controls: list,
-        times: list
+        states: list[ca.MX],
+        controls: list[ca.MX],
+        times: list[ca.MX]
     ):
         if not self._save_enabled or self.h5file is None:
             return
 
         try:
-            for i, (state, control, time_val) in enumerate(zip(states[-10:], controls[-10:], times[-10:])):
-                grp_name = f'iteration_{iteration - 10 + i}'
-                grp = self.h5file.require_group(grp_name)
-                grp.attrs['timestamp'] = time.time()
-
-                for name, data in zip(['state', 'control', 'time'], [state, control, time_val]):
-                    if name in grp:
-                        del grp[name]
-                    # Only use compression for non-scalar data
-                    if hasattr(data, 'size') and data.size > 1:
-                        grp.create_dataset(name, data=data, compression='gzip')
-                    else:
-                        grp.create_dataset(name, data=data)
+            recent_data = zip(states[-10:], controls[-10:], times[-10:])
+            for i, (state, control, time_val) in enumerate(recent_data):
+                self._save_iteration_data(
+                    group_name=f'iteration_{iteration - 10 + i}',
+                    state=state,
+                    control=control,
+                    time_val=time_val
+                )
         except Exception as e:
             print(f"[SaveMixin] Error saving progress: {e}")
 
-    # def _save_progress(
-    #     self,
-    #     iteration: int,
-    #     states: list,
-    #     controls: list,
-    #     times: list
-    # ):
-    #     if not self._save_enabled or self.h5file is None:
-    #         return
 
-    #     try:
-    #         for i, (state, control, time_val) in enumerate(zip(states[-10:], controls[-10:], times[-10:])):
-    #             grp_name = f'iteration_{iteration - 10 + i}'
-    #             grp = self.h5file.require_group(grp_name)
-    #             grp.attrs['timestamp'] = time.time()
+    def _save_iteration_data(
+        self,
+        group_name: str,
+        state: ca.MX,
+        control: ca.MX,
+        time_val: ca.MX
+    ):
+        assert self.h5file is not None
+        grp = self.h5file.require_group(group_name)
+        grp.attrs['timestamp'] = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    #             for name, data in zip(['state', 'control', 'time'], [state, control, time_val]):
-    #                 if name in grp:
-    #                     del grp[name]
-    #                 grp.create_dataset(name, data=data, compression='gzip')
-    #     except Exception as e:
-    #         print(f"[SaveMixin] Error saving progress: {e}")
+        data_items = {'state': state, 'control': control, 'time': time_val}
+        for name, data in data_items.items():
+            if name in grp:
+                del grp[name]
+            self._create_dataset_safely(grp, name, data)
 
+
+    def _create_dataset_safely(self, group, name: str, data):
+        try:
+            if hasattr(data, 'size') and isinstance(data.size, int) and data.size > 1:
+                group.create_dataset(name, data=data, compression='gzip')
+            else:
+                group.create_dataset(name, data=data)
+        except Exception as e:
+            print(f"[SaveMixin] Failed to create dataset '{name}': {e}")
+
+class PlottingMixin:
+    def __init__(self):
+        pass
+
+    def _plot(self):
+        pass
 
 class ControlProblem(ABC):
     """
@@ -145,7 +148,7 @@ class ControlProblem(ABC):
     """
 
     def __init__(self, *, system:SixDOF, dt:float = 0.01, num_nodes:int, 
-                 opts:Optional[dict] = {}, x_dot = None, progress:bool = False, **kwargs):
+                 opts:Optional[dict] = None, progress:bool = False, **kwargs):
         """
         Initialize the control problem.
 
@@ -162,42 +165,40 @@ class ControlProblem(ABC):
         """
         self.opti = ca.Opti('nlp')
 
-        self.opts = opts
+        self.opts = opts if opts else {}
 
-        if self.opts['normalisation'] == 'integration':
+        if self.opts['quaternion'] == 'integration':
             system.normalise = True
         else:
             system.normalise = False
 
-        self.dynamics = system.state_update
-        self.state_dim = self.dynamics.size1_in(0)
-        self.control_dim = self.dynamics.size1_in(1)
-        self.x_dot = system.state_derivative
+        self.dynamics:ca.Function = system.state_update
+        self.state_dim:int = self.dynamics.size1_in(0)
+        self.control_dim:int = self.dynamics.size1_in(1)
+        self.x_dot:ca.Function = system.state_derivative
 
         self.num_nodes = num_nodes
 
-        self.verbose = opts.get('verbose', False)
+        self.verbose = self.opts.get('verbose', False)
         self.constraint_descriptions = []
 
-        self.progress = progress
+        self.progress = self.opts.get('time', 'fixed') in ['progress', 'variable']
         self.dt = dt
+        self.dt_bounds = self.opts.get('dt_bounds', (1e-4, 1e-2))  # Default bounds for dt if not specified
         self.max_jump = 0.05
         
-        if not progress:
-            self.time = dt * num_nodes
-            print("final time: ", self.time)
-
-        self.scale_state = opts.get('scale_state', None)
-        self.scale_control = opts.get('scale_control', None)
+        self.scale_state = self.opts.get('scale_state', None)
+        self.scale_control = self.opts.get('scale_control', None)
 
 
         self.state_guess_parameter = self.opti.parameter(self.state_dim, self.num_nodes + 1)
         self.control_guess_parameter = self.opti.parameter(self.control_dim, self.num_nodes + 1)
-        self.initial_state = opts.get('initial_state', None)
+        self.initial_state = self.opts.get('initial_state', None)
 
-        self.solver_opts = opts.get('solver_options', default_solver_options)
+        self.solver_opts = self.opts.get('solver_options', default_solver_options)
+        self.logging = False
 
-        self.filepath = opts.get('savefile', None)
+        self.filepath = self.opts.get('savefile', None)
         if self.filepath:
             if os.path.exists(self.filepath):
                 os.remove(self.filepath)
@@ -207,10 +208,10 @@ class ControlProblem(ABC):
         self.sol_control_list = []
         self.final_times = []
         
-        super().__init__(**kwargs)
+        super().__init__()#**kwargs)
 
     def _scale_variable(self, var, scale):
-        return ca.DM(scale) * var if scale else var
+        return ca.MX(scale) * var if scale else var
 
     def constraint(self, expr, description=None) -> None:
         """
@@ -259,30 +260,33 @@ class ControlProblem(ABC):
         """
         pass
         
-    
-    def state_constraint(self, node: ControlNode, next: ControlNode, dt: Optional[ca.MX] = None) -> None:
-        dt_i = 1.0 / node.progress
-        normalisation = self.opts.get('quaternion', None)
-        # add dynamics constraint
-        assert hasattr(self, 'x_dot'), "you silly goose, you still haven't passed it?"
-
+    def state_constraint(self, node: ControlNode, next: ControlNode) -> None:
+        dt_i = 1.0 / node.progress**2 if self.opts.get('time', 'fixed') in ['progress', 'fixed'] else ca.MX(node.progress)**2
+        # print(node.progress.is_symbolic())
         if self.opts.get('integration', 'explicit') == 'explicit':
             next_state = self.dynamics(node.state, node.control, dt_i)
+            self.constraint(next.state - next_state == 0, description=f"state dynamics constraint at node {node.index}")
 
         elif self.opts.get('integration', 'explicit') == 'implicit':
-            next_state = node.state + dt_i  * self.x_dot(next.state, node.control)
+            next_state = node.state + dt_i * self.x_dot(next.state, node.control)
+            self.constraint(next.state - next_state == 0, description=f"state dynamics constraint at node {node.index}")
+        else:
+            raise NotImplementedError("Must choose integration mode from ['implicit', 'explicit']")
         
-        if normalisation == 'constraint':
-            self.constraint(ca.dot(node.state[6:10], node.state[6:10]) == 1, description=f"quaternion norm constraint at node {node.index}")
+        if self.opts.get('quaternion', None) == 'constraint':
+            self.constraint(ca.dot(next.state[6:10], next.state[6:10]) == 1, description=f"quaternion norm constraint at node {node.index}")
 
-        elif normalisation == 'baumgarte':
-            x_dot_q = self.x_dot(node.state, node.control)[6:10]
-            phi_dot = 2 * ca.dot(node.state[6:10], x_dot_q)
+        elif self.opts.get('quaternion', None) == 'baumgarte':
+            x_dot = self.x_dot(next.state, next.control)
+            assert isinstance(x_dot, ca.MX)
+            assert x_dot.size()[0] == self.state_dim, f"x_dot: {x_dot.size()[0]} state: {self.state_dim}"
+            x_dot_q = x_dot[6:10]
+            phi_dot = 2 * ca.dot(next.state[6:10], x_dot_q)
 
             alpha = 2.0  # damping
             beta = 2.0   # stiffness
 
-            phi = ca.dot(node.state[6:10], node.state[6:10]) - 1
+            phi = ca.dot(next.state[6:10], next.state[6:10]) - 1
             stabilized_phi = 2 * alpha * phi_dot + beta**2 * phi
 
             self.constraint(stabilized_phi == 0, description="Baumgarte quaternion normalization")
@@ -291,23 +295,21 @@ class ControlProblem(ABC):
             self.constraint(next.progress == node.progress)#self.max_jump)
 
         elif self.opts.get('time', 'fixed') == 'adaptive':
+            assert next.progress is not None, "cannot run adaptive without progress variable"
             alpha = 1e-2
             adaptive_weight = 1.0
             tol = 1e-2
-            func_state = self.dynamics(node.state, node.control)
-            J = ca.jacobian(func_state, node.state)
+            func_state = self.dynamics(next.state, next.control)
+            J = ca.jacobian(func_state, next.state)
             prod = J @ func_state
-            error_surrogate = alpha * (1 / node.progress**2) * ca.dot(prod, J @ prod)
-            constraints += [error_surrogate <= tol]
-            loss += adaptive_weight * node.progress
+            error_surrogate = alpha * (1 / next.progress**4) * ca.dot(prod, J @ prod)
+            self.constraint(error_surrogate <= tol, description="Error bound for adaptive timestepping")
+            self.opti.minimize(adaptive_weight * next.progress**2)
             
-        self.constraint(next.state - next_state == 0, description=f"state dynamics constraint at node {node.index}")
+        
                 
-
-            
-
     @abstractmethod
-    def loss(self, nodes:List[ControlNode], time:Optional[ca.MX] = None) -> ca.MX:
+    def loss(self, nodes:List[ControlNode], time:Optional[Union[ca.MX, float]] = None) -> ca.MX:
         """
         Abstract method for defining the objective function.
         Should return the scalar loss to minimize.
@@ -321,60 +323,81 @@ class ControlProblem(ABC):
         """
         pass
 
-    def _setup_step(self, index:int, current_node:ControlNode, guess:np.ndarray):
+    def _make_node(self, index: int, guess: np.ndarray, enforce_state_constraint: bool = False) -> ControlNode:
         opti = self.opti
-
-        next_node = ControlNode(
-            index=0,
-            state=self._scale_variable(opti.variable(self.state_dim), self.scale_state),
-            control=self._scale_variable(opti.variable(self.control_dim), self.scale_control),
-            progress = self._scale_variable(opti.variable(), 1 / self.dt) if self.progress else 1 / self.dt
-            )
-        
+        # print(type(self.scale_control))
+        state = self._scale_variable(opti.variable(self.state_dim), self.scale_state)
+        control = self._scale_variable(opti.variable(self.control_dim), self.scale_control)
+        # print(self.progress)
         if self.progress:
-            opti.set_initial(next_node.progress, 1/self.dt)
-            self.constraint(opti.bounded(5e1, next_node.progress, 1e3), description=f"positive progress rate at node {index}")
+            # print(type(np.sqrt(1 / self.dt)))
+            progress = self._scale_variable(opti.variable(1), ca.MX(1 / self.dt))
+            # assert progress.is_symbolic()
+        else:
+            progress =  ca.sqrt(1 / self.dt)
+        
+        node = ControlNode(index=index, state=state, control=control, progress=progress)
 
+        # Set initial guesses
         state_guess = guess[:self.state_dim, index]
         control_guess = guess[self.state_dim:self.state_dim + self.control_dim, index]
-        self.state_constraint(current_node, next_node, index)#self.dt)
-        self.control_constraint(current_node)
-        
-        opti.set_initial(next_node.state, state_guess)
-        opti.set_initial(next_node.control, control_guess)
-        return next_node
+        opti.set_initial(node.state, state_guess)
+        opti.set_initial(node.control, control_guess)
 
-    def _setup_initial_node(self, guess:np.ndarray) -> ControlNode:
-        opti = self.opti
-
-        current_node = ControlNode(
-            index=0,
-            state=self._scale_variable(opti.variable(self.state_dim), self.scale_state),
-            control=self._scale_variable(opti.variable(self.control_dim), self.scale_control),
-            progress = self._scale_variable(opti.variable(), 1 / self.dt) if self.progress else 1 / self.dt
-
+        # Progress constraint
+        if self.opts.get('time', 'fixed') == 'progress':
+            opti.set_initial(node.progress, ca.sqrt(1 / self.dt))
+            self.constraint(
+                opti.bounded(
+                    ca.sqrt(1 / self.dt_bounds[1]), 
+                    node.progress, 
+                    ca.sqrt(1 / self.dt_bounds[0])
+                    ),  # type: ignore[arg-type]
+                description=f"positive progress rate at node {index}"
             )
 
-        if self.progress:
-            opti.set_initial(current_node.progress, 1/self.dt)
-            self.constraint(opti.bounded(5e1, current_node.progress, 1e4), description=f"positive progress rate at node {0}")
-        state_guess = guess[:self.state_dim, 0]
-        control_guess = guess[self.state_dim:self.state_dim + self.control_dim, 0]
+        elif self.opts.get('time', 'fixed') == 'variable':
+            opti.set_initial(node.progress, ca.sqrt(self.dt))
+            self.constraint(
+                opti.bounded(ca.sqrt(self.dt_bounds[0]), 
+                             node.progress, 
+                             ca.sqrt(self.dt_bounds[1])),  # type: ignore[arg-type]
+                description=f"positive progress rate at node {index}"
+            )
 
-        self.constraint(current_node.state == self.state_guess_parameter[:, 0])
+        # State constraint only on initial node
+        if enforce_state_constraint:
+            self.constraint(node.state == self.state_guess_parameter[:, index])
 
-        opti.set_initial(current_node.state, state_guess)
-        opti.set_initial(current_node.control, control_guess)
+        return node
 
-        return current_node
+
+    def _setup_initial_node(self, guess: np.ndarray) -> ControlNode:
+        return self._make_node(index=0, guess=guess, enforce_state_constraint=True)
+
+
+    def _setup_step(self, index: int, current_node: ControlNode, guess: np.ndarray) -> ControlNode:
+        next_node = self._make_node(index=index, guess=guess)
+        self.state_constraint(current_node, next_node)
+        self.control_constraint(current_node)
+        return next_node
+
     
     def _setup_variables(self, nodes:List[ControlNode]) -> None:
         self.state = ca.hcat([nodes[i].state for i in range(self.num_nodes + 1)])
         self.control = ca.hcat([nodes[i].control for i in range(self.num_nodes)])
-
-        self.opts.get('time', 'fixed')
+        if self.opts.get('time', 'fixed') in ['fixed', 'progress']:
+            self.times = ca.cumsum(ca.vertcat(*[1 / nodes[i].progress**2 for i in range(self.num_nodes)]))
+        else:
+            self.times = ca.cumsum(ca.vertcat(*[nodes[i].progress**2 for i in range(self.num_nodes)]))
+        
         if self.progress:
-            self.time = ca.sum1(ca.vertcat(*[1.0 / nodes[i].progress for i in range(self.num_nodes)]))
+            self.time = ca.sum1(ca.vertcat(*[ca.MX(1.0) / nodes[i].progress**2 for i in range(self.num_nodes)]))
+            assert isinstance(self.time, ca.MX)
+
+        else:
+            self.time = self.dt * self.num_nodes
+            assert isinstance(self.time, float)
 
         if self.verbose:
             print("State Shape: ", self.state.shape)
@@ -384,7 +407,7 @@ class ControlProblem(ABC):
     def _setup_objective(self, nodes):
         self.opti.minimize(self.loss(nodes = nodes, time = self.time))
 
-    def setup(self, guess: np.ndarray):
+    def setup(self, guess: np.ndarray) -> None:
         """
         Set up the optimization problem using an initial guess.
 
@@ -393,9 +416,10 @@ class ControlProblem(ABC):
         """
         guess = guess if guess is not None else np.zeros((self.state_dim + self.control_dim, self.num_nodes + 1))
 
+        
         self.opti.set_value(self.state_guess_parameter, guess[:self.state_dim, :])
         self.opti.set_value(self.control_guess_parameter, guess[self.state_dim:self.state_dim + self.control_dim, :])
-
+        
         current_node = self._setup_initial_node(guess)
         nodes = [current_node]
 
@@ -405,25 +429,62 @@ class ControlProblem(ABC):
         self._setup_variables(nodes)
         self._setup_objective(nodes)
 
-    def callback(self, iteration: int):
-        self.sol_state_list.append(self.opti.debug.value(self.state))
-        self.sol_control_list.append(self.opti.debug.value(self.control))
-        self.final_times.append(self.opti.debug.value(self.time))
+    def callback(self, iteration: int) -> None:
+        # self.sol_state_list.append(self.opti.debug.value(self.state))
+        # self.sol_control_list.append(self.opti.debug.value(self.control))
+        # self.final_times.append(self.opti.debug.value(self.time))
 
-        if hasattr(self, "_save_progress"):
-            self._save_progress(iteration, self.sol_state_list, self.sol_control_list, self.final_times)
-
-        self.log(iteration)
+        # if isinstance(self, SaveProgressProtocol):
+        #     self._save_progress(iteration, self.sol_state_list, self.sol_control_list, self.final_times)
+        if self.logging == True:
+            self.log(iteration)
 
     def solve(self, warm_start:Optional[ca.OptiSol] = None) -> ca.OptiSol:
         self.opti.solver('ipopt', self.solver_opts)
         self.opti.callback(lambda iteration: self.callback(iteration))
         if warm_start:
             self.opti.set_initial(warm_start.value_variables())
-        sol = self.opti.solve()
+        try:
+            sol = self.opti.solve()
+            success = True
+        except RuntimeError as e:
+            print("Solver failed:", e)
+            sol = self.opti.debug
+            success = False
+        stats = self.opti.stats()
+        print(self.extract_solver_metrics(stats, success))
         return sol
     
-    def log(self, iteration:int):
+    def extract_solver_metrics(self, stats:dict, success:bool):
+        metrics = {}
+
+        # IPOPT-specific stats
+        ipopt_stats = stats.get('iter_count', None)
+        solver_stats = stats.get('solver_stats', {})
+
+        if 't_wall_total' in solver_stats:
+            metrics['total_time'] = solver_stats['t_wall_total']
+        if 't_proc_total' in solver_stats:
+            metrics['cpu_time'] = solver_stats['t_proc_total']
+        if 'return_status' in solver_stats:
+            metrics['status'] = solver_stats['return_status']
+        if 'iterations' in solver_stats:
+            metrics['iterations'] = solver_stats['iterations']
+        if 'objective' in solver_stats:
+            metrics['final_objective'] = solver_stats['objective']
+        if 'dual_inf' in solver_stats:
+            metrics['dual_inf'] = solver_stats['dual_inf']
+        if 'primal_inf' in solver_stats:
+            metrics['primal_inf'] = solver_stats['primal_inf']
+        if 'kkt' in solver_stats:
+            metrics['kkt_error'] = solver_stats['kkt']
+
+        # Include success flag
+        metrics['success'] = success
+
+        return metrics
+    
+    def log(self, iteration:int) -> None:
         """
         Log solver progress
 
@@ -468,7 +529,7 @@ class ControlProblem(ABC):
         return {
             "state": sol.value(self.state),
             "control": sol.value(self.control),
-            "time": sol.value(self.time) if hasattr(self, 'time') else None
+            "times": sol.value(self.times) if hasattr(self, 'times') else None
         }
 
 

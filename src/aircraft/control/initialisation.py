@@ -2,49 +2,56 @@ import numpy as np
 import dubins # https://github.com/AgRoboticsResearch/pydubins.git
 from aircraft.utils.utils import TrajectoryConfiguration
 from scipy.interpolate import CubicSpline
-
+from dubins import _DubinsPath
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
-from typing import Optional
+from typing import Optional, Union, Type, Tuple, cast
 
-"""
+Point = np.ndarray
+Points = list[Point] | np.ndarray
+DubinsPoints = list[tuple[Point, float]]
+Vector = np.ndarray
+Point2d = np.ndarray
 
-
-"""
-
-def cumulative_distances(waypoints:np.ndarray, verbose:bool = False):
+def cumulative_distances(waypoints: Points, verbose: bool = False) -> np.ndarray:
     """
-    Given a set of waypoints, calculate the distance between each waypoint.
+    Given a set of waypoints, calculate the cumulative distance along the path.
 
     Parameters
     ----------
-    waypoints : np.array
-        Array of waypoints. (d x n) where d is the dimension of the waypoints 
-        and n is the number of waypoints. The first waypoint is taken as the 
-        initial position.
+    waypoints : Points
+        List of waypoints. Each waypoint is a (3,) ndarray.
 
     Returns
     -------
-    distance : np.array
-        Cumulative distance between waypoints.
-    
+    distance : np.ndarray
+        Cumulative distance between waypoints (length n).
     """
-    differences = np.diff(waypoints, axis=0)
-    distances = np.linalg.norm(differences, axis=1)
-    distance = np.cumsum(distances)
+    if not isinstance(waypoints, np.ndarray):
+        waypoint_array = np.stack(waypoints, axis=1)  # shape (3, n)
+    else:
+        waypoint_array = waypoints
+    diffs = np.diff(waypoint_array, axis=1)       # shape (3, n-1)
+    distances = np.linalg.norm(diffs, axis=0)
+    cumulative = np.concatenate([[0.0], np.cumsum(distances)])
+    
+    if verbose:
+        for i, d in enumerate(cumulative):
+            print(f"Waypoint {i}: {d:.3f} meters")
 
-    if verbose: 
-        print("Cumulative waypoint distances: ", distance)
-    return distance
+    return cumulative
 
-def normalize(v):
+def normalize(v:Vector) -> Vector:
     """ Normalize a vector. """
+    if isinstance(v, list):
+        v = np.array(v)
     return v / np.linalg.norm(v)
 
-def fit_plane(p1, p2, p3):
+def fit_plane(p1:Point, p2:Point, p3:Point
+              ) -> tuple[Vector, Point]:
     """ Fit a plane to three points and return its normal vector and a point on the plane. """
     v1 = np.array(p2) - np.array(p1)
     v2 = np.array(p3) - np.array(p1)
@@ -52,14 +59,19 @@ def fit_plane(p1, p2, p3):
     normal = normalize(normal)  # Normalize the normal vector
     return normal, np.array(p1)
 
-def project_to_plane(point, plane_normal, plane_point):
+def project_to_plane(point:Point, plane_normal:Vector, 
+                     plane_point:Point) -> Point:
     """ Project a point onto a plane defined by a normal and a reference point. """
     vec = np.array(point) - plane_point
     distance = np.dot(vec, plane_normal)  # Distance from plane
     projected_point = np.array(point) - distance * plane_normal  # Projection formula
     return projected_point
 
-def transform_to_plane_coordinates(point, plane_normal, plane_point):
+def transform_to_plane_coordinates(
+        point:Point, 
+        plane_normal:Vector, 
+        plane_point:Point
+        ) -> Point2d:
     """ Transform a 3D point to 2D coordinates in the plane's local (u, v) coordinate system. """
     # Create a basis for the plane
     plane_normal = normalize(plane_normal)
@@ -73,9 +85,9 @@ def transform_to_plane_coordinates(point, plane_normal, plane_point):
     u_coord = np.dot(vec, u_axis)
     v_coord = np.dot(vec, v_axis)
 
-    return u_coord, v_coord
+    return np.array([u_coord, v_coord])
 
-def transform_heading_to_plane(theta, plane_normal, u_axis):
+def transform_heading_to_plane(theta:float, plane_normal:Vector, u_axis:Vector) -> float:
     """ 
     Transform the 3D heading angle to the corresponding 2D heading in the plane's (u, v) coordinates.
     :param theta: 3D heading angle (in radians)
@@ -95,7 +107,14 @@ def transform_heading_to_plane(theta, plane_normal, u_axis):
                         np.dot(heading_vector_on_plane, u_axis))
     return u_angle
 
-def sample_dubins_path(path, min_interval=0.001, max_interval=0.1, curvature_factor=1.0, r_min=10.0, vel=30):
+def sample_dubins_path(
+        path:_DubinsPath, 
+        min_interval:float=0.001, 
+        max_interval:float=0.1, 
+        curvature_factor:float=1.0, 
+        r_min:float=10.0, 
+        vel:float=30.0
+        ) -> tuple[Points, list[float]]:
     """Sample a Dubins path at intervals based on curvature."""
     # Path type mapping
     PATH_TYPES = {
@@ -112,7 +131,6 @@ def sample_dubins_path(path, min_interval=0.001, max_interval=0.1, curvature_fac
     time_intervals = []
     total_length = path.path_length()
     s = 0
-    print(dir(path))
     def compute_curvature(s):
         segment_length = 0
         current_s = s
@@ -127,7 +145,7 @@ def sample_dubins_path(path, min_interval=0.001, max_interval=0.1, curvature_fac
     
     while s < total_length:
         point = path.sample(s)
-        samples.append(point)
+        samples.append(np.array(point))
         
         curvature = compute_curvature(s)
         interval = curvature_factor / (1 + abs(curvature))
@@ -135,29 +153,34 @@ def sample_dubins_path(path, min_interval=0.001, max_interval=0.1, curvature_fac
         
         s += interval
         time_intervals.append(interval / vel)
-    return np.array(samples), time_intervals
+    return samples, time_intervals
 
-def generate_3d_dubins_path(waypoints, r_min, sample_dist=0.01):
+def generate_3d_dubins_path(
+        waypoints:DubinsPoints, 
+        r_min:float
+        ) -> tuple[Points, list[float]]:
+    
     path_points = []
     all_time_intervals = []
     for i in range(len(waypoints) - 1):
-        (x1, y1, z1, theta1) = waypoints[i]
-        (x2, y2, z2, theta2) = waypoints[i + 1]
+        print(waypoints[i])
+        point1, theta1 = waypoints[i]
+        point2, theta2 = waypoints[i + 1]
 
 
         if i == len(waypoints) - 2:
-            normal, plane_point = fit_plane((x1, y1, z1), (x2, y2, z2), waypoints[i - 1][:3])
+            normal, plane_point = fit_plane(point1, point2, waypoints[i - 1][0])
         else:
             # Fit a plane using three points
-            normal, plane_point = fit_plane((x1, y1, z1), (x2, y2, z2), waypoints[i + 2][:3])
+            normal, plane_point = fit_plane(point1, point2, waypoints[i + 2][0])
 
         plane_normal = normalize(normal)
         u_axis = normalize(np.cross(plane_normal, [0, 0, 1]) if np.abs(plane_normal[2]) < 0.9 else np.cross(plane_normal, [1, 0, 0]))
         v_axis = np.cross(plane_normal, u_axis)
 
         # Transform points to 2D plane coordinates
-        start_2d = (*transform_to_plane_coordinates((x1, y1, z1), normal, plane_point), transform_heading_to_plane(theta1, normal, u_axis))
-        end_2d = (*transform_to_plane_coordinates((x2, y2, z2), normal, plane_point), transform_heading_to_plane(theta2, normal, u_axis))
+        start_2d = (*transform_to_plane_coordinates(point1, normal, plane_point), transform_heading_to_plane(theta1, normal, u_axis))
+        end_2d = (*transform_to_plane_coordinates(point2, normal, plane_point), transform_heading_to_plane(theta2, normal, u_axis))
 
         # Compute the 2D Dubins path
         # path_2d, _ = dubins.shortest_path(start_2d, end_2d, r_min).sample_many(sample_dist)
@@ -167,17 +190,15 @@ def generate_3d_dubins_path(waypoints, r_min, sample_dist=0.01):
         # Convert back to 3D in the plane's coordinate system
         path_segment = []
         for u, v, _ in path_2d:
-            point_3d = plane_point + u * u_axis + v * v_axis
+            point_3d = plane_point + float(u) * np.array(u_axis) + v * v_axis
             path_segment.append(tuple(point_3d))
 
         path_points.extend(path_segment)
         all_time_intervals.extend(time_intervals)
-    print(time_intervals)
-    print("!!!", len(path_points), len(all_time_intervals))
 
     return path_points, all_time_intervals
 
-def setup_waypoints(x_initial, waypoints):
+def setup_waypoints(x_initial:Point, waypoints:Points) -> DubinsPoints:
     """
     Sets up waypoints for the 3D Dubins path generation.
 
@@ -198,7 +219,7 @@ def setup_waypoints(x_initial, waypoints):
     initial_heading = np.arctan2(v_initial[1], v_initial[0])
     
     # Initialize list with initial position and heading
-    waypoints_with_dubins = [(p_initial[0], p_initial[1], p_initial[2], initial_heading)]
+    waypoints_with_dubins = [[(p_initial[0], p_initial[1], p_initial[2]), initial_heading]]
     
     # Add waypoints with propagated headings
     for i in range(1, len(waypoints)):
@@ -209,18 +230,18 @@ def setup_waypoints(x_initial, waypoints):
             heading = np.arctan2(dy, dx)
         else:
             # For last waypoint, keep the heading from previous segment
-            heading = waypoints_with_dubins[-1][3]
+            heading = waypoints_with_dubins[-1][1]
             
         waypoints_with_dubins.append((
-            waypoints[i][0],
+            ([waypoints[i][0],
             waypoints[i][1], 
-            waypoints[i][2],
-            heading
+            waypoints[i][2]],
+            heading)
         ))
     
     return waypoints_with_dubins
 
-def visualize_3d_dubins_path(waypoints, trajectory, orientations=None):
+def visualize_3d_dubins_path(waypoints:Points, trajectory, orientations:Optional[np.ndarray]=None):
     """
     Visualizes the 3D Dubins-like path and waypoints.
     
@@ -229,25 +250,25 @@ def visualize_3d_dubins_path(waypoints, trajectory, orientations=None):
     :param orientations: List of orientation vectors to display as quivers
     """
     fig = plt.figure(figsize=(12, 8))
-    ax = fig.add_subplot(111, projection='3d')
+    ax = cast(Axes3D, fig.add_subplot(111, projection='3d'))  # cast to Axes3D
+
 
     # Plot the waypoints
-    waypoints_x = [p[0] for p in waypoints]
-    waypoints_y = [p[1] for p in waypoints]
-    waypoints_z = [-p[2] for p in waypoints]
-    ax.scatter(waypoints_x, waypoints_y, waypoints_z, color='red', label='Waypoints', s=50)
+    waypoints_x = [p[0] for p, heading in waypoints]
+    waypoints_y = [p[1] for p, heading in waypoints]
+    waypoints_z = [-p[2] for p, heading in waypoints]
+
+    ax.scatter(waypoints_x, waypoints_y, waypoints_z, color='red', label='Waypoints', s=50) # type: ignore
 
     # Plot the trajectory
     traj_x = [p[0] for p in trajectory]
     traj_y = [p[1] for p in trajectory]
     traj_z = [-p[2] for p in trajectory]
     ax.plot(traj_x, traj_y, traj_z, color='blue', label='3D Dubins Path', linewidth=2)
-    x_axes = [R.from_quat(orientation).apply([1,0,0]) for orientation in orientations]
-    y_axes = [R.from_quat(orientation).apply([0,1,0]) for orientation in orientations]
-    z_axes = [R.from_quat(orientation).apply([0,0,1]) for orientation in orientations]
-    # Plot orientation quivers if provided
     if orientations is not None:
-        # Sample points along trajectory for quivers
+        x_axes = [R.from_quat(orientation).apply([1,0,0]) for orientation in orientations]
+        y_axes = [R.from_quat(orientation).apply([0,1,0]) for orientation in orientations]
+        z_axes = [R.from_quat(orientation).apply([0,0,1]) for orientation in orientations]
         sample_indices = np.linspace(1, len(trajectory)-2, 20, dtype=int)
         ax.quiver(
             [trajectory[i][0] for i in sample_indices],
@@ -256,19 +277,20 @@ def visualize_3d_dubins_path(waypoints, trajectory, orientations=None):
             [x_axes[i-1][0] for i in sample_indices],
             [x_axes[i-1][1] for i in sample_indices],
             [-x_axes[i-1][2] for i in sample_indices],
-            color='green', length=10.0, normalize=True
+            color='green', length=1, normalize=True
         )
 
     # Customize the plot
     ax.set_title('3D Dubins-like Path Visualization')
     ax.set_xlabel('X')
     ax.set_ylabel('Y')
-    ax.set_zlabel('Z')
+    if hasattr(ax, 'set_zlabel'):
+        ax.set_zlabel('Z')
     ax.legend()
     ax.grid(True)
     plt.show(block = True)
 
-def compute_angular_velocity(quaternions, time_intervals):
+def compute_angular_velocity(quaternions:list[R], time_intervals:list[float]) -> list[Vector]:
     """Compute angular velocity from a list of quaternions and time intervals.
     
     Args:
@@ -299,20 +321,20 @@ def compute_angular_velocity(quaternions, time_intervals):
     return angular_velocities
 
 
-def compute_roll_angle(curvature, velocity, g=9.81):
+def compute_roll_angle(curvature:float, speed:float, g:float=9.81) -> float:
     """Compute the roll angle for a coordinated turn.
     
     Args:
         curvature: Curvature of the path at the current point (1/m).
-        velocity: Forward velocity of the drone (m/s).
+        speed: Forward velocity of the drone (m/s).
         g: Gravitational acceleration (m/s^2).
     
     Returns:
         Roll angle in radians.
     """
-    return np.arctan(curvature * velocity**2 / g)
+    return np.arctan(curvature * speed**2 / g)
 
-def apply_roll_to_quaternion(base_quaternion, velocity_vector, roll_angle):
+def apply_roll_to_quaternion(base_rotation:R, velocity_vector:Vector, roll_angle:float):
     """Apply a roll angle to a quaternion about the velocity vector.
     
     Args:
@@ -327,10 +349,10 @@ def apply_roll_to_quaternion(base_quaternion, velocity_vector, roll_angle):
     roll_rotation = R.from_rotvec(roll_angle * velocity_vector)
     
     # Apply the roll rotation to the base quaternion
-    new_orientation = roll_rotation * base_quaternion
+    new_orientation = roll_rotation * base_rotation
     return new_orientation
 
-def get_velocity_directions(path_points):
+def get_velocity_directions(path_points:Points):
     """Get velocity directions from 3D path points"""
     velocity_vectors = []
     for i in range(len(path_points)-1):
