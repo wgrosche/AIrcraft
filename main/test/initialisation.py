@@ -1,4 +1,4 @@
-from aircraft.control.initialisation import DubinsInitialiser
+from aircraft.control.initialisation import DubinsInitialiser, visualize_trajectory
 from aircraft.utils.utils import TrajectoryConfiguration
 import json
 
@@ -8,6 +8,8 @@ traj_dict = json.load(open('data/glider/problem_definition.json'))
 
 trajectory_config = TrajectoryConfiguration(traj_dict)
 
-initaliser = DubinsInitialiser(trajectory_config)
-
-initaliser.visualise()
+initialiser = DubinsInitialiser(trajectory_config)
+initialiser._build_track_functions()
+print(initialiser.length())
+initialiser.visualize()
+# initialiser.visualise()

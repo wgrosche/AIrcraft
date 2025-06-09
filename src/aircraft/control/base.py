@@ -321,7 +321,8 @@ class ControlProblem(ABC):
         Returns:
             ca.MX: Symbolic expression for the loss.
         """
-        pass
+        loss = 0
+        return loss
 
     def _make_node(self, index: int, guess: np.ndarray, enforce_state_constraint: bool = False) -> ControlNode:
         opti = self.opti

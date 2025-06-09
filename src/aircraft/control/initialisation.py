@@ -5,6 +5,7 @@ from scipy.interpolate import CubicSpline
 from dubins import _DubinsPath
 import numpy as np
 from scipy.spatial.transform import Rotation as R
+import casadi as ca
 
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
@@ -15,6 +16,16 @@ Points = list[Point] | np.ndarray
 DubinsPoints = list[tuple[Point, float]]
 Vector = np.ndarray
 Point2d = np.ndarray
+
+from numpy.polynomial.chebyshev import chebfit
+
+def fit_chebyshev(s_vals, y_vals, degree):
+    """
+    Fit Chebyshev coefficients to data.
+    """
+    assert np.all(s_vals >= 0) and np.all(s_vals <= 1), "s_vals must be in [0, 1]"
+    return chebfit(s_vals * 2 - 1, y_vals, degree)  # map [0,1] to [-1,1]
+
 
 def cumulative_distances(waypoints: Points, verbose: bool = False) -> np.ndarray:
     """
@@ -364,33 +375,76 @@ def get_velocity_directions(path_points:Points):
     velocity_vectors.append(velocity_vectors[-1])
     return velocity_vectors
 
+
+import numpy as np
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+
+def visualize_trajectory(eval_fn, eval_tangent_fn=None, s_range=(0, 1), num_points=100, quiver_stride=10):
+    """
+    Plots a 3D trajectory defined by a CasADi function `eval_fn(s) -> pos`,
+    optionally with tangent vectors using `eval_tangent_fn(s) -> tangent`.
+
+    Parameters:
+        eval_fn (casadi.Function): Function taking s and returning 3D position.
+        eval_tangent_fn (casadi.Function): Optional. Function returning 3D tangent at s.
+        s_range (tuple): Range of s values to sample, default (0, 1).
+        num_points (int): Number of points to sample along the trajectory.
+        quiver_stride (int): Plot every Nth tangent vector.
+    """
+    import casadi as ca
+
+    s_vals = np.linspace(s_range[0], s_range[1], num_points)
+    pos_vals = np.array([eval_fn(s).full().flatten() for s in s_vals])
+
+    fig = plt.figure(figsize=(10, 6))
+    ax = fig.add_subplot(111, projection='3d')
+
+    # Plot trajectory line
+    ax.plot(pos_vals[:, 0], pos_vals[:, 1], pos_vals[:, 2], label="Trajectory", color='blue')
+
+    # Optional quiver plot
+    if eval_tangent_fn is not None:
+        tangents = np.array([eval_tangent_fn(s).full().flatten() for s in s_vals])
+
+        # Normalize for quiver consistency
+        tangents /= np.linalg.norm(tangents, axis=1, keepdims=True) + 1e-8
+
+        # Quiver every Nth point
+        stride = quiver_stride
+        ax.quiver(
+            pos_vals[::stride, 0], pos_vals[::stride, 1], pos_vals[::stride, 2],
+            tangents[::stride, 0], tangents[::stride, 1], tangents[::stride, 2],
+            length=0.1, normalize=True, color='red', label='Tangent'
+        )
+
+    ax.set_xlabel("X")
+    ax.set_ylabel("Y")
+    ax.set_zlabel("Z")
+    ax.set_title("3D Trajectory")
+    ax.legend()
+    ax.grid(True)
+    plt.tight_layout()
+    plt.show(block=True)
+
+
 class DubinsInitialiser:
     """
-    TODO:
-    Initialises a waypoint traversal trajectory with the dubins shortest path.
-
-    implements the initialise method which returns a trajectory "guess" containing
-    guesses for state and control as well as (optionally) the waypoint variables lambda, mu and nu.
-
-    Control initialisation assumes bang-bang type control for turns and neutral controls otherwise.
     
     """
     def __init__(self, trajectory:TrajectoryConfiguration):
+
         self.waypoints = trajectory.waypoints.waypoints
         initial_state = trajectory.waypoints.initial_state
         self.cumulative_distances = cumulative_distances(self.waypoints)
 
-        print(self.cumulative_distances )
-        print(self.waypoints)
 
         if len(trajectory.waypoints.waypoint_indices) < 3:
             for i, waypoint in enumerate(self.waypoints[1:]):
                 waypoint[2] = initial_state[2] + self.cumulative_distances[i] / trajectory.aircraft.glide_ratio
 
         self.dubins_waypoints = setup_waypoints(initial_state, self.waypoints)
-        print(self.dubins_waypoints)
         self.dubins_path, time_intervals = generate_3d_dubins_path(self.dubins_waypoints, trajectory.aircraft.r_min)
-        print(len(self.dubins_path))
         vel_directions = get_velocity_directions(self.dubins_path)
         rotations = []
         for vel_dir in vel_directions:
@@ -419,30 +473,24 @@ class DubinsInitialiser:
 
         new_orientations.append(new_orientations[-1]) # assume we don't need to change orientation for last waypoint
 
-        print(len(time_intervals))
         self.time_intervals = time_intervals
-        print(len(new_orientations))
+
         angular_velocities = compute_angular_velocity(new_orientations, time_intervals)
 
 
         # print("Angular Velocities: ", angular_velocities)
         # print("Orientations: ", new_orientations)
         self.orientations = [orientation.as_quat() for orientation in new_orientations]
-
-        print("final", len(self.orientations))
-        print("final", len(self.dubins_path))
         # compute orientations, velocities and angular velocities
         # convert to arrays
         orientations = np.array(self.orientations)
         # velocities = np.array(velocities)
         angular_velocities = np.zeros_like(velocities)
         positions = np.array(self.dubins_path)
-        print(positions.shape)
-        print(velocities.shape)
-        print(orientations.shape)
-        print(angular_velocities.shape)
         self.guess = np.concatenate((positions, velocities, orientations, angular_velocities), axis = 1)
-        print(self.guess.shape)
+
+        self.visualize = lambda: visualize_trajectory(self.eval, self.eval_tangent)
+
 
     def waypoint_variable_guess(self):
 
@@ -466,46 +514,10 @@ class DubinsInitialiser:
 
         return (lambda_guess, mu_guess, nu_guess)
 
-    # def trajectory(self, s):
-    #     """
-    #     Smooth trajectory interpolated from dubins path
-    #     """
-    #     s_values = np.linspace(0, 1, num=len(self.dubins_path))
-    #     x_values = [i[0] for i in self.dubins_path]
-    #     y_values = [i[1] for i in self.dubins_path]
-    #     z_values = [i[2] for i in self.dubins_path]
-    #     # Fit cubic splines for each coordinate
-    #     Px = CubicSpline(s_values, x_values, bc_type='clamped')
-    #     Py = CubicSpline(s_values, y_values, bc_type='clamped')
-    #     Pz = CubicSpline(s_values, z_values, bc_type='clamped')
-
-    #     return np.array([Px(s), Py(s), Pz(s)])
-    
-    def linear_interp(self, s, s_vals, y_vals):
-        """Returns a CasADi SX symbolic expression for piecewise linear interpolation."""
-        import casadi as ca
-        
-        expr = 0
-        for i in range(len(s_vals) - 1):
-            # Use CasADi's logical operators instead of Python's and/or
-            condition = ca.logic_and(s >= s_vals[i], s <= s_vals[i+1])
-            
-            # Calculate the weight when the condition is true
-            weight = (s_vals[i+1] - s) / (s_vals[i+1] - s_vals[i])
-            
-            # Use if_else to apply the weight only when the condition is true
-            w = ca.if_else(condition, weight, 0)
-            
-            # Add the weighted contribution to the expression
-            expr += w * y_vals[i] + (1 - w) * y_vals[i+1]
-        
-        return expr
-
     def length(self, N=100):
-        import casadi as ca
 
         s = ca.MX.sym("s")
-        pos = self.trajectory(s)
+        pos = self.eval(s)
         dpos_ds = ca.jacobian(pos, s)  # ∂trajectory/∂s
         speed = ca.norm_2(dpos_ds)
 
@@ -527,11 +539,7 @@ class DubinsInitialiser:
         return length
 
 
-
-
     def sx_linear_interpolator(self, s_vals, y_vals):
-        import casadi as ca
-        import numpy as np
         assert len(s_vals) == len(y_vals)
         n = len(s_vals)
 
@@ -549,45 +557,78 @@ class DubinsInitialiser:
             return expr
 
         return interp
+    
+    def sx_piecewise_cubic_hermite(s_vals, y_vals):
+        assert len(s_vals) == len(y_vals)
+        n = len(s_vals)
 
-    @property
-    def trajectory(self):
-        import casadi as ca
-        s = ca.MX.sym("s")
+        # Compute finite difference slopes
+        h = np.diff(s_vals)
+        dy = np.diff(y_vals)
+
+        slopes = dy / h
+
+        # Estimate derivatives (you could use PCHIP rules or simple central diff)
+        d = np.zeros_like(y_vals)
+        d[1:-1] = (slopes[:-1] + slopes[1:]) / 2
+        d[0] = slopes[0]
+        d[-1] = slopes[-1]
+
+        def interp(s):
+            expr = 0
+            for i in range(n - 1):
+                s0, s1 = s_vals[i], s_vals[i + 1]
+                y0, y1 = y_vals[i], y_vals[i + 1]
+                d0, d1 = d[i], d[i + 1]
+                h_i = s1 - s0
+                t = (s - s0) / h_i
+
+                h00 = (1 + 2 * t) * (1 - t)**2
+                h10 = t * (1 - t)**2
+                h01 = t**2 * (3 - 2 * t)
+                h11 = t**2 * (t - 1)
+
+                segment = (
+                    h00 * y0 +
+                    h10 * h_i * d0 +
+                    h01 * y1 +
+                    h11 * h_i * d1
+                )
+                cond = ca.logic_and(s >= s0, s <= s1)
+                expr += ca.if_else(cond, segment, 0)
+
+            # Extrapolation
+            expr += ca.if_else(s < s_vals[0], y_vals[0], 0)
+            expr += ca.if_else(s > s_vals[-1], y_vals[-1], 0)
+
+            return expr
+
+        return interp
+
+    def _build_track_functions(self):
         s_values = np.linspace(0, 1, num=len(self.dubins_path))
-        x_values = [i[0] for i in self.dubins_path]
-        y_values = [i[1] for i in self.dubins_path]
-        z_values = [i[2] for i in self.dubins_path]
-
-        # Px = ca.interpolant('Px', 'bspline', [s_values], x_values)
-        # Py = ca.interpolant('Py', 'bspline', [s_values], y_values)
-        # Pz = ca.interpolant('Pz', 'bspline', [s_values], z_values)
+        x_values = [p[0] for p in self.dubins_path]
+        y_values = [p[1] for p in self.dubins_path]
+        z_values = [p[2] for p in self.dubins_path]
 
         interp_x = self.sx_linear_interpolator(s_values, x_values)
         interp_y = self.sx_linear_interpolator(s_values, y_values)
         interp_z = self.sx_linear_interpolator(s_values, z_values)
 
-        traj = ca.vertcat(interp_x(s), interp_y(s), interp_z(s))
+        # interp_x = self.sx_piecewise_cubic_hermite(s_values, x_values)
+        # interp_y = self.sx_piecewise_cubic_hermite(s_values, y_values)
+        # interp_z = self.sx_piecewise_cubic_hermite(s_values, z_values)
 
-        return ca.Function('traj', [s], [traj])
+        s = ca.MX.sym("s")
 
-    # def trajectory(self, s):
-    #     import casadi as ca
-        
-    #     s_values = np.linspace(0, 1, num=len(self.dubins_path))
-    #     x_values = [i[0] for i in self.dubins_path]
-    #     y_values = [i[1] for i in self.dubins_path]
-    #     z_values = [i[2] for i in self.dubins_path]
-    #     # # Fit cubic splines for each coordinate
-    #     # Px = ca.interpolant('Px', 'bspline', [s_values], x_values)
-    #     # Py = ca.interpolant('Py', 'bspline', [s_values], y_values)
-    #     # Pz = ca.interpolant('Pz', 'bspline', [s_values], z_values)
+        pos = ca.vertcat(interp_x(s), interp_y(s), interp_z(s))
 
-    #     return ca.vertcat(
-    #             self.linear_interp(s, s_values, x_values),
-    #             self.linear_interp(s, s_values, y_values),
-    #             self.linear_interp(s, s_values, z_values)
-    #         )
+        # Derivative using CasADi's symbolic differentiation
+        tangent = ca.jacobian(pos, s)
+
+        self.eval = ca.Function('track_eval', [s], [pos])
+        self.eval_tangent = ca.Function('track_tangent', [s], [tangent])
+
 
     def visualise(self):
         # Visualize the generated 3D Dubins path
