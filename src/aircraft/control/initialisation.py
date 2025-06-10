@@ -415,7 +415,7 @@ def visualize_trajectory(eval_fn, eval_tangent_fn=None, s_range=(0, 1), num_poin
         ax.quiver(
             pos_vals[::stride, 0], pos_vals[::stride, 1], pos_vals[::stride, 2],
             tangents[::stride, 0], tangents[::stride, 1], tangents[::stride, 2],
-            length=0.1, normalize=True, color='red', label='Tangent'
+            length=10, normalize=True, color='red', label='Tangent'
         )
 
     ax.set_xlabel("X")
@@ -441,7 +441,7 @@ class DubinsInitialiser:
 
         if len(trajectory.waypoints.waypoint_indices) < 3:
             for i, waypoint in enumerate(self.waypoints[1:]):
-                waypoint[2] = initial_state[2] + self.cumulative_distances[i] / trajectory.aircraft.glide_ratio
+                waypoint[2] = initial_state[2] - self.cumulative_distances[i] / trajectory.aircraft.glide_ratio
 
         self.dubins_waypoints = setup_waypoints(initial_state, self.waypoints)
         self.dubins_path, time_intervals = generate_3d_dubins_path(self.dubins_waypoints, trajectory.aircraft.r_min)
@@ -558,7 +558,7 @@ class DubinsInitialiser:
 
         return interp
     
-    def sx_piecewise_cubic_hermite(s_vals, y_vals):
+    def sx_piecewise_cubic_hermite(self, s_vals, y_vals):
         assert len(s_vals) == len(y_vals)
         n = len(s_vals)
 
@@ -611,13 +611,13 @@ class DubinsInitialiser:
         y_values = [p[1] for p in self.dubins_path]
         z_values = [p[2] for p in self.dubins_path]
 
-        interp_x = self.sx_linear_interpolator(s_values, x_values)
-        interp_y = self.sx_linear_interpolator(s_values, y_values)
-        interp_z = self.sx_linear_interpolator(s_values, z_values)
+        # interp_x = self.sx_linear_interpolator(s_values, x_values)
+        # interp_y = self.sx_linear_interpolator(s_values, y_values)
+        # interp_z = self.sx_linear_interpolator(s_values, z_values)
 
-        # interp_x = self.sx_piecewise_cubic_hermite(s_values, x_values)
-        # interp_y = self.sx_piecewise_cubic_hermite(s_values, y_values)
-        # interp_z = self.sx_piecewise_cubic_hermite(s_values, z_values)
+        interp_x = self.sx_piecewise_cubic_hermite(s_values, x_values)
+        interp_y = self.sx_piecewise_cubic_hermite(s_values, y_values)
+        interp_z = self.sx_piecewise_cubic_hermite(s_values, z_values)
 
         s = ca.MX.sym("s")
 
@@ -628,11 +628,6 @@ class DubinsInitialiser:
 
         self.eval = ca.Function('track_eval', [s], [pos])
         self.eval_tangent = ca.Function('track_tangent', [s], [tangent])
-
-
-    def visualise(self):
-        # Visualize the generated 3D Dubins path
-        visualize_3d_dubins_path(self.dubins_waypoints, self.dubins_path, orientations = self.orientations)
 
     def state_guess(self, trajectory:TrajectoryConfiguration):
         """

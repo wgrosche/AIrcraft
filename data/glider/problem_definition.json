@@ -1,9 +1,9 @@
 {
     "waypoints": {
-        "waypoints" : [[100.0, 200.0, -100.0], [50.0, 200.0, -50.0]],
+        "waypoints" : [[50.0, 0.0, -180.0], [100.0, 20.0, -170.0]],
         "initial_state" : [0, 0, -200, 30, 0, 0, 0, 0, 0, 1, 0, 0, 0],
         "default_velocity" : 30,
-        "waypoint_indices" : [0, 1],
+        "waypoint_indices" : [0, 1, 2],
         "waypoint_tolerance" : 1e1
     },
     "aircraft" : {

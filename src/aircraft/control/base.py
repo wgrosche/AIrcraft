@@ -3,7 +3,7 @@ import numpy as np
 from dataclasses import dataclass
 import os
 import h5py
-from typing import List, Protocol, runtime_checkable, Optional, Union
+from typing import List, Protocol, runtime_checkable, Optional, Union, Sequence, Generic, TypeVar
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -384,7 +384,7 @@ class ControlProblem(ABC):
         return next_node
 
     
-    def _setup_variables(self, nodes:List[ControlNode]) -> None:
+    def _setup_variables(self, nodes:Sequence[ControlNode]) -> None:
         self.state = ca.hcat([nodes[i].state for i in range(self.num_nodes + 1)])
         self.control = ca.hcat([nodes[i].control for i in range(self.num_nodes)])
         if self.opts.get('time', 'fixed') in ['fixed', 'progress']:

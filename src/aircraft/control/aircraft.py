@@ -145,12 +145,17 @@ class AircraftControl(ControlProblem):
         
         return sol
     
-    def plot(self, sol:ca.OptiSol) -> None:
-        trajectory_data = TrajectoryData(
-                state=np.array(self.opti.debug.value(self.state))[:, :-1],
-                control=np.array(self.opti.debug.value(self.control)),
-                times=np.array(self.opti.debug.value(self.times))
-            )
+    def plot(self, sol:Optional[ca.OptiSol] = None, traj:Optional[TrajectoryData] = None) -> None:
+        if sol is not None and isinstance(sol, ca.OptiSol):
+            trajectory_data = TrajectoryData(
+                    state=np.array(self.opti.debug.value(self.state))[:, :-1],
+                    control=np.array(self.opti.debug.value(self.control)),
+                    times=np.array(self.opti.debug.value(self.times))
+                )
+        elif traj is not None and isinstance(traj, TrajectoryData):
+            trajectory_data = traj
+        else:
+            raise ValueError("Didn't supply a valid plotting trajectory")
         self.plotter.plot(trajectory_data=trajectory_data)
         plt.draw()
         self.plotter.figure.canvas.start_event_loop(0.0002)
