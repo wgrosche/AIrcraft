@@ -8,6 +8,7 @@ import logging
 from datetime import datetime
 from pathlib import Path
 from abc import ABC, abstractmethod
+from tqdm import tqdm
 
 from aircraft.config import default_solver_options, DATAPATH
 from aircraft.dynamics.base import SixDOF
@@ -424,7 +425,7 @@ class ControlProblem(ABC):
         current_node = self._setup_initial_node(guess)
         nodes = [current_node]
 
-        for index in range(1, self.num_nodes + 1):
+        for index in tqdm(range(1, self.num_nodes + 1), desc="Setting up nodes..."):
             nodes.append(self._setup_step(index, nodes[-1], guess))
 
         self._setup_variables(nodes)

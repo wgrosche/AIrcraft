@@ -42,7 +42,7 @@ trajectory_config.waypoints.initial_state= trim_state_and_control[:aircraft.num_
 state = ca.vertcat(trim_state_and_control[:aircraft.num_states])
 aircraft.com = np.array(trim_state_and_control[-3:])
 dynamics = aircraft.state_update
-progress = 0
+progress = 1e-6
 dubins = DubinsInitialiser(trajectory_config)
 dubins._build_track_functions()
 

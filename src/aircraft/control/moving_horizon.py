@@ -104,6 +104,7 @@ class MHTT(ControlProblem):
         # Current state
         pos = current_node.state[:3]
         vel = current_node.state[3:6]
+        assert self.track_length > 1e-6
         
         # Progress dynamics
         s_dot = ca.dot(vel, tangent_norm) / self.track_length
@@ -126,7 +127,7 @@ class MHTT(ControlProblem):
         
         # Store for loss computation
         next_node.progress_rate = s_dot
-        next_node.tracking_error = ca.sumsqr(pos - track_pos)
+        next_node.tracking_error = ca.sumsqr(pos_err)
         
         return next_node
 
@@ -134,6 +135,9 @@ class MHTT(ControlProblem):
         super()._setup_variables(nodes)
         assert isinstance(nodes[0], ProgressNode)
         self.track_progress = ca.vcat([node.track_progress for node in nodes])
+        self.nodes = nodes
+        self.progress_rates = ca.vcat([node.progress_rate for node in nodes[1:]])
+        self.tracking_errors = ca.vcat([node.tracking_error for node in nodes[1:]])
 
         if self.verbose:
             print("Progress Shape: ", self.track_progress.shape)
@@ -169,13 +173,13 @@ class MHTT(ControlProblem):
             # Get tangent at current progress
             try:
                 tangent = self.track.eval_tangent(s_current)
-                tangent_norm = tangent / np.linalg.norm(tangent)
+                tangent_norm = tangent / ca.norm_2(tangent)
                 
                 # Estimate progress increment
                 s_dot = np.dot(vel, tangent_norm) / self.track_length
                 delta_s = s_dot * self.dt
                 
-                guess[-1, i] = np.clip(s_current + delta_s, 0.0, 1.0)
+                guess[-1, i] = np.clip(s_current + delta_s, 1e-6, 1.0)
             except:
                 print("Fallback")
                 # Fallback to uniform spacing
@@ -190,7 +194,11 @@ class MHTT(ControlProblem):
     
     def callback(self, iteration: int):
         if iteration % 10 == 0:
-            print(self.opti.debug.value(self.track_progress))
+            print("Progress: ", self.opti.debug.value(self.track_progress))
+            print("Tracking errors: ", self.opti.debug.value(self.tracking_errors))
+            print("Progress rates: ", self.opti.debug.value(self.progress_rates))
+            print("Positions: ", self.opti.debug.value(self.state))
+            print("Track evals", [self.track.eval(s) for s in self.opti.debug.value(self.track_progress)])
 
 
     def solve(self, warm_start: Optional[ca.OptiSol] = None):

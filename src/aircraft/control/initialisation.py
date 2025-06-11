@@ -738,21 +738,4 @@ class DubinsInitialiser:
         
         return x_guess, time_guess
     
-    def render(self):
-        from aircraft.plotting.plotting import TrajectoryData, TrajectoryPlotter
-        if self.VERBOSE:
-            print("State Guess: ", x_guess)
-            plotter = TrajectoryPlotter(self.aircraft)
-            trajectory_data = TrajectoryData(
-                state = np.array(x_guess),
-                # time = np.array(time_guess)
-            )
-            
-            plotter.plot(trajectory_data = trajectory_data)
-            plt.pause(0.001)
-            # fig = plt.figure()
-            # ax = fig.add_subplot(111, projection = '3d')
-            # ax.plot(x_guess[4, :], x_guess[5, :], x_guess[6, :])
-            
-            plt.show(block = True)
-    
+
