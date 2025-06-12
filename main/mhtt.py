@@ -49,7 +49,7 @@ dubins._build_track_functions()
 
 controller_opts = {'time':'fixed', 'quaternion':'integration', 'integration':'explicit'}
 
-mhtt = Controller(aircraft=aircraft, track = dubins, filepath = Path(DATAPATH) / 'trajectories' / 'mhtt_solution.h5', num_nodes=100, dt=0.01, opts = controller_opts)
+mhtt = Controller(aircraft=aircraft, track = dubins, filepath = Path(DATAPATH) / 'trajectories' / 'mhtt_solution.h5', num_nodes=10, dt=0.01, opts = controller_opts)
 
 pbar = tqdm(total=1.0, desc="Solving", unit="progress")
 initial_state = state
