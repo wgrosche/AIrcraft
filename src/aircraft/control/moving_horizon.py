@@ -272,6 +272,7 @@ class MHTT(ControlProblem):
 
     
     def callback(self, iteration: int):
+        
         pass
         # if iteration % 10 == 0:
         #     print("Progress: ", self.opti.debug.value(self.track_progress))
