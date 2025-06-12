@@ -43,6 +43,10 @@ default_solver_options = {'ipopt': {'max_iter': 10000,
                                     'mu_oracle': 'quality-function',
                                     'mu_init': 1e-1,
                                     'barrier_tol_factor': 0.1,  # Make barrier updates more aggressive
+                                    "warm_start_init_point": "yes",
+                                    "mu_init": 1e-1,
+                                    "warm_start_bound_push": 1e-6,
+                                    "warm_start_mult_bound_push": 1e-6
                                     },
                         'print_time': 10,
                         'expand': True

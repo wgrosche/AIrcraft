@@ -441,9 +441,17 @@ class ControlProblem(ABC):
         if self.logging == True:
             self.log(iteration)
 
-    def solve(self, warm_start:Optional[ca.OptiSol] = None) -> ca.OptiSol:
+    def setup_solver(self):
+        """One-time solver initialization."""
+        if getattr(self, 'solver_is_setup', False):
+            return
         self.opti.solver('ipopt', self.solver_opts)
         self.opti.callback(lambda iteration: self.callback(iteration))
+        self.solver_is_setup = True
+
+    def solve(self, warm_start:Optional[ca.OptiSol] = None) -> ca.OptiSol:
+        if not getattr(self, 'solver_is_setup', False):
+            self.setup_solver()
         if warm_start:
             self.opti.set_initial(warm_start.value_variables())
         try:

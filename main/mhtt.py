@@ -55,6 +55,7 @@ pbar = tqdm(total=1.0, desc="Solving", unit="progress")
 initial_state = state
 guess = mhtt.initialise(initial_state, progress)
 mhtt.setup(guess)
+# sol = mhtt.solve()
 while progress < 1:
     sol = mhtt.solve()
 
@@ -69,7 +70,9 @@ while progress < 1:
     initial_state = state
 
     guess = mhtt.initialise(initial_state, new_progress)
+    mhtt.set_initial_from_array(guess)
     mhtt.update_parameters(guess)
+    # sol = mhtt.opti.solve()
     # plot_guess = deepcopy(guess)
     # plot_initial = TrajectoryData(
     #     state=guess[:aircraft.num_states, :], 
