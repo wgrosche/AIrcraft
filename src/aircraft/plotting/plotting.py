@@ -93,7 +93,20 @@ class TrajectoryData:
                 self.iteration = None
 
         return self
-
+    def __post_init__(self):
+        # Defensive copies to avoid shared references
+        if self.state is not None:
+            self.state = self.state.copy()
+        if self.control is not None:
+            self.control = self.control.copy()
+        if self.times is not None:
+            self.times = self.times.copy()
+        if self.lam is not None:
+            self.lam = self.lam.copy()
+        if self.mu is not None:
+            self.mu = self.mu.copy()
+        if self.nu is not None:
+            self.nu = self.nu.copy()
 
 class PlotAxes:
     def __init__(self, fig:Figure):

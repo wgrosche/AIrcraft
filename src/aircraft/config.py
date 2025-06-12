@@ -26,7 +26,7 @@ default_solver_options = {'ipopt': {'max_iter': 10000,
                                     'acceptable_tol': 1e-5,
                                     'acceptable_obj_change_tol': 1e-6,
                                     "acceptable_constr_viol_tol": 1e-5,
-                                    'hessian_approximation': 'exact', #'limited-memory',
+                                    'hessian_approximation': 'exact', #'limited-memory',#
                                     'linear_solver': 'mumps',
                                     # 'jacobian_approximation': 'exact',  # Use exact Jacobian as well
                                     # 'calc_lam_p': True,

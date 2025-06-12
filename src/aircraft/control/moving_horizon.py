@@ -80,14 +80,23 @@ class MHTT(ControlProblem):
         """
         Set up the progress variable and use parameter for initial state.
         """
-        current_node = self._make_node(index=0, guess=guess, enforce_state_constraint=True)
-
-        return current_node
+        # print("Initial state here: ", guess[:, 0])
+        return_node = self._make_node(index=0, guess=guess, enforce_state_constraint=True)
+        
+        
+        # print("Constraint descriptions: ", self.constraint_descriptions)
+        return return_node
     
     def _make_node(self, index: int, guess: np.ndarray, enforce_state_constraint: bool = False) -> ProgressNode:
+        
+        
         control_node = super()._make_node(index, guess, enforce_state_constraint)
 
         progress_node = ProgressNode.from_control_node(control_node, track_progress=self.opti.variable())
+        self.constraint(
+            self.opti.bounded(0, progress_node.track_progress, 1),
+            description="Progress Bounds"
+        )
         if enforce_state_constraint:
             self.constraint(progress_node.track_progress == self.progress_guess_parameter[index])
 
@@ -98,7 +107,9 @@ class MHTT(ControlProblem):
         
         # Get track information at current progress
         tangent = self.track.eval_tangent(current_node.track_progress)
-        tangent_norm = tangent / (ca.norm_2(tangent) + 1e-6)
+        norm = ca.norm_2(tangent)
+        norm_safe = ca.if_else(norm > 1e-3, norm, 1.0)
+        tangent_norm = tangent / norm_safe
         track_pos = self.track.eval(current_node.track_progress)
         
         # Current state
@@ -119,11 +130,8 @@ class MHTT(ControlProblem):
                                 0.05 * delta_s_correction)  # small correction weight
         
         # Constraints
-        self.constraint(next_node.track_progress == predicted_next_progress)
-        self.constraint(
-            self.opti.bounded(0, next_node.track_progress, 1),
-            description="Progress Bounds"
-        )
+        self.constraint(next_node.track_progress <= predicted_next_progress)
+        self.opti.set_initial(next_node.track_progress, guess[-1, index])
         
         # Store for loss computation
         next_node.progress_rate = s_dot
@@ -179,26 +187,30 @@ class MHTT(ControlProblem):
                 s_dot = np.dot(vel, tangent_norm) / self.track_length
                 delta_s = s_dot * self.dt
                 
-                guess[-1, i] = np.clip(s_current + delta_s, 1e-6, 1.0)
+                guess[-1, i] = np.clip(s_current + delta_s, 0, 1.0)
             except:
                 print("Fallback")
                 # Fallback to uniform spacing
                 guess[-1, i] = min(current_progress + i * 0.01, 1.0)
 
         return guess
-    def update_parameters(self, initial_state, current_progress):
+    def update_parameters(self, guess):
         """
         Update parameters between MPC iterations.
         """
-        pass
+        self.opti.set_value(self.progress_guess_parameter, guess[-1, :])
+        self.opti.set_value(self.state_guess_parameter, guess[:self.state_dim, :])
+        self.opti.set_value(self.control_guess_parameter, guess[self.state_dim:self.state_dim + self.control_dim, :])
+
     
     def callback(self, iteration: int):
-        if iteration % 10 == 0:
-            print("Progress: ", self.opti.debug.value(self.track_progress))
-            print("Tracking errors: ", self.opti.debug.value(self.tracking_errors))
-            print("Progress rates: ", self.opti.debug.value(self.progress_rates))
-            print("Positions: ", self.opti.debug.value(self.state))
-            print("Track evals", [self.track.eval(s) for s in self.opti.debug.value(self.track_progress)])
+        pass
+        # if iteration % 10 == 0:
+        #     print("Progress: ", self.opti.debug.value(self.track_progress))
+        #     print("Tracking errors: ", self.opti.debug.value(self.tracking_errors))
+        #     print("Progress rates: ", self.opti.debug.value(self.progress_rates))
+        #     print("Positions: ", self.opti.debug.value(self.state)[2,:])
+        #     print("Track evals", [self.track.eval_tangent(s) for s in self.opti.debug.value(self.track_progress)])
 
 
     def solve(self, warm_start: Optional[ca.OptiSol] = None):

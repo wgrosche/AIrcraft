@@ -13,7 +13,8 @@ import casadi as ca
 import numpy as np
 import matplotlib.pyplot as plt
 from aircraft.plotting.plotting import TrajectoryData
-
+from copy import deepcopy
+from tqdm import tqdm
 class Controller(MHTT, AircraftControl):#, SaveMixin):
     def __init__(self, *, aircraft, track:DubinsInitialiser, num_nodes=100, dt=0.1, opts = {}, filepath:str = '', **kwargs):
         super().__init__(aircraft=aircraft, num_nodes=num_nodes, opts = opts, track = track, dt = dt)
@@ -42,7 +43,7 @@ trajectory_config.waypoints.initial_state= trim_state_and_control[:aircraft.num_
 state = ca.vertcat(trim_state_and_control[:aircraft.num_states])
 aircraft.com = np.array(trim_state_and_control[-3:])
 dynamics = aircraft.state_update
-progress = 1e-6
+progress = 0
 dubins = DubinsInitialiser(trajectory_config)
 dubins._build_track_functions()
 
@@ -50,38 +51,44 @@ controller_opts = {'time':'fixed', 'quaternion':'integration', 'integration':'ex
 
 mhtt = Controller(aircraft=aircraft, track = dubins, filepath = Path(DATAPATH) / 'trajectories' / 'mhtt_solution.h5', num_nodes=100, dt=0.01, opts = controller_opts)
 
+pbar = tqdm(total=1.0, desc="Solving", unit="progress")
+initial_state = state
+guess = mhtt.initialise(initial_state, progress)
+mhtt.setup(guess)
 while progress < 1:
-    print("initial state: ", state, ", progress: ", progress)
-    initial_state = state
-    
-    # guess, progress = mhtt.initialise(initial_state, progress)
-    guess = mhtt.initialise(initial_state, progress)
-    print("Initialised guess: ", guess)
-    plot_initial = TrajectoryData(
-        state = guess[:aircraft.num_states, :], 
-        control = guess[aircraft.num_states:aircraft.num_states+aircraft.num_controls, :], 
-        times = np.array([i * mhtt.dt for i in range(mhtt.num_nodes + 1)]))
-    
-    # plt.show(block=True)
-    mhtt.plotter.plot(plot_initial)
-    mhtt.setup(guess)
-    print("Setup guess: ", guess[-1, :])
     sol = mhtt.solve()
-    print("Solution: ", sol)
-    state = ca.DM(sol.value(mhtt.state)[:,-1])
-    print(state)
-    
-    progress = sol.value(mhtt.track_progress)
-    print(progress)
-    # mhtt.plot(sol)
-    break
-    # plt.show(block=True)
-    if sol.value(mhtt.track_progress[-1]) >= 1:
-        # save the solution
+
+    state = ca.DM(sol.value(mhtt.state)[:, -1])
+    new_progress = sol.value(mhtt.track_progress[-1])
+
+    print("state: ", state, ", progress: ", new_progress)
+    pbar.update(max(new_progress - progress, 0.0))  # Ensure non-negative
+    progress = new_progress
+    if new_progress >= 0.99:
         break
-    state = ca.DM(sol.value(mhtt.state)[:,-1])
-    print(state)
+    initial_state = state
+
+    guess = mhtt.initialise(initial_state, new_progress)
+    mhtt.update_parameters(guess)
+    # plot_guess = deepcopy(guess)
+    # plot_initial = TrajectoryData(
+    #     state=guess[:aircraft.num_states, :], 
+    #     control=guess[aircraft.num_states:aircraft.num_states+aircraft.num_controls, :], 
+    #     times=np.array([i * mhtt.dt for i in range(mhtt.num_nodes + 1)])
+    # )
     
-    progress = sol.value(mhtt.track_progress[-1])
-    print(progress)
+
+    # mhtt.setup(guess)
+    # sol = mhtt.solve()
+
+    # # Extract new state and progress
+    # state = ca.DM(sol.value(mhtt.state)[:, -1])
+    # new_progress = sol.value(mhtt.track_progress[-1])
+
+    # # Update progress bar
+    
+
+    
+
+pbar.close()
 

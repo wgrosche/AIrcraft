@@ -421,7 +421,7 @@ class ControlProblem(ABC):
         
         self.opti.set_value(self.state_guess_parameter, guess[:self.state_dim, :])
         self.opti.set_value(self.control_guess_parameter, guess[self.state_dim:self.state_dim + self.control_dim, :])
-        
+        print("Guess in base setup: ", guess[:, 0])
         current_node = self._setup_initial_node(guess)
         nodes = [current_node]
 
@@ -517,7 +517,7 @@ class ControlProblem(ABC):
         if hasattr(self, "_init_variable_time"):
             self.logger.info(f"Final time: {self.opti.debug.value(self.time)}")
         self.logger.info(f"Final position: {self.opti.debug.value(self.state)[:, -1]}")
-        self.logger.info(f"Final velocity: {self.opti.debug.value(self.state)[2, -1]}")
+        self.logger.info(f"Final velocity: {self.opti.debug.value(self.state)[3, -1]}")
         self.logger.info(f"Final control: {self.opti.debug.value(self.control)[:, -1]}")
         self.logger.info(f"Final control rate: {self.opti.debug.value(self.control)[:, -1] - self.opti.debug.value(self.control)[:, -2]}")
 

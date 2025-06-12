@@ -120,8 +120,8 @@ def transform_heading_to_plane(theta:float, plane_normal:Vector, u_axis:Vector) 
 
 def sample_dubins_path(
         path:_DubinsPath, 
-        min_interval:float=0.001, 
-        max_interval:float=0.1, 
+        min_interval:float=0.01, 
+        max_interval:float=10.0, 
         curvature_factor:float=1.0, 
         r_min:float=10.0, 
         vel:float=30.0
@@ -628,6 +628,35 @@ class DubinsInitialiser:
 
         self.eval = ca.Function('track_eval', [s], [pos])
         self.eval_tangent = ca.Function('track_tangent', [s], [tangent])
+    # def _build_track_functions(self):
+    #     self.dubins_path = self.dubins_path
+    #     s_values = [float(s) for s in np.linspace(0, 1, len(self.dubins_path))]
+    #     print(len(s_values))
+    #     # Sanity check: ensure dubins_path is list of 3-tuples
+    #     assert all(len(p) == 3 for p in self.dubins_path), "Each path point must have 3 components"
+        
+    #     x_values = [float(p[0]) for p in self.dubins_path]
+    #     y_values = [float(p[1]) for p in self.dubins_path]
+    #     z_values = [float(p[2]) for p in self.dubins_path]
+
+    #     # Double-check lengths
+    #     assert len(x_values) == len(s_values)
+    #     assert len(y_values) == len(s_values)
+    #     assert len(z_values) == len(s_values)
+
+    #     # Build interpolants — "bspline" or "linear"
+    #     interp_x = ca.interpolant("interp_x", "linear", [s_values], x_values, opts = {'inline':True})
+    #     interp_y = ca.interpolant("interp_y", "linear", [s_values], y_values, opts = {'inline':True})
+    #     interp_z = ca.interpolant("interp_z", "linear", [s_values], z_values, opts = {'inline':True})
+
+    #     # Symbolic evaluation
+    #     s = ca.MX.sym("s")
+        
+    #     pos = ca.vertcat(interp_x(s), interp_y(s), interp_z(s))
+    #     tangent = ca.jacobian(pos, s)
+
+    #     self.eval = ca.Function("track_eval", [s], [pos])
+    #     self.eval_tangent = ca.Function("track_tangent", [s], [tangent])
 
     def state_guess(self, trajectory:TrajectoryConfiguration):
         """
