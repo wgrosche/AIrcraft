@@ -177,7 +177,7 @@ class ControlProblem(ABC):
         self.state_dim:int = self.dynamics.size1_in(0)
         self.control_dim:int = self.dynamics.size1_in(1)
         self.x_dot:ca.Function = system.state_derivative
-
+    
         self.num_nodes = num_nodes
 
         self.verbose = self.opts.get('verbose', False)
@@ -456,13 +456,13 @@ class ControlProblem(ABC):
             self.opti.set_initial(warm_start.value_variables())
         try:
             sol = self.opti.solve()
-            success = True
+            self.success = True
         except RuntimeError as e:
             print("Solver failed:", e)
             sol = self.opti.debug
-            success = False
+            self.success = False
         stats = self.opti.stats()
-        print(self.extract_solver_metrics(stats, success))
+        print(self.extract_solver_metrics(stats, self.success))
         return sol
     
     def extract_solver_metrics(self, stats:dict, success:bool):
