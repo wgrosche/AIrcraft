@@ -57,9 +57,9 @@ initial_state = state
 guess = mhtt.initialise(initial_state, progress)
 mhtt.setup(guess)
 
-full_state = []
-full_progress = []
-full_control = []
+full_state = None
+full_progress = None
+full_control = None
 while progress < 1:
     sol = mhtt.solve()
 
@@ -67,25 +67,32 @@ while progress < 1:
         print("Solution not found")
         break
 
-    state = ca.DM(sol.value(mhtt.state)[:, -1])
-    new_progress = sol.value(mhtt.track_progress[-1])
-    control = ca.DM(sol.value(mhtt.control)[:, -1])
+    state = ca.DM(sol.value(mhtt.state))
+    new_progress = sol.value(mhtt.track_progress)
+    control = ca.DM(sol.value(mhtt.control))
 
-    full_state.append(state.full().flatten())
-    full_progress.append(new_progress)
-    full_control.append(control.full().flatten())
-
-
-    print("state: ", state, ", progress: ", new_progress)
-    pbar.update(max(new_progress - progress, 0.0))  # Ensure non-negative
-    progress = new_progress
-    if new_progress >= 0.99:
+   
+    if not isinstance(full_state, ca.DM):
+        full_state = state[:, 1:]
+        full_progress = new_progress
+        full_control = control
+    else:
+        full_state = ca.hcat([full_state, state[:, 1:]])
+        full_control = ca.hcat([full_control, control])
+        full_progress = ca.vertcat(full_progress, new_progress)
+    print(full_state.shape, full_control.shape, full_progress.shape)
+    print("State: ", state.shape, " Progress: ", new_progress.shape, " Control: ", control.shape)
+    # print("state: ", state, ", progress: ", new_progress)
+    pbar.update(max(new_progress[-1] - progress, 0.0))  # Ensure non-negative
+    progress = new_progress[-1]
+    if new_progress[-1] >= 0.99:
         break
-    initial_state = state
+    initial_state = state[:, -1]
 
-    guess = mhtt.initialise(initial_state, new_progress)
+    guess = mhtt.initialise(initial_state, progress)
     mhtt.set_initial_from_array(guess)
     mhtt.update_parameters(guess)
+    print(np.array(full_state).shape)
     # sol = mhtt.opti.solve()
     full_state_array = np.array(full_state)
     full_control_array = np.array(full_control)
@@ -93,7 +100,7 @@ while progress < 1:
     plot_data = TrajectoryData(
         state=full_state_array, 
         control=full_control_array,
-        times=np.array([i * mhtt.dt for i in range(full_state_array.shape[0])]),
+        times=np.array([i * mhtt.dt for i in range(full_state_array.shape[1])]),
     )
     mhtt.plotter.plot(plot_data)
     plt.draw()
