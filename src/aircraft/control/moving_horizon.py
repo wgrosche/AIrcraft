@@ -87,7 +87,7 @@ class MHTT(ControlProblem):
         w_terminal_align = 20.0
         w_low_velocity = 10.0
         w_control = 1.0
-
+        w_discontinuity = 1000  # Penalty for discontinuities in progress
         # Accumulators
         tracking_loss = 0
         progress_reward = 0
@@ -95,6 +95,7 @@ class MHTT(ControlProblem):
         backward_penalty = 0
         low_velocity_penalty = 0
         control_effort = 0
+        discontinuity_loss = 0
 
         for i, node in enumerate(nodes[1:], 1):  # skip first node for rate
             # Tracking error (if defined)
@@ -117,6 +118,8 @@ class MHTT(ControlProblem):
             # Penalize control effort
             control_effort += ca.sumsqr(node.control)
 
+            discontinuity = nodes[i - 1].track_progress - nodes[i].track_progress
+            discontinuity_loss += discontinuity**2
         # Terminal alignment with final track point
         final_pos = nodes[-1].state[:3]
         goal_pos = self.track.eval(1.0)  # assumes Dubins track parameterized in [0,1]
@@ -131,6 +134,7 @@ class MHTT(ControlProblem):
             + w_low_velocity * low_velocity_penalty
             + w_terminal_align * terminal_tracking_error
             + w_control * control_effort
+            + w_discontinuity * discontinuity_loss
         )
 
         return loss
@@ -189,7 +193,9 @@ class MHTT(ControlProblem):
         s_dot = ca.dot(vel, tangent_norm) / self.track_length
         
         # Optional: position-based correction for robustness
-        pos_err = pos - track_pos
+        # pos_err = pos - track_pos # NOTE: Disabled for 2d
+        pos_err = pos[:1] - track_pos[:1]
+        tangent_norm = tangent_norm[:1]  # Use only x, y components for 2D
         delta_s_correction = ca.dot(pos_err, tangent_norm) / self.track_length
         
         # Combined progress update
@@ -200,6 +206,8 @@ class MHTT(ControlProblem):
         # Constraints
         self.constraint(next_node.track_progress <= predicted_next_progress)
         self.opti.set_initial(next_node.track_progress, guess[-1, index])
+
+        
         
         # Store for loss computation
         next_node.progress_rate = s_dot

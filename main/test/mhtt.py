@@ -5,7 +5,7 @@ from aircraft.config import NETWORKPATH, DATAPATH
 from aircraft.utils.utils import TrajectoryConfiguration
 
 
-from aircraft.control.initialisation import DubinsInitialiser
+from aircraft.control.initialisation import DubinsInitialiser, vis_traj_embed
 from aircraft.control.moving_horizon import MHTT
 from aircraft.control.aircraft import AircraftControl
 from aircraft.control.base import SaveMixin
@@ -16,6 +16,7 @@ from aircraft.plotting.plotting import TrajectoryData
 from copy import deepcopy
 from control import Controller as MinimumTimeController
 from tqdm import tqdm
+plt.ion()
 class Controller(MHTT, AircraftControl):#, SaveMixin):
     def __init__(self, *, aircraft, track:DubinsInitialiser, num_nodes=100, dt=0.1, opts = {}, filepath:str = '', **kwargs):
         super().__init__(aircraft=aircraft, num_nodes=num_nodes, opts = opts, track = track, dt = dt)
@@ -47,19 +48,23 @@ dynamics = aircraft.state_update
 progress = 0
 dubins = DubinsInitialiser(trajectory_config)
 dubins._build_track_functions()
-
 controller_opts = {'time':'fixed', 'quaternion':'integration', 'integration':'explicit'}
 
-mhtt = Controller(aircraft=aircraft, track = dubins, filepath = Path(DATAPATH) / 'trajectories' / 'mhtt_solution.h5', num_nodes=100, dt=0.01, opts = controller_opts)
+mhtt = Controller(aircraft=aircraft, track = dubins, filepath = Path(DATAPATH) / 'trajectories' / 'mhtt_solution.h5', num_nodes=60, dt=0.01, opts = controller_opts)
 
 pbar = tqdm(total=1.0, desc="Solving", unit="progress")
 initial_state = state
 guess = mhtt.initialise(initial_state, progress)
 mhtt.setup(guess)
+mhtt.plotter.waypoints = trajectory_config.waypoints.waypoints.T
+mhtt.plotter.waypoints[2, :] *= -1
+
+# vis_traj_embed(mhtt.plotter.axes.position, dubins.eval, dubins.eval_tangent, s_range=(0, 1), num_points=100, quiver_stride=10)
 
 full_state = None
 full_progress = None
 full_control = None
+
 while progress < 1:
     sol = mhtt.solve()
 
@@ -105,6 +110,7 @@ while progress < 1:
     mhtt.plotter.plot(plot_data)
     plt.draw()
     mhtt.plotter.figure.canvas.start_event_loop(0.0002)
+    plt.pause(0.001) 
 
     # mhtt.setup(guess)
     # sol = mhtt.solve()
@@ -116,39 +122,39 @@ while progress < 1:
     # # Update progress bar
     
 
-    
-traj_dict = json.load(open('data/glider/problem_definition.json'))
+plt.show(block= True)
+# traj_dict = json.load(open('data/glider/problem_definition.json'))
 
-trajectory_config = TrajectoryConfiguration(traj_dict)
+# trajectory_config = TrajectoryConfiguration(traj_dict)
 
-aircraft_config = trajectory_config.aircraft
+# aircraft_config = trajectory_config.aircraft
 
-poly_path = Path(NETWORKPATH) / 'fitted_models_casadi.pkl'
-opts = AircraftOpts(coeff_model_type='poly', coeff_model_path=poly_path, aircraft_config=aircraft_config, physical_integration_substeps=1)
+# poly_path = Path(NETWORKPATH) / 'fitted_models_casadi.pkl'
+# opts = AircraftOpts(coeff_model_type='poly', coeff_model_path=poly_path, aircraft_config=aircraft_config, physical_integration_substeps=1)
 
-aircraft = Aircraft(opts = opts)
-trim_state_and_control = [0, 0, -200, 50, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
-aircraft.com = np.array(trim_state_and_control[-3:])
-filepath = Path(DATAPATH) / 'trajectories' / 'basic_test.h5'
+# aircraft = Aircraft(opts = opts)
+# trim_state_and_control = [0, 0, -200, 50, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
+# aircraft.com = np.array(trim_state_and_control[-3:])
+# filepath = Path(DATAPATH) / 'trajectories' / 'basic_test.h5'
 
-# controller_opts = {'time':'fixed', 'quaternion':'', 'integration':'explicit'}
-controller_opts = {'time':'progress', 'quaternion':'integration', 'integration':'explicit'}
-controller = Controller(aircraft=aircraft, filepath=filepath, opts = controller_opts, num_nodes=300)
-guess = controller.initialise(ca.DM(trim_state_and_control[:aircraft.num_states]))
-controller.setup(guess)
-controller.logging = False
+# # controller_opts = {'time':'fixed', 'quaternion':'', 'integration':'explicit'}
+# controller_opts = {'time':'progress', 'quaternion':'integration', 'integration':'explicit'}
+# controller = Controller(aircraft=aircraft, filepath=filepath, opts = controller_opts, num_nodes=300)
+# guess = controller.initialise(ca.DM(trim_state_and_control[:aircraft.num_states]))
+# controller.setup(guess)
+# controller.logging = False
 
-sol = controller.solve()
-# print("Solution Status: ", sol.stats())
-final_state = controller.opti.debug.value(controller.state)[:, -1]
-final_control = controller.opti.debug.value(controller.control)[:, -1]
-final_time = controller.opti.debug.value(controller.times)[-1]
-print("Final State: ", final_state, " Final Control: ", final_control, " Final Forces: ", aircraft.forces_frd(final_state, final_control), " Final Time: ", final_time)
-plt.show(block = True)
+# sol = controller.solve()
+# # print("Solution Status: ", sol.stats())
+# final_state = controller.opti.debug.value(controller.state)[:, -1]
+# final_control = controller.opti.debug.value(controller.control)[:, -1]
+# final_time = controller.opti.debug.value(controller.times)[-1]
+# print("Final State: ", final_state, " Final Control: ", final_control, " Final Forces: ", aircraft.forces_frd(final_state, final_control), " Final Time: ", final_time)
+# plt.show(block = True)
 
-pbar.close()
+# pbar.close()
 
-print("Running final minimum time problem...")
+# print("Running final minimum time problem...")
 
 
-final_mhtt = Controller(aircraft=aircraft, track=dubins, filepath=Path(DATAPATH) / 'trajectories' / 'mhtt_final_solution.h5', num_nodes=100, dt=0.01, opts=controller_opts)
+# final_mhtt = Controller(aircraft=aircraft, track=dubins, filepath=Path(DATAPATH) / 'trajectories' / 'mhtt_final_solution.h5', num_nodes=100, dt=0.01, opts=controller_opts)

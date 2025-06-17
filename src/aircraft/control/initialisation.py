@@ -380,7 +380,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
-def visualize_trajectory(eval_fn, eval_tangent_fn=None, s_range=(0, 1), num_points=100, quiver_stride=10):
+def visualize_trajectory(eval_fn, eval_tangent_fn=None, s_range=(0, 1), num_points=100, quiver_stride=10, ax:Optional[Axes3D]=None):
     """
     Plots a 3D trajectory defined by a CasADi function `eval_fn(s) -> pos`,
     optionally with tangent vectors using `eval_tangent_fn(s) -> tangent`.
@@ -396,9 +396,60 @@ def visualize_trajectory(eval_fn, eval_tangent_fn=None, s_range=(0, 1), num_poin
 
     s_vals = np.linspace(s_range[0], s_range[1], num_points)
     pos_vals = np.array([eval_fn(s).full().flatten() for s in s_vals])
+    if ax is None:
+        fig = plt.figure(figsize=(10, 6))
+        ax = fig.add_subplot(111, projection='3d')
+    else:
+        fig = ax.figure
 
-    fig = plt.figure(figsize=(10, 6))
-    ax = fig.add_subplot(111, projection='3d')
+
+    # Plot trajectory line
+    ax.plot(pos_vals[:, 0], pos_vals[:, 1], -pos_vals[:, 2], label="Trajectory", color='blue')
+
+    # Optional quiver plot
+    if eval_tangent_fn is not None:
+        tangents = np.array([eval_tangent_fn(s).full().flatten() for s in s_vals])
+
+        # Normalize for quiver consistency
+        tangents /= np.linalg.norm(tangents, axis=1, keepdims=True) + 1e-8
+
+        # Quiver every Nth point
+        stride = quiver_stride
+        ax.quiver(
+            pos_vals[::stride, 0], pos_vals[::stride, 1], -pos_vals[::stride, 2],
+            tangents[::stride, 0], tangents[::stride, 1], -tangents[::stride, 2],
+            length=10, normalize=True, color='red', label='Tangent'
+        )
+
+    ax.set_xlabel("X")
+    ax.set_ylabel("Y")
+    ax.set_zlabel("Z")
+    ax.set_title("3D Trajectory")
+    ax.legend()
+    ax.grid(True)
+    plt.tight_layout()
+    plt.show(block=True)
+
+
+def vis_traj_embed(ax:Axes3D, eval_fn:ca.Function, eval_tangent_fn:ca.Function=None, s_range:tuple[float]=(0, 1), num_points:int=100, quiver_stride:int=10):
+    """
+    Plots a 3D trajectory defined by a CasADi function `eval_fn(s) -> pos`,
+    optionally with tangent vectors using `eval_tangent_fn(s) -> tangent`.
+
+    Parameters:
+        ax (Axes3D): Matplotlib 3D axes to plot on.
+        eval_fn (casadi.Function): Function taking s and returning 3D position.
+        eval_tangent_fn (casadi.Function): Optional. Function returning 3D tangent at s.
+        s_range (tuple): Range of s values to sample, default (0, 1).
+        num_points (int): Number of points to sample along the trajectory.
+        quiver_stride (int): Plot every Nth tangent vector.
+    """
+    import casadi as ca
+
+    s_vals = np.linspace(s_range[0], s_range[1], num_points)
+    pos_vals = np.array([eval_fn(s).full().flatten() for s in s_vals])
+
+
 
     # Plot trajectory line
     ax.plot(pos_vals[:, 0], pos_vals[:, 1], pos_vals[:, 2], label="Trajectory", color='blue')
@@ -418,16 +469,6 @@ def visualize_trajectory(eval_fn, eval_tangent_fn=None, s_range=(0, 1), num_poin
             length=10, normalize=True, color='red', label='Tangent'
         )
 
-    ax.set_xlabel("X")
-    ax.set_ylabel("Y")
-    ax.set_zlabel("Z")
-    ax.set_title("3D Trajectory")
-    ax.legend()
-    ax.grid(True)
-    plt.tight_layout()
-    plt.show(block=True)
-
-
 class DubinsInitialiser:
     """
     
@@ -435,14 +476,16 @@ class DubinsInitialiser:
     def __init__(self, trajectory:TrajectoryConfiguration):
 
         self.waypoints = trajectory.waypoints.waypoints
+        print(self.waypoints)
         initial_state = trajectory.waypoints.initial_state
-        self.cumulative_distances = cumulative_distances(self.waypoints)
+        self.cumulative_distances = cumulative_distances(self.waypoints.T, verbose=True)
 
 
         if len(trajectory.waypoints.waypoint_indices) < 3:
-            for i, waypoint in enumerate(self.waypoints[1:]):
-                waypoint[2] = initial_state[2] - self.cumulative_distances[i] / trajectory.aircraft.glide_ratio
-
+            for i, waypoint in enumerate(self.waypoints[1:, :]):
+                print(waypoint)
+                waypoint[2] = initial_state[2] + self.cumulative_distances[i+1] / trajectory.aircraft.glide_ratio
+        print("Waypoints: ", self.waypoints)
         self.dubins_waypoints = setup_waypoints(initial_state, self.waypoints)
         self.dubins_path, time_intervals = generate_3d_dubins_path(self.dubins_waypoints, trajectory.aircraft.r_min)
         vel_directions = get_velocity_directions(self.dubins_path)

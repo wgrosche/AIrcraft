@@ -223,6 +223,7 @@ class TrajectoryPlotter:
         
         # Plot waypoints
         if isinstance(waypoints, np.ndarray):
+            # waypoints[2, :] *= -1  # Negate Z-axis for NED convention
             if not hasattr(self, '_waypoints_line'):
                 self._waypoints_line, = ax.plot(waypoints[0, :], waypoints[1, :], waypoints[2, :], 
                                                 marker='o', linestyle='--', label='Waypoints')
@@ -257,9 +258,17 @@ class TrajectoryPlotter:
                 self._quivers[axis].set_segments(segments)
 
         # update axis limits
-        ax.set_xlim(np.min(position[0, :]), np.max(position[0, :]))
-        ax.set_ylim(np.min(position[1, :]), np.max(position[1, :]))
-        ax.set_zlim(np.min(position[2, :]), np.max(position[2, :]))
+        # Combine positions and waypoints to compute global bounds
+        if isinstance(waypoints, np.ndarray):
+            combined = np.hstack([position, waypoints])
+        else:
+            combined = position  # fallback if waypoints are not valid
+
+        # update axis limits using combined data
+        ax.set_xlim(np.min(combined[0, :]), np.max(combined[0, :]))
+        ax.set_ylim(np.min(combined[1, :]), np.max(combined[1, :]))
+        ax.set_zlim(np.min(combined[2, :]), np.max(combined[2, :]))
+
         # Customize plot appearance
         ax.set_xlabel('North')
         ax.set_ylabel('East')
@@ -391,6 +400,10 @@ class TrajectoryPlotter:
     def plot_state(self, trajectory_data:TrajectoryData):
         state = trajectory_data.state
         control = trajectory_data.control
+        if hasattr(self, 'waypoints'):
+            waypoints = self.waypoints
+        else:
+            waypoints = None
 
         if state is not None:
             if control is not None:
@@ -400,7 +413,7 @@ class TrajectoryPlotter:
             else:
                 trajectory_data.control = np.zeros((3, state.shape[1]))
             
-            self.plot_position(trajectory_data)
+            self.plot_position(trajectory_data, waypoints=waypoints)
 
             self.plot_angles(trajectory_data)
             self.plot_velocity(trajectory_data)
