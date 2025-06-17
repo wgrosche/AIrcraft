@@ -118,8 +118,8 @@ class MHTT(ControlProblem):
             # Penalize control effort
             control_effort += ca.sumsqr(node.control)
 
-            discontinuity = nodes[i - 1].track_progress - nodes[i].track_progress
-            discontinuity_loss += discontinuity**2
+            # discontinuity = (nodes[i - 1].track_progress - nodes[i].track_progress) * self.num_nodes
+            # discontinuity_loss += discontinuity**2
         # Terminal alignment with final track point
         final_pos = nodes[-1].state[:3]
         goal_pos = self.track.eval(1.0)  # assumes Dubins track parameterized in [0,1]
@@ -193,9 +193,9 @@ class MHTT(ControlProblem):
         s_dot = ca.dot(vel, tangent_norm) / self.track_length
         
         # Optional: position-based correction for robustness
-        # pos_err = pos - track_pos # NOTE: Disabled for 2d
-        pos_err = pos[:1] - track_pos[:1]
-        tangent_norm = tangent_norm[:1]  # Use only x, y components for 2D
+        pos_err = pos - track_pos # NOTE: Disabled for 2d
+        # pos_err = pos[:1] - track_pos[:1]
+        # tangent_norm = tangent_norm[:1]  # Use only x, y components for 2D
         delta_s_correction = ca.dot(pos_err, tangent_norm) / self.track_length
         
         # Combined progress update
