@@ -171,6 +171,7 @@ class MHTT(ControlProblem):
         )
         if enforce_state_constraint:
             self.constraint(progress_node.track_progress == self.progress_guess_parameter[index])
+            self.constraint(progress_node.control == self.control_guess_parameter[:, index])
 
         return progress_node
     

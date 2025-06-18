@@ -18,11 +18,14 @@ from control import Controller as MinimumTimeController
 from tqdm import tqdm
 plt.ion()
 class Controller(MHTT, AircraftControl):#, SaveMixin):
-    def __init__(self, *, aircraft, track:DubinsInitialiser, num_nodes=100, dt=0.1, opts = {}, filepath:str = '', **kwargs):
+    def __init__(self, *, aircraft, track:DubinsInitialiser, num_nodes=200, dt=0.01, opts = {}, filepath:str = '', **kwargs):
         super().__init__(aircraft=aircraft, num_nodes=num_nodes, opts = opts, track = track, dt = dt)
         # if filepath:
         #     self.save_path = filepath
         # SaveMixin._init_saving(self, self.save_path, force_overwrite=False)
+
+    def callback(self, iteration):
+        return None
 
 
 
@@ -50,7 +53,7 @@ dubins = DubinsInitialiser(trajectory_config)
 dubins._build_track_functions()
 controller_opts = {'time':'fixed', 'quaternion':'integration', 'integration':'explicit'}
 
-mhtt = Controller(aircraft=aircraft, track = dubins, filepath = Path(DATAPATH) / 'trajectories' / 'mhtt_solution.h5', num_nodes=60, dt=0.01, opts = controller_opts)
+mhtt = Controller(aircraft=aircraft, track = dubins, filepath = Path(DATAPATH) / 'trajectories' / 'mhtt_solution.h5', num_nodes=100, dt=0.01, opts = controller_opts)
 
 pbar = tqdm(total=1.0, desc="Solving", unit="progress")
 initial_state = state
@@ -65,6 +68,8 @@ full_state = None
 full_progress = None
 full_control = None
 
+overlap = 5
+
 while progress < 1:
     sol = mhtt.solve()
 
@@ -72,9 +77,9 @@ while progress < 1:
         print("Solution not found")
         break
 
-    state = ca.DM(sol.value(mhtt.state))
-    new_progress = sol.value(mhtt.track_progress)
-    control = ca.DM(sol.value(mhtt.control))
+    state = ca.DM(sol.value(mhtt.state))[:, :-overlap]
+    new_progress = sol.value(mhtt.track_progress)[:-overlap]
+    control = ca.DM(sol.value(mhtt.control))[:, :-overlap]
 
    
     if not isinstance(full_state, ca.DM):
