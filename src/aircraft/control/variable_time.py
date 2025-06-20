@@ -21,7 +21,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 from aircraft.dynamics.aircraft import AircraftOpts
-from aircraft.control.initialisation import cumulative_distances
+from aircraft.utils.utils import cumulative_distances
 from abc import abstractmethod
 from aircraft.config import default_solver_options, BASEPATH, NETWORKPATH, DATAPATH, DEVICE, rng
 from aircraft.control.base import ControlNode, ControlProblem

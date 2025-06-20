@@ -1,23 +1,25 @@
 import numpy as np
-import dubins # https://github.com/AgRoboticsResearch/pydubins.git
+# import dubins # https://github.com/AgRoboticsResearch/pydubins.git
 from aircraft.utils.utils import TrajectoryConfiguration
 from scipy.interpolate import CubicSpline
-from dubins import _DubinsPath
+# from dubins import _DubinsPath
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 import casadi as ca
-
+import math
+from typing import List
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from typing import Optional, Union, Type, Tuple, cast
-
-Point = np.ndarray
-Points = list[Point] | np.ndarray
-DubinsPoints = list[tuple[Point, float]]
-Vector = np.ndarray
-Point2d = np.ndarray
+import numpy as np
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from aircraft.utils.utils import Point, Points, DubinsPoints, Vector, Point2d
 
 from numpy.polynomial.chebyshev import chebfit
+from aircraft.dubins.dubins2d import DubinsManeuver2D
+from aircraft.dubins.dubins3d import DubinsManeuver3D_constructor, compute_sampling
+from aircraft.dubins.vertical import Vertical
 
 def fit_chebyshev(s_vals, y_vals, degree):
     """
@@ -25,35 +27,6 @@ def fit_chebyshev(s_vals, y_vals, degree):
     """
     assert np.all(s_vals >= 0) and np.all(s_vals <= 1), "s_vals must be in [0, 1]"
     return chebfit(s_vals * 2 - 1, y_vals, degree)  # map [0,1] to [-1,1]
-
-
-def cumulative_distances(waypoints: Points, verbose: bool = False) -> np.ndarray:
-    """
-    Given a set of waypoints, calculate the cumulative distance along the path.
-
-    Parameters
-    ----------
-    waypoints : Points
-        List of waypoints. Each waypoint is a (3,) ndarray.
-
-    Returns
-    -------
-    distance : np.ndarray
-        Cumulative distance between waypoints (length n).
-    """
-    if not isinstance(waypoints, np.ndarray):
-        waypoint_array = np.stack(waypoints, axis=1)  # shape (3, n)
-    else:
-        waypoint_array = waypoints
-    diffs = np.diff(waypoint_array, axis=1)       # shape (3, n-1)
-    distances = np.linalg.norm(diffs, axis=0)
-    cumulative = np.concatenate([[0.0], np.cumsum(distances)])
-    
-    if verbose:
-        for i, d in enumerate(cumulative):
-            print(f"Waypoint {i}: {d:.3f} meters")
-
-    return cumulative
 
 def normalize(v:Vector) -> Vector:
     """ Normalize a vector. """
@@ -119,7 +92,7 @@ def transform_heading_to_plane(theta:float, plane_normal:Vector, u_axis:Vector) 
     return u_angle
 
 def sample_dubins_path(
-        path:_DubinsPath, 
+        path, 
         min_interval:float=0.01, 
         max_interval:float=10.0, 
         curvature_factor:float=1.0, 
@@ -331,7 +304,6 @@ def compute_angular_velocity(quaternions:list[R], time_intervals:list[float]) ->
 
     return angular_velocities
 
-
 def compute_roll_angle(curvature:float, speed:float, g:float=9.81) -> float:
     """Compute the roll angle for a coordinated turn.
     
@@ -375,10 +347,134 @@ def get_velocity_directions(path_points:Points):
     velocity_vectors.append(velocity_vectors[-1])
     return velocity_vectors
 
+def setup_waypoints_3d(x_initial: Point, waypoints: Points, pitch_limits: List[float] = None) -> List[List[float]]:
+    """
+    Sets up waypoints for the 3D Dubins path generation with pitch angles.
 
-import numpy as np
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
+    Parameters
+    ----------
+    x_initial : tuple
+        Initial state containing (position, velocity, orientation, angular_velocity)
+    waypoints : list
+        List of waypoints [(x, y, z)]
+    pitch_limits : list
+        Pitch angle limits [pitch_min, pitch_max]
+
+    Returns
+    -------
+    waypoints_with_dubins_3d : list
+        List of waypoints with 3D Dubins configuration [(x, y, z, heading, pitch)]
+    """
+    if pitch_limits is None:
+        pitch_limits = [-math.pi/4, math.pi/2]
+    
+    p_initial, v_initial = x_initial[:3], x_initial[3:6]
+
+    dx0 = waypoints[1][0] - p_initial[0]
+    dy0 = waypoints[1][1] - p_initial[1]
+    dz0 = waypoints[1][2] - p_initial[2]
+
+    initial_heading = np.arctan2(dy0, dx0)
+    horizontal_dist0 = np.sqrt(dx0**2 + dy0**2)
+    initial_pitch = np.arctan2(dz0, horizontal_dist0)  # NED frame
+    # initial_heading = np.arctan2(v_initial[1], v_initial[0])
+    # initial_pitch = np.arctan2(-v_initial[2], np.sqrt(v_initial[0]**2 + v_initial[1]**2))
+    
+    # Initialize list with initial configuration (x, y, z, heading, pitch)
+    waypoints_3d = [[p_initial[0], p_initial[1], p_initial[2], initial_heading, initial_pitch]]
+    
+    # Add waypoints with calculated headings and pitches
+    for i in range(1, len(waypoints)):
+        if i < len(waypoints) - 1:
+            # Calculate heading to next waypoint
+            dx = waypoints[i+1][0] - waypoints[i][0]
+            dy = waypoints[i+1][1] - waypoints[i][1]
+            dz = waypoints[i+1][2] - waypoints[i][2]
+            
+            heading = np.arctan2(dy, dx)
+            horizontal_dist = np.sqrt(dx**2 + dy**2)
+            pitch = np.arctan2(dz, horizontal_dist)  # Negative because NED frame
+            
+            # Clamp pitch to limits
+            pitch = np.clip(pitch, pitch_limits[0], pitch_limits[1])
+        else:
+            # For last waypoint, keep the heading and pitch from previous segment
+            heading = waypoints_3d[-1][3]
+            pitch = waypoints_3d[-1][4]
+            
+        waypoints_3d.append([
+            waypoints[i][0], waypoints[i][1], waypoints[i][2], 
+            heading, pitch
+        ])
+    
+    return waypoints_3d
+
+def generate_3d_dubins_path_native(
+        waypoints_3d: List[List[float]], 
+        r_min: float,
+        pitch_limits: List[float] = None
+        ) -> Tuple[Points, List[float]]:
+    """
+    Generate 3D Dubins path using the native 3D implementation.
+    
+    Parameters
+    ----------
+    waypoints_3d : list
+        List of 3D waypoints with configuration [x, y, z, heading, pitch]
+    r_min : float
+        Minimum turning radius
+    pitch_limits : list
+        Pitch angle limits [pitch_min, pitch_max]
+        
+    Returns
+    -------
+    path_points : list
+        List of 3D points along the path
+    time_intervals : list
+        Time intervals between points (estimated)
+    """
+    if pitch_limits is None:
+        pitch_limits = [-math.pi/4, math.pi/2]
+    
+    path_points = []
+    all_time_intervals = []
+    
+    for i in range(len(waypoints_3d) - 1):
+        qi = waypoints_3d[i]      # [x, y, z, heading, pitch]
+        qf = waypoints_3d[i + 1]  # [x, y, z, heading, pitch]
+        
+        try:
+            # Create 3D Dubins maneuver
+            maneuver = DubinsManeuver3D_constructor(qi, qf, r_min, pitch_limits)
+            
+            # Sample points along the maneuver
+            num_samples = max(50, int(maneuver.length / 2.0))  # Adaptive sampling
+            sampled_points = compute_sampling(maneuver, num_samples)
+            
+            # Convert to the expected format and add to path
+            segment_points = [(point[0], point[1], point[2]) for point in sampled_points]
+            path_points.extend(segment_points)
+            
+            # Estimate time intervals (assuming constant velocity)
+            segment_length = maneuver.length
+            dt = segment_length / (len(segment_points) * 30.0)  # Assuming 30 m/s velocity
+            time_intervals = [dt] * len(segment_points)
+            all_time_intervals.extend(time_intervals)
+            
+        except Exception as e:
+            print(f"Warning: Failed to create 3D Dubins path for segment {i}: {e}")
+            # Fallback to straight line
+            start_point = qi[:3]
+            end_point = qf[:3]
+            segment_points = [tuple(start_point), tuple(end_point)]
+            path_points.extend(segment_points)
+            
+            segment_length = np.linalg.norm(np.array(end_point) - np.array(start_point))
+            dt = segment_length / (len(segment_points) * 30.0)
+            time_intervals = [dt] * len(segment_points)
+            all_time_intervals.extend(time_intervals)
+    
+    return path_points, all_time_intervals
 
 def visualize_trajectory(eval_fn, eval_tangent_fn=None, s_range=(0, 1), num_points=100, quiver_stride=10, ax:Optional[Axes3D]=None):
     """
@@ -427,6 +523,7 @@ def visualize_trajectory(eval_fn, eval_tangent_fn=None, s_range=(0, 1), num_poin
     ax.set_title("3D Trajectory")
     ax.legend()
     ax.grid(True)
+    ax.set_aspect('equal')
     plt.tight_layout()
     plt.show(block=True)
 
@@ -468,26 +565,39 @@ def vis_traj_embed(ax:Axes3D, eval_fn:ca.Function, eval_tangent_fn:ca.Function=N
             tangents[::stride, 0], tangents[::stride, 1], tangents[::stride, 2],
             length=10, normalize=True, color='red', label='Tangent'
         )
-
+    ax.set_aspect('equal')
 class DubinsInitialiser:
     """
     
     """
-    def __init__(self, trajectory:TrajectoryConfiguration):
-
+    def __init__(self, trajectory: TrajectoryConfiguration):
         self.waypoints = trajectory.waypoints.waypoints
         print(self.waypoints)
         initial_state = trajectory.waypoints.initial_state
-        self.cumulative_distances = cumulative_distances(self.waypoints.T, verbose=True)
+        # self.cumulative_distances = cumulative_distances(self.waypoints.T, verbose=True)
 
+        # Set pitch limits based on aircraft constraints
+        pitch_limits = getattr(trajectory.aircraft, 'pitch_limits', [-np.pi/2, np.pi/2])
 
-        if len(trajectory.waypoints.waypoint_indices) < 3:
-            for i, waypoint in enumerate(self.waypoints[1:, :]):
-                print(waypoint)
-                waypoint[2] = initial_state[2] + self.cumulative_distances[i+1] / trajectory.aircraft.glide_ratio
-        print("Waypoints: ", self.waypoints)
-        self.dubins_waypoints = setup_waypoints(initial_state, self.waypoints)
-        self.dubins_path, time_intervals = generate_3d_dubins_path(self.dubins_waypoints, trajectory.aircraft.r_min)
+        # # Adjust waypoint altitudes if using only 2 dims
+        # if len(trajectory.waypoints.waypoint_indices) < 3:
+        #     for i, waypoint in enumerate(self.waypoints[1:, :]):
+        #         print(waypoint)
+        #         waypoint[2] = initial_state[2] + self.cumulative_distances[i+1] / trajectory.aircraft.glide_ratio
+        
+        # print("Waypoints: ", self.waypoints)
+        
+        # Setup 3D waypoints with heading and pitch
+        self.dubins_waypoints_3d = setup_waypoints_3d(initial_state, self.waypoints, pitch_limits)
+        
+        # Generate 3D Dubins path using native implementation
+        self.dubins_path, time_intervals = generate_3d_dubins_path_native(
+            self.dubins_waypoints_3d, 
+            trajectory.aircraft.r_min,
+            pitch_limits
+        )
+        
+        # Get velocity directions and compute orientations
         vel_directions = get_velocity_directions(self.dubins_path)
         rotations = []
         for vel_dir in vel_directions:
@@ -498,12 +608,19 @@ class DubinsInitialiser:
         velocities = np.array(vel_directions) * np.linalg.norm(trajectory.waypoints.initial_state[3:6])
         roll_angles = [0]
         new_orientations = [R.from_quat(trajectory.waypoints.initial_state[6:10])]
+        
+        # Compute roll angles for coordinated turns
         for i in range(1, len(self.dubins_path) - 1):
             # Approximate curvature using finite differences
             r1 = np.array(self.dubins_path[i - 1])
             r2 = np.array(self.dubins_path[i])
             r3 = np.array(self.dubins_path[i + 1])
-            curvature = np.linalg.norm(np.cross(r2 - r1, r3 - r2)) / np.linalg.norm(r2 - r1)**3
+            
+            # Avoid division by zero
+            if np.linalg.norm(r2 - r1) < 1e-6:
+                curvature = 0.0
+            else:
+                curvature = np.linalg.norm(np.cross(r2 - r1, r3 - r2)) / np.linalg.norm(r2 - r1)**3
 
             # Compute roll angle for the current sample
             roll_angle = compute_roll_angle(curvature, trajectory.waypoints.default_velocity)
@@ -514,48 +631,109 @@ class DubinsInitialiser:
             new_orientation = apply_roll_to_quaternion(rotations[i], velocity_vector, roll_angle)
             new_orientations.append(new_orientation)
 
-        new_orientations.append(new_orientations[-1]) # assume we don't need to change orientation for last waypoint
+        new_orientations.append(new_orientations[-1])  # assume we don't need to change orientation for last waypoint
 
         self.time_intervals = time_intervals
-
         angular_velocities = compute_angular_velocity(new_orientations, time_intervals)
 
-
-        # print("Angular Velocities: ", angular_velocities)
-        # print("Orientations: ", new_orientations)
         self.orientations = [orientation.as_quat() for orientation in new_orientations]
-        # compute orientations, velocities and angular velocities
-        # convert to arrays
+        
+        # Convert to arrays
         orientations = np.array(self.orientations)
-        # velocities = np.array(velocities)
-        angular_velocities = np.zeros_like(velocities)
+        angular_velocities = np.zeros_like(velocities)  # Initialize as zeros for now
         positions = np.array(self.dubins_path)
-        self.guess = np.concatenate((positions, velocities, orientations, angular_velocities), axis = 1)
+        
+        # Create initial guess
+        self.guess = np.concatenate((positions, velocities, orientations, angular_velocities), axis=1)
 
+        # Build track functions for CasADi integration
+        self._build_track_functions()
+        
         self.visualize = lambda: visualize_trajectory(self.eval, self.eval_tangent)
 
+    # def __init__(self, trajectory:TrajectoryConfiguration):
 
-    def waypoint_variable_guess(self):
+    #     self.waypoints = trajectory.waypoints.waypoints
+    #     print(self.waypoints)
+    #     initial_state = trajectory.waypoints.initial_state
+    #     self.cumulative_distances = cumulative_distances(self.waypoints.T, verbose=True)
 
-        num_waypoints = self.num_waypoints
 
-        lambda_guess = np.zeros((num_waypoints, self.num_nodes + 1))
-        mu_guess = np.zeros((num_waypoints, self.num_nodes))
-        nu_guess = np.zeros((num_waypoints, self.num_nodes))
+    #     if len(trajectory.waypoints.waypoint_indices) < 3:
+    #         for i, waypoint in enumerate(self.waypoints[1:, :]):
+    #             print(waypoint)
+    #             waypoint[2] = initial_state[2] + self.cumulative_distances[i+1] / trajectory.aircraft.glide_ratio
+    #     print("Waypoints: ", self.waypoints)
+    #     self.dubins_waypoints = setup_waypoints(initial_state, self.waypoints)
+    #     self.dubins_path, time_intervals = generate_3d_dubins_path(self.dubins_waypoints, trajectory.aircraft.r_min)
+    #     vel_directions = get_velocity_directions(self.dubins_path)
+    #     rotations = []
+    #     for vel_dir in vel_directions:
+    #         rot = R.align_vectors([vel_dir], [[1, 0, 0]])[0]
+    #         rotations.append(rot)
+    #     rotations = R.from_quat([r.as_quat() for r in rotations])
 
-        i_wp = 0
-        for i in range(1, self.num_nodes):
-            if i > self.switch_var[i_wp]:
-                i_wp += 1
+    #     velocities = np.array(vel_directions) * np.linalg.norm(trajectory.waypoints.initial_state[3:6])
+    #     roll_angles = [0]
+    #     new_orientations = [R.from_quat(trajectory.waypoints.initial_state[6:10])]
+    #     for i in range(1, len(self.dubins_path) - 1):
+    #         # Approximate curvature using finite differences
+    #         r1 = np.array(self.dubins_path[i - 1])
+    #         r2 = np.array(self.dubins_path[i])
+    #         r3 = np.array(self.dubins_path[i + 1])
+    #         curvature = np.linalg.norm(np.cross(r2 - r1, r3 - r2)) / np.linalg.norm(r2 - r1)**3
 
-            if ((i_wp == 0) and (i + 1 >= self.switch_var[0])) or i + 1 - self.switch_var[i_wp-1] >= self.switch_var[i_wp]:
-                mu_guess[i_wp, i] = 1
+    #         # Compute roll angle for the current sample
+    #         roll_angle = compute_roll_angle(curvature, trajectory.waypoints.default_velocity)
+    #         roll_angles.append(roll_angle)
 
-            for j in range(num_waypoints):
-                if i + 1 >= self.switch_var[j]:
-                    lambda_guess[j, i] = 1
+    #         # Apply roll to the current quaternion
+    #         velocity_vector = (r3 - r1) / np.linalg.norm(r3 - r1)  # Approximate velocity direction
+    #         new_orientation = apply_roll_to_quaternion(rotations[i], velocity_vector, roll_angle)
+    #         new_orientations.append(new_orientation)
 
-        return (lambda_guess, mu_guess, nu_guess)
+    #     new_orientations.append(new_orientations[-1]) # assume we don't need to change orientation for last waypoint
+
+    #     self.time_intervals = time_intervals
+
+    #     angular_velocities = compute_angular_velocity(new_orientations, time_intervals)
+
+
+    #     # print("Angular Velocities: ", angular_velocities)
+    #     # print("Orientations: ", new_orientations)
+    #     self.orientations = [orientation.as_quat() for orientation in new_orientations]
+    #     # compute orientations, velocities and angular velocities
+    #     # convert to arrays
+    #     orientations = np.array(self.orientations)
+    #     # velocities = np.array(velocities)
+    #     angular_velocities = np.zeros_like(velocities)
+    #     positions = np.array(self.dubins_path)
+    #     self.guess = np.concatenate((positions, velocities, orientations, angular_velocities), axis = 1)
+
+    #     self.visualize = lambda: visualize_trajectory(self.eval, self.eval_tangent)
+
+
+    # def waypoint_variable_guess(self):
+
+    #     num_waypoints = self.num_waypoints
+
+    #     lambda_guess = np.zeros((num_waypoints, self.num_nodes + 1))
+    #     mu_guess = np.zeros((num_waypoints, self.num_nodes))
+    #     nu_guess = np.zeros((num_waypoints, self.num_nodes))
+
+    #     i_wp = 0
+    #     for i in range(1, self.num_nodes):
+    #         if i > self.switch_var[i_wp]:
+    #             i_wp += 1
+
+    #         if ((i_wp == 0) and (i + 1 >= self.switch_var[0])) or i + 1 - self.switch_var[i_wp-1] >= self.switch_var[i_wp]:
+    #             mu_guess[i_wp, i] = 1
+
+    #         for j in range(num_waypoints):
+    #             if i + 1 >= self.switch_var[j]:
+    #                 lambda_guess[j, i] = 1
+
+    #     return (lambda_guess, mu_guess, nu_guess)
 
     def length(self, N=100):
 
@@ -701,113 +879,113 @@ class DubinsInitialiser:
     #     self.eval = ca.Function("track_eval", [s], [pos])
     #     self.eval_tangent = ca.Function("track_tangent", [s], [tangent])
 
-    def state_guess(self, trajectory:TrajectoryConfiguration):
-        """
-        Initial guess for the state variables.
-        """
-        state_dim = self.aircraft.num_states
-        initial_pos = trajectory.waypoints.initial_position
-        initial_orientation = trajectory.waypoints.initial_state[6:10]
-        velocity_guess = trajectory.waypoints.default_velocity
-        waypoints = self.waypoints[1:, :]
+    # def state_guess(self, trajectory:TrajectoryConfiguration):
+    #     """
+    #     Initial guess for the state variables.
+    #     """
+    #     state_dim = self.aircraft.num_states
+    #     initial_pos = trajectory.waypoints.initial_position
+    #     initial_orientation = trajectory.waypoints.initial_state[6:10]
+    #     velocity_guess = trajectory.waypoints.default_velocity
+    #     waypoints = self.waypoints[1:, :]
         
-        x_guess = np.zeros((state_dim, self.num_nodes + 1))
-        distance = self.distances
+    #     x_guess = np.zeros((state_dim, self.num_nodes + 1))
+    #     distance = self.distances
     
-        self.r_glide = 10
+    #     self.r_glide = 10
         
-        direction_guess = (waypoints[0, :] - initial_pos)
-        vel_guess = velocity_guess *  direction_guess / np.linalg.norm(direction_guess)
+    #     direction_guess = (waypoints[0, :] - initial_pos)
+    #     vel_guess = velocity_guess *  direction_guess / np.linalg.norm(direction_guess)
 
-        if self.VERBOSE:
-            print("Cumulative Waypoint Distances: ", distance)
-            print("Predicted Switching Nodes: ", self.switch_var)
-            print("Direction Guess: ", direction_guess)
-            print("Velocity Guess: ", vel_guess)
-            print("Initial Position: ", initial_pos)
-            print("Waypoints: ", waypoints)
+    #     if self.VERBOSE:
+    #         print("Cumulative Waypoint Distances: ", distance)
+    #         print("Predicted Switching Nodes: ", self.switch_var)
+    #         print("Direction Guess: ", direction_guess)
+    #         print("Velocity Guess: ", vel_guess)
+    #         print("Initial Position: ", initial_pos)
+    #         print("Waypoints: ", waypoints)
 
-        x_guess[:3, 0] = initial_pos
-        x_guess[3:6, 0] = vel_guess
+    #     x_guess[:3, 0] = initial_pos
+    #     x_guess[3:6, 0] = vel_guess
 
 
-        rotation, _ = R.align_vectors(np.array(direction_guess).reshape(1, -1), [[1, 0, 0]])
+    #     rotation, _ = R.align_vectors(np.array(direction_guess).reshape(1, -1), [[1, 0, 0]])
 
-        # Check if the aircraft is moving in the opposite direction
-        if np.dot(direction_guess.T, [1, 0, 0]) < 0:
-            flip_y = R.from_euler('y', 180, degrees=True)
-            rotation = rotation * flip_y
+    #     # Check if the aircraft is moving in the opposite direction
+    #     if np.dot(direction_guess.T, [1, 0, 0]) < 0:
+    #         flip_y = R.from_euler('y', 180, degrees=True)
+    #         rotation = rotation * flip_y
 
-        # Get the euler angles
-        euler = rotation.as_euler('xyz')
-        print("Euler: ", euler)
-        # If roll is close to 180, apply correction
-        # if abs(euler[0]) >= np.pi/2: 
-            # Create rotation around x-axis by 180 degrees
-        roll_correction = R.from_euler('x', 180, degrees=True)
+    #     # Get the euler angles
+    #     euler = rotation.as_euler('xyz')
+    #     print("Euler: ", euler)
+    #     # If roll is close to 180, apply correction
+    #     # if abs(euler[0]) >= np.pi/2: 
+    #         # Create rotation around x-axis by 180 degrees
+    #     roll_correction = R.from_euler('x', 180, degrees=True)
         
-        x_guess[6:10, 0] = (rotation).as_quat()
+    #     x_guess[6:10, 0] = (rotation).as_quat()
 
-        # z_flip = R.from_euler('x', 180, degrees=True)
+    #     # z_flip = R.from_euler('x', 180, degrees=True)
 
-        for i, waypoint in enumerate(waypoints):
-            if len(self.trajectory.waypoints.waypoint_indices) < 3:
-                    waypoint[2] = initial_pos[2] + self.distances[i] / self.r_glide
-        i_wp = 0
-        for i in range(self.num_nodes):
-            # switch condition
-            if i > self.switch_var[i_wp]:
-                i_wp += 1
+    #     for i, waypoint in enumerate(waypoints):
+    #         if len(self.trajectory.waypoints.waypoint_indices) < 3:
+    #                 waypoint[2] = initial_pos[2] + self.distances[i] / self.r_glide
+    #     i_wp = 0
+    #     for i in range(self.num_nodes):
+    #         # switch condition
+    #         if i > self.switch_var[i_wp]:
+    #             i_wp += 1
                 
-            if i_wp == 0:
-                wp_last = initial_pos
-            else:
-                wp_last = waypoints[i_wp-1, :]
-            wp_next = waypoints[i_wp, :]
+    #         if i_wp == 0:
+    #             wp_last = initial_pos
+    #         else:
+    #             wp_last = waypoints[i_wp-1, :]
+    #         wp_next = waypoints[i_wp, :]
 
-            if i_wp > 0:
-                interpolation = (i - self.switch_var[i_wp-1]) / (self.switch_var[i_wp] - self.switch_var[i_wp-1])
-            else:
-                interpolation = i / self.switch_var[0]
+    #         if i_wp > 0:
+    #             interpolation = (i - self.switch_var[i_wp-1]) / (self.switch_var[i_wp] - self.switch_var[i_wp-1])
+    #         else:
+    #             interpolation = i / self.switch_var[0]
 
             
 
-            # extend position guess
-            pos_guess = (1 - interpolation) * wp_last + interpolation * wp_next
+    #         # extend position guess
+    #         pos_guess = (1 - interpolation) * wp_last + interpolation * wp_next
 
-            x_guess[:3, i + 1] = np.reshape(pos_guess, (3,))
+    #         x_guess[:3, i + 1] = np.reshape(pos_guess, (3,))
             
 
-            direction = (wp_next - wp_last) / ca.norm_2(wp_next - wp_last)
-            vel_guess = velocity_guess * direction
-            x_guess[3:6, i + 1] = np.reshape(velocity_guess * direction, (3,))
+    #         direction = (wp_next - wp_last) / ca.norm_2(wp_next - wp_last)
+    #         vel_guess = velocity_guess * direction
+    #         x_guess[3:6, i + 1] = np.reshape(velocity_guess * direction, (3,))
 
-            rotation, _ = R.align_vectors(np.array(direction).reshape(1, -1), [[1, 0, 0]])
+    #         rotation, _ = R.align_vectors(np.array(direction).reshape(1, -1), [[1, 0, 0]])
 
-            # Check if the aircraft is moving in the opposite direction
-            if np.dot(direction.T, [1, 0, 0]) < 0:
-                flip_y = R.from_euler('y', 180, degrees=True)
-                rotation = rotation * flip_y
+    #         # Check if the aircraft is moving in the opposite direction
+    #         if np.dot(direction.T, [1, 0, 0]) < 0:
+    #             flip_y = R.from_euler('y', 180, degrees=True)
+    #             rotation = rotation * flip_y
 
-            # Get the euler angles
-            euler = rotation.as_euler('xyz')
-            # print("Euler: ", euler)
-            # If roll is close to 180, apply correction
-            # if abs(euler[0]) >= np.pi/2: 
-                # Create rotation around x-axis by 180 degrees
-            # roll_correction = R.from_euler('x', 180, degrees=True)
-                # Apply correction
-            # rotation = rotation * roll_correction
+    #         # Get the euler angles
+    #         euler = rotation.as_euler('xyz')
+    #         # print("Euler: ", euler)
+    #         # If roll is close to 180, apply correction
+    #         # if abs(euler[0]) >= np.pi/2: 
+    #             # Create rotation around x-axis by 180 degrees
+    #         # roll_correction = R.from_euler('x', 180, degrees=True)
+    #             # Apply correction
+    #         # rotation = rotation * roll_correction
 
 
-            x_guess[6:10, i + 1] = (rotation).as_quat()
+    #         x_guess[6:10, i + 1] = (rotation).as_quat()
 
-        # x_guess = self.smooth_trajectory(x_guess)
+    #     # x_guess = self.smooth_trajectory(x_guess)
 
-        time_guess = distance[-1] / velocity_guess
-        #
+    #     time_guess = distance[-1] / velocity_guess
+    #     #
         
         
-        return x_guess, time_guess
+    #     return x_guess, time_guess
     
 

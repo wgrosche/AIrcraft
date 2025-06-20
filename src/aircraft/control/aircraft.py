@@ -58,16 +58,18 @@ class AircraftControl(ControlProblem):
 
     def loss(self, nodes, time=None):
         loss = super().loss(nodes, time)
-        return loss
+        # return loss
         control_loss = ca.sumsqr(self.control[:, 1:] / 10 - self.control[:, :-1] / 10) / self.num_nodes
         height_loss = ca.sumsqr((self.state[2, -1] - self.state[2, 0]))
         speed_loss = - ca.sum2(self.state[3, :] / 100) / self.num_nodes
 
         w_control = 10
         w_height = 10
-        w_speed = 10
+        w_speed = 1000
 
-        loss += w_control * control_loss + w_height * height_loss + w_speed * speed_loss
+        # loss += w_control * control_loss 
+        # loss += w_height * height_loss 
+        loss += w_speed * speed_loss + w_speed * -self.state[3, -1]
 
         return loss
 

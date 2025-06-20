@@ -12,6 +12,13 @@ from pathlib import Path
 from typing import Union, Optional
 from liecasadi import Quaternion
 
+Point = np.ndarray
+Points = list[Point] | np.ndarray
+DubinsPoints = list[tuple[Point, float]]
+Vector = np.ndarray
+Point2d = np.ndarray
+
+
 def load_model(
         filepath:Union[str, Path] = os.path.join(NETWORKPATH,'model-dynamics.pth'), 
         device:Optional[torch.device] = None
@@ -207,12 +214,38 @@ class AircraftConfiguration:
         self.glide_ratio = aircraft_dict.get('glide_ratio', 10.0)
         self.rudder_moment_arm = aircraft_dict.get('rudder_moment_arm', 0.5) # distance between centre of mass and the tail of the plane (used for damping calculations)
         
+def cumulative_distances(waypoints: Points, verbose: bool = False) -> np.ndarray:
+    """
+    Given a set of waypoints, calculate the cumulative distance along the path.
 
+    Parameters
+    ----------
+    waypoints : Points
+        List of waypoints. Each waypoint is a (3,) ndarray.
+
+    Returns
+    -------
+    distance : np.ndarray
+        Cumulative distance between waypoints (length n).
+    """
+    if not isinstance(waypoints, np.ndarray):
+        waypoint_array = np.stack(waypoints, axis=1)  # shape (3, n)
+    else:
+        waypoint_array = waypoints
+    diffs = np.diff(waypoint_array, axis=1)       # shape (3, n-1)
+    distances = np.linalg.norm(diffs, axis=0)
+    cumulative = np.concatenate([[0.0], np.cumsum(distances)])
+    
+    if verbose:
+        for i, d in enumerate(cumulative):
+            print(f"Waypoint {i}: {d:.3f} meters")
+
+    return cumulative
         
 
 
 class WaypointsConfiguration:
-    def __init__(self, waypoint_dict:dict):
+    def __init__(self, waypoint_dict:dict, glide_ratio:float = 10.0):
         self.waypoints = np.array(waypoint_dict.get("waypoints", 
                                 np.array([[0,0,0], [0,0,0], [0,0,0]])))
         
@@ -224,6 +257,15 @@ class WaypointsConfiguration:
             self.waypoints = np.insert(self.waypoints, 0, self.initial_position, axis=0)
         else:
             self.initial_position = self.waypoints[0, :]
+
+        self.cumulative_distances = cumulative_distances(self.waypoints.T, verbose=True)
+
+
+        # Adjust waypoint altitudes if using only 2 dims
+        if len(self.waypoint_indices) < 3:
+            for i, waypoint in enumerate(self.waypoints[1:, :]):
+                waypoint[2] = self.initial_state[2] + self.cumulative_distances[i+1] / glide_ratio
+
 
         self.final_position = self.waypoints[-1, :]
         self.default_velocity = waypoint_dict.get("default_velocity", 50)
@@ -280,8 +322,9 @@ class TrajectoryConfiguration:
 
         self._state = StateEnvelopeConfiguration(state_dict)
         self._control = ControlEnvelopeConfiguration(control_dict)
-        self._waypoints = WaypointsConfiguration(waypoint_dict)
+
         self._aircraft = AircraftConfiguration(aircraft_dict)
+        self._waypoints = WaypointsConfiguration(waypoint_dict, glide_ratio=self._aircraft.glide_ratio)
         self.trajectory_dict = trajectory_dict
         
     @property

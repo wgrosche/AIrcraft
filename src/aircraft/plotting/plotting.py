@@ -376,6 +376,14 @@ class TrajectoryPlotter:
         ax.legend()
         ax.grid(True)
         ax.set_title('Aero Forces (FRD)')
+    
+    def plot_dubins(self, eval_fn:ca.Function):
+        """
+        Plots the Dubins path using the provided evaluation function.
+        """
+        s_range = np.linspace(0, 1, 100)
+        pos_vals = np.array([eval_fn(s).full().flatten() for s in s_range])
+        self.axes.position.plot(pos_vals[:, 0], pos_vals[:, 1], -pos_vals[:, 2], label='Dubins Path', color='orange')
 
     def plot_moments(self, trajectory_data:TrajectoryData):
         ax = self.axes.moments

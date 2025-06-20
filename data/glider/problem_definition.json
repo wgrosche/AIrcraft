@@ -4,7 +4,7 @@
                         [0.0, 20.0, -180.0],
                         [150.0, 10.0, -190.0], 
                         [0.0, 0.0, -180.0]],
-        "initial_state" : [0, 0, -200, 30, 0, 0, 0, 0, 0, 1, 0, 0, 0],
+        "initial_state" : [0, 0, -200, 50, 0, 0, 0, 0, 0, 1, 0, 0, 0],
         "default_velocity" : 30,
         "waypoint_indices" : [0, 1],
         "waypoint_tolerance" : 1e1
