@@ -30,7 +30,9 @@ class Controller(MHTT, AircraftControl):#, SaveMixin):
 
 
 traj_dict = json.load(open('data/glider/problem_definition.json'))
-
+traj_dict["waypoints"]["waypoints"] = np.array([[150.0, 10.0, -190.0], 
+                        [0.0, 20.0, -180.0]])
+traj_dict["aircraft"]["r_min"] = 5.0
 trajectory_config = TrajectoryConfiguration(traj_dict)
 
 
@@ -53,7 +55,7 @@ dubins = DubinsInitialiser(trajectory_config)
 dubins._build_track_functions()
 controller_opts = {'time':'fixed', 'quaternion':'integration', 'integration':'explicit'}
 
-mhtt = Controller(aircraft=aircraft, track = dubins, filepath = Path(DATAPATH) / 'trajectories' / 'mhtt_solution.h5', num_nodes=150, dt=0.01, opts = controller_opts)
+mhtt = Controller(aircraft=aircraft, track = dubins, filepath = Path(DATAPATH) / 'trajectories' / 'mhtt_solution.h5', num_nodes=50, dt=0.01, opts = controller_opts)
 
 pbar = tqdm(total=1.0, desc="Solving", unit="progress")
 initial_state = state

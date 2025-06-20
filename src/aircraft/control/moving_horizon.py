@@ -42,40 +42,6 @@ class MHTT(ControlProblem):
         self.control_memory = []
         self.time_memory = 0
 
-    # def loss(self, nodes, time=None):
-    #     loss = super().loss(nodes, time)
-        
-    #     # Weights
-    #     w_tracking = 10.0
-    #     w_progress = 5.0
-    #     w_progress_rate = 2.0
-    #     w_backward = 50.0
-        
-    #     tracking_loss = 0
-    #     progress_reward = 0
-    #     progress_rate_reward = 0
-    #     backward_penalty = 0
-        
-    #     for node in nodes[1:]:
-    #         # Tracking error
-    #         if hasattr(node, 'tracking_error'):
-    #             tracking_loss += node.tracking_error
-            
-    #         # Progress reward
-    #         progress_reward += node.track_progress
-            
-    #         # Progress rate reward and backward penalty
-    #         if hasattr(node, 'progress_rate'):
-    #             progress_rate_reward += node.progress_rate
-    #             backward_penalty += ca.fmax(0, -node.progress_rate)**2
-        
-    #     loss += (w_tracking * tracking_loss 
-    #             - w_progress * progress_reward 
-    #             - w_progress_rate * progress_rate_reward
-    #             + w_backward * backward_penalty)
-        
-    #     return loss
-
     def loss(self, nodes, time=None):
         loss = super().loss(nodes, time)
 
