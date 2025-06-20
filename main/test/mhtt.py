@@ -29,9 +29,9 @@ class Controller(MHTT, AircraftControl):#, SaveMixin):
 
 traj_dict = json.load(open('data/glider/problem_definition.json'))
 traj_dict["waypoints"]["waypoints"] = np.array([[150.0, 10.0, -190.0], 
-                        [0.0, 20.0, -180.0], 
+                        [0.0, 0.0, -180.0], 
                         [150.0, 10.0, -190.0]])
-traj_dict["aircraft"]["r_min"] = 20.0
+traj_dict["aircraft"]["r_min"] = 30.0
 
 trajectory_config = TrajectoryConfiguration(traj_dict)
 
@@ -70,12 +70,7 @@ full_state = None
 full_progress = None
 full_control = None
 mhtt.plotter.plot_dubins(dubins.eval)
-overlap = 5
-mhtt.plotter.figure.show()
-plt.draw()
-mhtt.plotter.figure.canvas.start_event_loop(0.0002)
-plt.pause(0.001) 
-
+overlap = 30
 print("Starting MHTT solve...")
 while progress < 1:
     sol = mhtt.solve()

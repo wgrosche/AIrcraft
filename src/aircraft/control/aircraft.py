@@ -65,7 +65,7 @@ class AircraftControl(ControlProblem):
 
         w_control = 10
         w_height = 10
-        w_speed = 1000
+        w_speed = 10
 
         # loss += w_control * control_loss 
         # loss += w_height * height_loss 
