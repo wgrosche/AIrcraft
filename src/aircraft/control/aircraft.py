@@ -69,7 +69,7 @@ class AircraftControl(ControlProblem):
 
         # loss += w_control * control_loss 
         # loss += w_height * height_loss 
-        loss += w_speed * speed_loss + w_speed * -self.state[3, -1]
+        # loss += w_speed * speed_loss + w_speed * -self.state[3, -1]
 
         return loss
 
