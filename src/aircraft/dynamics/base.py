@@ -296,24 +296,50 @@ class SixDOF(ABC):
         return ca.Function('q_frd_ecf_dot', 
             [self.state, self.control], [self._q_frd_ned_dot])
     
+    # @property
+    # def q_frd_ned_update(self) -> ca.Function:
+    #     dt:ca.MX = self.dt_sym
+    #     q_frd_ned = Quaternion(self._q_frd_ned).coeffs()
+    #     omega_frd_ned = self._omega_frd_ned
+
+    #     # Compute the exponential map using the Rodrigues' rotation formula
+    #     half_theta = 0.5 * dt * ca.norm_fro(omega_frd_ned)
+    #     sin_half_theta = ca.sin(half_theta)
+    #     cos_half_theta = ca.cos(half_theta)
+
+    #     # Compute the exponential map terms (quaternion)
+    #     exp_q:ca.MX = ca.vertcat(sin_half_theta * omega_frd_ned, cos_half_theta) # type: ignore[arg-type]
+
+    #     # Compute the updated quaternion
+    #     q_next = Quaternion.product(exp_q, q_frd_ned)
+
+    #     return ca.Function('q_frd_ned_update', [self.state, self.control, dt], [q_next])
     @property
     def q_frd_ned_update(self) -> ca.Function:
-        dt:ca.MX = self.dt_sym
-        q_frd_ned = Quaternion(self._q_frd_ned).coeffs()
-        omega_frd_ned = self._omega_frd_ned
+        dt = self.dt_sym
+        q = Quaternion(self._q_frd_ned).coeffs()
+        omega = self._omega_frd_ned
 
-        # Compute the exponential map using the Rodrigues' rotation formula
-        half_theta = 0.5 * dt * ca.norm_fro(omega_frd_ned)
+        theta = dt * ca.norm_fro(omega)
+        half_theta = 0.5 * theta
+
+        axis = ca.if_else(theta > 1e-6,
+            omega / ca.norm_fro(omega),
+            ca.DM([0.0, 0.0, 0.0])
+        )
+
         sin_half_theta = ca.sin(half_theta)
         cos_half_theta = ca.cos(half_theta)
 
-        # Compute the exponential map terms (quaternion)
-        exp_q:ca.MX = ca.vertcat(sin_half_theta * omega_frd_ned, cos_half_theta) # type: ignore[arg-type]
+        vec_part = ca.if_else(theta > 1e-6,
+            sin_half_theta * axis,
+            0.5 * dt * omega
+        )
 
-        # Compute the updated quaternion
-        q_next = Quaternion.product(exp_q, q_frd_ned)
+        exp_q = ca.vertcat(vec_part, cos_half_theta)
+        q_next = Quaternion.product(exp_q, q)
 
-        return ca.Function('q_frd_ned_update', [self.state, self.control, dt], [q_next])
+        return ca.Function("q_frd_ned_update", [self.state, self.control, dt], [q_next])
     
     @property
     def p_ned_dot(self) -> ca.Function:
