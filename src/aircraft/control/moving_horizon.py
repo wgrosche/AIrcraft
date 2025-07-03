@@ -52,7 +52,7 @@ class MHTT(ControlProblem):
         w_backward = 50.0
         w_terminal_align = 20.0
         w_low_velocity = 10.0
-        w_control = 1.0
+        w_control = 100.0
         w_discontinuity = 1000  # Penalty for discontinuities in progress
         # Accumulators
         tracking_loss = 0
