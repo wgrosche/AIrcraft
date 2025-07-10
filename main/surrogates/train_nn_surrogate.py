@@ -47,7 +47,7 @@ PATIENCE = 2
 LEARNING_RATE = 0.1
 MOMENTUM = 0.7
 SCALING = False
-RETRAIN = True  # Set True to retrain, False to load existing model
+RETRAIN = False  # Set True to retrain, False to load existing model
 num_workers = 0  # Set >0 for GPU, 0 for CPU
 
 # ----------------------

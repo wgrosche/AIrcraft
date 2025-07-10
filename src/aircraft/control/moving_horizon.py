@@ -69,7 +69,7 @@ class MHTT(ControlProblem):
                 tracking_loss += node.tracking_error
 
             # Decaying progress reward (earlier progress is more valuable)
-            decay_weight = ca.exp(-0.05 * i)  # or use 1 - i / num_nodes
+            decay_weight = 1#ca.exp(-0.05 * i)  # or use 1 - i / num_nodes
             progress_reward += decay_weight * node.track_progress
 
             # Progress rate reward and backward penalty

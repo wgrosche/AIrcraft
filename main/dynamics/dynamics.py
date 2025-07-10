@@ -27,11 +27,14 @@ from argparse import ArgumentParser
 
 model_path = Path(NETWORKPATH) / 'model-dynamics.pth'
 poly_path = Path(NETWORKPATH) / 'fitted_models_casadi.pkl'
-linear_path = Path(DATAPATH) / 'glider' / 'linearised.csv'
+linear_path = Path(NETWORKPATH)  / 'linearised.csv'
 traj_dict = json.load(open('data/glider/problem_definition.json'))
 trajectory_config = TrajectoryConfiguration(traj_dict)
 aircraft_config = trajectory_config.aircraft
+
 opts = AircraftOpts(coeff_model_type='poly', coeff_model_path=poly_path, aircraft_config=aircraft_config)
+
+# opts = AircraftOpts(coeff_model_type='neural', coeff_model_path=model_path, aircraft_config=aircraft_config)
 
 def setup_parser() -> ArgumentParser:
     parser = ArgumentParser(
@@ -45,11 +48,11 @@ def setup_parser() -> ArgumentParser:
 
     return parser
 
-def setup_aircraft(type:str='', trimming:bool = False) -> SixDOF:
+# def setup_aircraft(type:str='', trimming:bool = False) -> SixDOF:
 
-    # aircraft = Aircraft(opts = opts, coefficient_model=lambda a: PolynomialModel(opts.poly_path, aircraft=a))
-    aircraft = Aircraft(opts = opts, coefficient_model=None)
-    return aircraft
+#     aircraft = Aircraft(opts = opts, coefficient_model=lambda a: PolynomialModel(opts.poly_path, aircraft=a))
+#     # aircraft = Aircraft(opts = opts, coefficient_model=None)
+#     return aircraft
         
 
 def main():
@@ -62,8 +65,8 @@ def main():
         state = ca.vertcat(trim_state_and_control[:aircraft.num_states])
         control = np.zeros(aircraft.num_controls)
         control[:3] = trim_state_and_control[aircraft.num_states:-3]
-        control[0] = 0
-        control[1] = 0
+        control[0] = 1
+        control[1] = -1
         aircraft.com = np.array(trim_state_and_control[-3:])
     else:
         x0 = np.zeros(3)
@@ -91,7 +94,7 @@ def main():
     print("Jacobian of state derivatives w.r.t. elevator:")
     print(jacobian_elevator_val)
     dt = .01
-    tf = 1
+    tf = 10
     state_list = np.zeros((aircraft.num_states, int(tf / dt)))
     times_list = np.zeros((int(tf / dt)))
     t = 0

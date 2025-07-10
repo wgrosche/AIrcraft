@@ -441,19 +441,36 @@ class TrajectoryPlotter:
         ax.grid(True)
         ax.set_title('Control Surface Deflections')
 
+    # def plot_thrust(self, trajectory_data:TrajectoryData):
+    #     state = trajectory_data.state
+    #     times = trajectory_data.times
+    #     # control = trajectory_data.control
+    #     # if control.shape[0] < 6:
+    #     #     return
+    #     ax = self.axes.thrust
+    #     self._update_or_create_line(ax, '_T_x_line', state[0, :], x_data = times, label = r'$T_x$')
+    #     self._update_or_create_line(ax, '_T_y_line', state[1, :], x_data = times, label = r'$T_y$')
+    #     self._update_or_create_line(ax, '_T_z_line', state[2, :], x_data = times, label = r'$T_z$')
+    #     ax.legend()
+    #     ax.grid(True)
+    #     ax.set_title('Thrust (N)')
     def plot_thrust(self, trajectory_data:TrajectoryData):
+        """
+        Temporary position plot
+        
+        """
         state = trajectory_data.state
         times = trajectory_data.times
         # control = trajectory_data.control
         # if control.shape[0] < 6:
         #     return
         ax = self.axes.thrust
-        self._update_or_create_line(ax, '_T_x_line', state[0, :], x_data = times, label = r'$T_x$')
-        self._update_or_create_line(ax, '_T_y_line', state[1, :], x_data = times, label = r'$T_y$')
-        self._update_or_create_line(ax, '_T_z_line', state[2, :], x_data = times, label = r'$T_z$')
+        self._update_or_create_line(ax, '_T_x_line', state[0, :], x_data = times, label = r'$x$')
+        self._update_or_create_line(ax, '_T_y_line', state[1, :], x_data = times, label = r'$y$')
+        self._update_or_create_line(ax, '_T_z_line', state[2, :], x_data = times, label = r'$z$')
         ax.legend()
         ax.grid(True)
-        ax.set_title('Thrust (N)')
+        ax.set_title('Position (m)')
 
     def plot_progress_variables(self, trajectory_data:TrajectoryData):
         ax = self.axes.progress
