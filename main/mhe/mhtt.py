@@ -32,6 +32,10 @@ traj_dict = json.load(open('data/glider/problem_definition.json'))
 #                         [200.0, 0.0, -180.0], 
 #                         [250.0, 50.0, -190.0]])
 # traj_dict["aircraft"]["r_min"] = 30.0
+traj_dict["waypoints"]["waypoints"] = np.array([[150.0, 10.0, -190.0], 
+                        [0.0, 20.0, -180.0], 
+                        [150.0, 10.0, -190.0]])
+traj_dict["aircraft"]["r_min"] = 20.0
 
 trajectory_config = TrajectoryConfiguration(traj_dict)
 
