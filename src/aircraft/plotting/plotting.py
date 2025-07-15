@@ -479,7 +479,16 @@ class TrajectoryPlotter:
         mu = trajectory_data.mu
         nu = trajectory_data.nu
 
+        state = trajectory_data.state
+        control = trajectory_data.control
+
         print('lam: ', lam, 'mu: ', mu, 'nu: ', nu)
+
+        coeffs = self.six_dof.coefficients(state, control).full()
+
+        self._update_or_create_line(ax, '_nu_line', coeffs[0, :], x_data = times, label = r'$CX$')
+        self._update_or_create_line(ax, '_mu_line', coeffs[1, :], x_data = times, label = r'$CY$')
+        self._update_or_create_line(ax, '_phuuu_line', coeffs[2, :], x_data = times, label = r'$CZ$')
        
         if lam is not None and mu is not None and nu is not None:
             # check that lam is 2dim

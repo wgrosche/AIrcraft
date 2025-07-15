@@ -277,8 +277,8 @@ class Aircraft(SixDOF):
         
         if self.stall_scaling:
             # stall scaling
-            stall_angle_alpha = np.deg2rad(10)
-            stall_angle_beta = np.deg2rad(10)
+            stall_angle_alpha = np.deg2rad(30)
+            stall_angle_beta = np.deg2rad(30)
 
             steepness = 10
 
