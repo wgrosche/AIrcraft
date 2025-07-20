@@ -36,16 +36,17 @@ class Controller(AircraftControl):#, SaveMixin):#, ProgressTimeMixin):
         indices = self.goal.shape[0]
         self.constraint(self.state[3, -1] < -2, description="final velocity constraint")
         # goal_loss = 10000 * ca.sumsqr(self.state[:indices, -1] - self.goal)
-        final_velocity_loss = 10000 * self.state[3, -1]
-        final_velocity_loss += 10000 * self.state[4, -1]**2
-        final_velocity_loss += 10000 * self.state[5, -1]**2
+        final_velocity_loss = 1000 * self.state[3, -1]
+        final_velocity_loss += 10 * self.state[4, -1]**2
+        final_velocity_loss += 10 * self.state[5, -1]**2
+
 
         height_loss = 0#ca.sumsqr((self.state[2, -1] - self.state[2, 0]))# / self.num_nodes
         aircraft_vels = self.aircraft.v_frd_rel(self.state[:, :-1], self.control)
-        speed_loss = - 100000* ca.sum2(ca.dot(aircraft_vels, aircraft_vels) / 100) /self.num_nodes # we want to maximise body frame x velocity
+        speed_loss = - 1* ca.sum2(ca.dot(aircraft_vels, aircraft_vels) / 100) /self.num_nodes # we want to maximise body frame x velocity
         loss = 0#goal_loss
         if not isinstance(self.times[-1], float):
-            loss += 100000*time_loss
+            loss += 10000*time_loss
 
         loss += control_loss+ height_loss + speed_loss + final_velocity_loss + actuation_loss
         return  loss# + time_loss + control_loss + height_loss + speed_loss
@@ -103,7 +104,7 @@ def main():
     opts = AircraftOpts(coeff_model_type='poly', coeff_model_path=poly_path, aircraft_config=aircraft_config, physical_integration_substeps=1)
 
     aircraft = Aircraft(opts = opts)
-    trim_state_and_control = [0, 0, -200, 80, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
+    trim_state_and_control = [0, 0, -200, 50, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
     aircraft.com = np.array(trim_state_and_control[-3:])
     filepath = Path(DATAPATH) / 'trajectories' / 'basic_test.h5'
 

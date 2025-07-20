@@ -18,7 +18,7 @@ from copy import deepcopy
 from tqdm import tqdm
 plt.ion()
 class Controller(MHTT, AircraftControl):#, SaveMixin):
-    def __init__(self, *, aircraft, track:DubinsInitialiser, num_nodes=200, dt=0.01, opts = {}, filepath:str = '', **kwargs):
+    def __init__(self, *, aircraft, track:DubinsInitialiser, num_nodes=200, dt=0.01, opts = {}, filepath:str|Path = '', **kwargs):
         super().__init__(aircraft=aircraft, num_nodes=num_nodes, opts = opts, track = track, dt = dt)
         # if filepath:
         #     self.save_path = filepath
