@@ -29,9 +29,9 @@
         "airspeed" : [30, 100]
     },
     "control"  : {
-        "aileron_limit" : [-10, 10],
-        "elevator_limit" : [-10, 10],
-        "rudder_limit" : [-10, 10],
+        "aileron_limit" : [-5, 5],
+        "elevator_limit" : [-5, 5],
+        "rudder_limit" : [-5, 5],
         "throttle_limit" : [[0, 0, 0], [0, 0, 0]],
         "centre_of_mass_limit" : [[-0.5, -0.1, -0.1], [0.5, 0.1, 0.1]]
     }

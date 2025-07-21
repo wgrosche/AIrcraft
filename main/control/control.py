@@ -32,13 +32,16 @@ class Controller(AircraftControl):#, SaveMixin):#, ProgressTimeMixin):
         self.goal = ca.DM([150, 0])
         time_loss = self.times[-1]
         control_loss = ca.sumsqr(self.control[:, 1:] / 10 - self.control[:, :-1] / 10) / self.num_nodes
-        actuation_loss = 10*ca.sum1(ca.dot(self.control[:, :], self.control[:, :]))
+        actuation_loss = 0#10*ca.sum1(ca.dot(self.control[:, :], self.control[:, :]))
         indices = self.goal.shape[0]
         self.constraint(self.state[3, -1] < -2, description="final velocity constraint")
+        # self.constraint(self.state[4, -1]**2 < 4, description="final velocity constraint")
+        # self.constraint(self.state[5, -1]**2 < 4, description="final velocity constraint")
         # goal_loss = 10000 * ca.sumsqr(self.state[:indices, -1] - self.goal)
+        # final_velocity_loss=0
         final_velocity_loss = 1000 * self.state[3, -1]
-        final_velocity_loss += 10 * self.state[4, -1]**2
-        final_velocity_loss += 10 * self.state[5, -1]**2
+        final_velocity_loss += 1000 * self.state[4, -1]**2
+        final_velocity_loss += 1000 * self.state[5, -1]**2
 
 
         height_loss = 0#ca.sumsqr((self.state[2, -1] - self.state[2, 0]))# / self.num_nodes
