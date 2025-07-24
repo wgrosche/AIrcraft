@@ -147,12 +147,14 @@ class Aircraft(SixDOF):
             self._elevator = ca.MX.sym('elevator')  # type: ignore[arg-type]
             self._rudder = ca.MX.sym('rudder')  # type: ignore[arg-type]
             self._thrust = ca.MX.sym('thrust', 3)  # type: ignore[arg-type]
+            self._flaps = ca.MX.sym('flaps', 1) # type: ignore[arg-type]
 
             self._control = ca.vertcat(
             self._aileron, 
             self._elevator,
             self._rudder,
-            self._thrust
+            self._thrust,
+            self._flaps
             )
             
 
@@ -277,8 +279,8 @@ class Aircraft(SixDOF):
         
         if self.stall_scaling:
             # stall scaling
-            stall_angle_alpha = np.deg2rad(10)
-            stall_angle_beta = np.deg2rad(10)
+            stall_angle_alpha = np.deg2rad(30)
+            stall_angle_beta = np.deg2rad(30)
 
             steepness = 10
 
@@ -291,7 +293,11 @@ class Aircraft(SixDOF):
             outputs[4] *= alpha_scaling
             # outputs[4] *= beta_scaling
 
-
+        # simulate flaps
+        C_Z_flaps = - 0.6 # up lift -> negative
+        C_D_flaps = - 0.1 # backwards drag -> negative
+        outputs[0] = outputs[0] + C_D_flaps * self._flaps
+        outputs[2] = outputs[2] + C_Z_flaps * self._flaps
         self._coefficients = outputs
 
         return ca.Function(

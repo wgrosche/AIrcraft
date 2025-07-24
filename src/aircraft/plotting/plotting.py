@@ -93,7 +93,20 @@ class TrajectoryData:
                 self.iteration = None
 
         return self
-
+    def __post_init__(self):
+        # Defensive copies to avoid shared references
+        if self.state is not None:
+            self.state = self.state.copy()
+        if self.control is not None:
+            self.control = self.control.copy()
+        if self.times is not None:
+            self.times = self.times.copy()
+        if self.lam is not None:
+            self.lam = self.lam.copy()
+        if self.mu is not None:
+            self.mu = self.mu.copy()
+        if self.nu is not None:
+            self.nu = self.nu.copy()
 
 class PlotAxes:
     def __init__(self, fig:Figure):
@@ -210,6 +223,7 @@ class TrajectoryPlotter:
         
         # Plot waypoints
         if isinstance(waypoints, np.ndarray):
+            # waypoints[2, :] *= -1  # Negate Z-axis for NED convention
             if not hasattr(self, '_waypoints_line'):
                 self._waypoints_line, = ax.plot(waypoints[0, :], waypoints[1, :], waypoints[2, :], 
                                                 marker='o', linestyle='--', label='Waypoints')
@@ -244,9 +258,17 @@ class TrajectoryPlotter:
                 self._quivers[axis].set_segments(segments)
 
         # update axis limits
-        ax.set_xlim(np.min(position[0, :]), np.max(position[0, :]))
-        ax.set_ylim(np.min(position[1, :]), np.max(position[1, :]))
-        ax.set_zlim(np.min(position[2, :]), np.max(position[2, :]))
+        # Combine positions and waypoints to compute global bounds
+        if isinstance(waypoints, np.ndarray):
+            combined = np.hstack([position, waypoints])
+        else:
+            combined = position  # fallback if waypoints are not valid
+
+        # update axis limits using combined data
+        ax.set_xlim(np.min(combined[0, :]), np.max(combined[0, :]))
+        ax.set_ylim(np.min(combined[1, :]), np.max(combined[1, :]))
+        ax.set_zlim(np.min(combined[2, :]), np.max(combined[2, :]))
+
         # Customize plot appearance
         ax.set_xlabel('North')
         ax.set_ylabel('East')
@@ -354,6 +376,14 @@ class TrajectoryPlotter:
         ax.legend()
         ax.grid(True)
         ax.set_title('Aero Forces (FRD)')
+    
+    def plot_dubins(self, eval_fn:ca.Function):
+        """
+        Plots the Dubins path using the provided evaluation function.
+        """
+        s_range = np.linspace(0, 1, 100)
+        pos_vals = np.array([eval_fn(s).full().flatten() for s in s_range])
+        self.axes.position.plot(pos_vals[:, 0], pos_vals[:, 1], -pos_vals[:, 2], label='Dubins Path', color='orange')
 
     def plot_moments(self, trajectory_data:TrajectoryData):
         ax = self.axes.moments
@@ -378,6 +408,10 @@ class TrajectoryPlotter:
     def plot_state(self, trajectory_data:TrajectoryData):
         state = trajectory_data.state
         control = trajectory_data.control
+        if hasattr(self, 'waypoints'):
+            waypoints = self.waypoints
+        else:
+            waypoints = None
 
         if state is not None:
             if control is not None:
@@ -387,7 +421,7 @@ class TrajectoryPlotter:
             else:
                 trajectory_data.control = np.zeros((3, state.shape[1]))
             
-            self.plot_position(trajectory_data)
+            self.plot_position(trajectory_data, waypoints=waypoints)
 
             self.plot_angles(trajectory_data)
             self.plot_velocity(trajectory_data)
@@ -402,24 +436,43 @@ class TrajectoryPlotter:
         self._update_or_create_line(ax, '_delta_a_line', control[0, :], x_data = times, label = r'$\delta_a$', drawstyle='steps-post')
         self._update_or_create_line(ax, '_delta_e_line', control[1, :], x_data = times, label = r'$\delta_e$', drawstyle='steps-post')
         self._update_or_create_line(ax, '_delta_r_line', control[2, :], x_data = times, label = r'$\delta_r$', drawstyle='steps-post')
+        if control.shape[0] >= 7:
+            self._update_or_create_line(ax, '_delta_f_line', control[6, :], x_data = times, label = r'$Flaps$', drawstyle='steps-post')
 
         ax.legend()
         ax.grid(True)
         ax.set_title('Control Surface Deflections')
 
+    # def plot_thrust(self, trajectory_data:TrajectoryData):
+    #     state = trajectory_data.state
+    #     times = trajectory_data.times
+    #     # control = trajectory_data.control
+    #     # if control.shape[0] < 6:
+    #     #     return
+    #     ax = self.axes.thrust
+    #     self._update_or_create_line(ax, '_T_x_line', state[0, :], x_data = times, label = r'$T_x$')
+    #     self._update_or_create_line(ax, '_T_y_line', state[1, :], x_data = times, label = r'$T_y$')
+    #     self._update_or_create_line(ax, '_T_z_line', state[2, :], x_data = times, label = r'$T_z$')
+    #     ax.legend()
+    #     ax.grid(True)
+    #     ax.set_title('Thrust (N)')
     def plot_thrust(self, trajectory_data:TrajectoryData):
+        """
+        Temporary position plot
+        
+        """
         state = trajectory_data.state
         times = trajectory_data.times
         # control = trajectory_data.control
         # if control.shape[0] < 6:
         #     return
         ax = self.axes.thrust
-        self._update_or_create_line(ax, '_T_x_line', state[0, :], x_data = times, label = r'$T_x$')
-        self._update_or_create_line(ax, '_T_y_line', state[1, :], x_data = times, label = r'$T_y$')
-        self._update_or_create_line(ax, '_T_z_line', state[2, :], x_data = times, label = r'$T_z$')
+        self._update_or_create_line(ax, '_T_x_line', state[0, :], x_data = times, label = r'$x$')
+        self._update_or_create_line(ax, '_T_y_line', state[1, :], x_data = times, label = r'$y$')
+        self._update_or_create_line(ax, '_T_z_line', state[2, :], x_data = times, label = r'$z$')
         ax.legend()
         ax.grid(True)
-        ax.set_title('Thrust (N)')
+        ax.set_title('Position (m)')
 
     def plot_progress_variables(self, trajectory_data:TrajectoryData):
         ax = self.axes.progress
@@ -428,7 +481,16 @@ class TrajectoryPlotter:
         mu = trajectory_data.mu
         nu = trajectory_data.nu
 
+        state = trajectory_data.state
+        control = trajectory_data.control
+
         print('lam: ', lam, 'mu: ', mu, 'nu: ', nu)
+
+        coeffs = self.six_dof.coefficients(state, control).full()
+
+        self._update_or_create_line(ax, '_nu_line', coeffs[0, :], x_data = times, label = r'$CX$')
+        self._update_or_create_line(ax, '_mu_line', coeffs[1, :], x_data = times, label = r'$CY$')
+        self._update_or_create_line(ax, '_phuuu_line', coeffs[2, :], x_data = times, label = r'$CZ$')
        
         if lam is not None and mu is not None and nu is not None:
             # check that lam is 2dim

@@ -118,6 +118,7 @@ class PolynomialModel(CoefficientModel):
         rw_inputs = ca.vertcat(a._right_wing_qbar, a._right_wing_alpha, 0, 0, 0)
         lw_lift = ca.vertcat(*[fm[k](lw_inputs) for k in fm])
         rw_lift = ca.vertcat(*[fm[k](rw_inputs) for k in fm])
+        outputs[0] *= 1
         outputs[3] += a.b / 4 * (rw_lift[2]/2 - lw_lift[2]/2)
 
         el_inputs = ca.vertcat(a._qbar, a._elevator_alpha, a._beta, a._aileron, a._elevator)
@@ -127,6 +128,6 @@ class PolynomialModel(CoefficientModel):
         outputs[5] = ca.vertcat(*[fm[k](rud_inputs) for k in fm])[5]
 
         # Cn_rudder = -0.01
-        Cn_rudder = 0
+        Cn_rudder = 0.01
         outputs[5] += Cn_rudder * 6 * a._rudder * np.pi / 180
         return ca.MX(outputs)
