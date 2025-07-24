@@ -3,11 +3,12 @@ import numpy as np
 from dataclasses import dataclass
 import os
 import h5py
-from typing import List, Protocol, runtime_checkable, Optional, Union
+from typing import List, Protocol, runtime_checkable, Optional, Union, Sequence, Generic, TypeVar
 import logging
 from datetime import datetime
 from pathlib import Path
 from abc import ABC, abstractmethod
+from tqdm import tqdm
 
 from aircraft.config import default_solver_options, DATAPATH
 from aircraft.dynamics.base import SixDOF
@@ -176,7 +177,7 @@ class ControlProblem(ABC):
         self.state_dim:int = self.dynamics.size1_in(0)
         self.control_dim:int = self.dynamics.size1_in(1)
         self.x_dot:ca.Function = system.state_derivative
-
+    
         self.num_nodes = num_nodes
 
         self.verbose = self.opts.get('verbose', False)
@@ -321,7 +322,8 @@ class ControlProblem(ABC):
         Returns:
             ca.MX: Symbolic expression for the loss.
         """
-        pass
+        loss = 0
+        return loss
 
     def _make_node(self, index: int, guess: np.ndarray, enforce_state_constraint: bool = False) -> ControlNode:
         opti = self.opti
@@ -383,7 +385,7 @@ class ControlProblem(ABC):
         return next_node
 
     
-    def _setup_variables(self, nodes:List[ControlNode]) -> None:
+    def _setup_variables(self, nodes:Sequence[ControlNode]) -> None:
         self.state = ca.hcat([nodes[i].state for i in range(self.num_nodes + 1)])
         self.control = ca.hcat([nodes[i].control for i in range(self.num_nodes)])
         if self.opts.get('time', 'fixed') in ['fixed', 'progress']:
@@ -419,11 +421,11 @@ class ControlProblem(ABC):
         
         self.opti.set_value(self.state_guess_parameter, guess[:self.state_dim, :])
         self.opti.set_value(self.control_guess_parameter, guess[self.state_dim:self.state_dim + self.control_dim, :])
-        
+        print("Guess in base setup: ", guess[:, 0])
         current_node = self._setup_initial_node(guess)
         nodes = [current_node]
 
-        for index in range(1, self.num_nodes + 1):
+        for index in tqdm(range(1, self.num_nodes + 1), desc="Setting up nodes..."):
             nodes.append(self._setup_step(index, nodes[-1], guess))
 
         self._setup_variables(nodes)
@@ -439,20 +441,28 @@ class ControlProblem(ABC):
         if self.logging == True:
             self.log(iteration)
 
-    def solve(self, warm_start:Optional[ca.OptiSol] = None) -> ca.OptiSol:
+    def setup_solver(self):
+        """One-time solver initialization."""
+        if getattr(self, 'solver_is_setup', False):
+            return
         self.opti.solver('ipopt', self.solver_opts)
         self.opti.callback(lambda iteration: self.callback(iteration))
+        self.solver_is_setup = True
+
+    def solve(self, warm_start:Optional[ca.OptiSol] = None) -> ca.OptiSol:
+        if not getattr(self, 'solver_is_setup', False):
+            self.setup_solver()
         if warm_start:
             self.opti.set_initial(warm_start.value_variables())
         try:
             sol = self.opti.solve()
-            success = True
+            self.success = True
         except RuntimeError as e:
             print("Solver failed:", e)
             sol = self.opti.debug
-            success = False
+            self.success = False
         stats = self.opti.stats()
-        print(self.extract_solver_metrics(stats, success))
+        print(self.extract_solver_metrics(stats, self.success))
         return sol
     
     def extract_solver_metrics(self, stats:dict, success:bool):
@@ -515,7 +525,7 @@ class ControlProblem(ABC):
         if hasattr(self, "_init_variable_time"):
             self.logger.info(f"Final time: {self.opti.debug.value(self.time)}")
         self.logger.info(f"Final position: {self.opti.debug.value(self.state)[:, -1]}")
-        self.logger.info(f"Final velocity: {self.opti.debug.value(self.state)[2, -1]}")
+        self.logger.info(f"Final velocity: {self.opti.debug.value(self.state)[3, -1]}")
         self.logger.info(f"Final control: {self.opti.debug.value(self.control)[:, -1]}")
         self.logger.info(f"Final control rate: {self.opti.debug.value(self.control)[:, -1] - self.opti.debug.value(self.control)[:, -2]}")
 

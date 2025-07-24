@@ -10,7 +10,7 @@ class AircraftControl(ControlProblem):
     """
     Class that implements constraints upon state and control for an aircraft
     """
-
+    plotter: TrajectoryPlotter
     def __init__(self, *, aircraft: Aircraft, **kwargs) -> None:
 
         self.aircraft = aircraft
@@ -20,7 +20,7 @@ class AircraftControl(ControlProblem):
                 self.plotter = TrajectoryPlotter(aircraft)
             else:
                 # Reuse the existing plotter
-                self.plotter.aircraft = aircraft
+                self.plotter.six_dof = aircraft
         self.control_limits = kwargs.get('control_limits', {"aileron": [-5, 5], "elevator": [-5, 5], "rudder": [-5, 5]})
 
         super().__init__(system=aircraft, **kwargs)
@@ -37,13 +37,15 @@ class AircraftControl(ControlProblem):
         self.constraint(
             self.opti.bounded(self.control_limits["rudder"][0], node.control[2], self.control_limits["rudder"][1]), 
             description="Rudder Constraint")
+        if hasattr(self.aircraft, '_flaps'):
+            self.constraint(self.opti.bounded(0, node.control[6], 1), description = 'Flaps constraint')
         
 
     def state_constraint(self, node: ControlNode, next: ControlNode) -> None:
         super().state_constraint(node, next)
         v_rel = self.aircraft.v_frd_rel(node.state, node.control)
         self.constraint(
-            self.opti.bounded(20**2, ca.dot(v_rel, v_rel), 80**2), # type: ignore[arg-type]
+            self.opti.bounded(20**2, ca.dot(v_rel, v_rel), 100**2), # type: ignore[arg-type]
             description="Speed constraint")
         # self.constraint(
         #     self.opti.bounded(-np.deg2rad(90), self.aircraft.phi(node.state), np.deg2rad(90)), 
@@ -55,6 +57,23 @@ class AircraftControl(ControlProblem):
             self.opti.bounded(-np.deg2rad(20), self.aircraft.alpha(node.state, node.control), np.deg2rad(20)), 
             description="Attack constraint")
         self.constraint(node.state[2] < 0, description="Height constraint")
+
+    def loss(self, nodes, time=None):
+        loss = super().loss(nodes, time)
+        # return loss
+        control_loss = ca.sumsqr(self.control[:, 1:] / 10 - self.control[:, :-1] / 10) / self.num_nodes
+        height_loss = ca.sumsqr((self.state[2, -1] - self.state[2, 0]))
+        speed_loss = - ca.sum2(self.state[3, :] / 100) / self.num_nodes
+
+        w_control = 10
+        w_height = 10
+        w_speed = 10
+
+        # loss += w_control * control_loss 
+        # loss += w_height * height_loss 
+        # loss += w_speed * speed_loss + w_speed * -self.state[3, -1]
+
+        return loss
 
 
 
@@ -145,12 +164,17 @@ class AircraftControl(ControlProblem):
         
         return sol
     
-    def plot(self, sol:ca.OptiSol) -> None:
-        trajectory_data = TrajectoryData(
-                state=np.array(self.opti.debug.value(self.state))[:, :-1],
-                control=np.array(self.opti.debug.value(self.control)),
-                times=np.array(self.opti.debug.value(self.times))
-            )
+    def plot(self, sol:Optional[ca.OptiSol] = None, traj:Optional[TrajectoryData] = None) -> None:
+        if sol is not None and isinstance(sol, ca.OptiSol):
+            trajectory_data = TrajectoryData(
+                    state=np.array(self.opti.debug.value(self.state))[:, :-1],
+                    control=np.array(self.opti.debug.value(self.control)),
+                    times=np.array(self.opti.debug.value(self.times))
+                )
+        elif traj is not None and isinstance(traj, TrajectoryData):
+            trajectory_data = traj
+        else:
+            raise ValueError("Didn't supply a valid plotting trajectory")
         self.plotter.plot(trajectory_data=trajectory_data)
         plt.draw()
         self.plotter.figure.canvas.start_event_loop(0.0002)
