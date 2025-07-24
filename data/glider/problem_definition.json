@@ -10,7 +10,7 @@
         "waypoint_tolerance" : 1e1
     },
     "aircraft" : {
-        "mass"  : 2.0,
+        "mass"  : 4.0,
         "span"  : 2.0,
         "length": 1.2,
         "chord" : 0.124605,

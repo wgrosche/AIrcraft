@@ -15,6 +15,11 @@ from aircraft.config import DATAPATH
 import matplotlib.pyplot as plt
 from aircraft.plotting.plotting import TrajectoryPlotter, TrajectoryData
 
+def smooth_max(xs, k=20):
+    return (1 / k) * ca.log(ca.sum1(ca.exp(k * xs)))
+
+def l0_smooth(x, epsilon=1e-3):
+    return ca.sum2(1 - ca.exp(-x**2 / epsilon))
 
 class Controller(AircraftControl):#, SaveMixin):#, ProgressTimeMixin):
     def __init__(self, *, aircraft:Aircraft, num_nodes:int=300, dt:float=.01, opts:dict = {}, filepath:str|Path = '', **kwargs:Any):
@@ -31,23 +36,26 @@ class Controller(AircraftControl):#, SaveMixin):#, ProgressTimeMixin):
         """
         self.goal = ca.DM([150, 0])
         time_loss = self.times[-1]
-        control_loss = ca.sumsqr(self.control[:, 1:] / 10 - self.control[:, :-1] / 10) / self.num_nodes
+        # control_loss = 10000 * ca.sumsqr(self.control[:, 1:] / 10 - self.control[:, :-1] / 10) / self.num_nodes
+        du = self.control[:, 1:] - self.control[:, :-1]
+        control_loss = 100 * ca.sum1(l0_smooth(du, 1e-2)) # suppress over actuating controls
+        # self.constraint(smooth_max(self.state[0, :]) >= 150, "Goal Constraint")
         actuation_loss = 0#10*ca.sum1(ca.dot(self.control[:, :], self.control[:, :]))
         indices = self.goal.shape[0]
         self.constraint(self.state[3, -1] < -2, description="final velocity constraint")
         # self.constraint(self.state[4, -1]**2 < 4, description="final velocity constraint")
         # self.constraint(self.state[5, -1]**2 < 4, description="final velocity constraint")
-        # goal_loss = 10000 * ca.sumsqr(self.state[:indices, -1] - self.goal)
+        goal_loss = 1000 * ca.sumsqr(self.state[:indices, -1] - self.goal)
         # final_velocity_loss=0
         final_velocity_loss = 1000 * self.state[3, -1]
         final_velocity_loss += 1000 * self.state[4, -1]**2
         final_velocity_loss += 1000 * self.state[5, -1]**2
 
 
-        height_loss = 0#ca.sumsqr((self.state[2, -1] - self.state[2, 0]))# / self.num_nodes
+        height_loss = ca.sumsqr((self.state[2, -1] - self.state[2, 0]))# / self.num_nodes
         aircraft_vels = self.aircraft.v_frd_rel(self.state[:, :-1], self.control)
         speed_loss = - 1* ca.sum2(ca.dot(aircraft_vels, aircraft_vels) / 100) /self.num_nodes # we want to maximise body frame x velocity
-        loss = 0#goal_loss
+        loss = goal_loss
         if not isinstance(self.times[-1], float):
             loss += 10000*time_loss
 
@@ -107,7 +115,9 @@ def main():
     opts = AircraftOpts(coeff_model_type='poly', coeff_model_path=poly_path, aircraft_config=aircraft_config, physical_integration_substeps=1)
 
     aircraft = Aircraft(opts = opts)
-    trim_state_and_control = [0, 0, -200, 50, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384]
+    trim_state_and_control = [0, 0, -200, 80, 0, 0, 0, 0, 0, 1, 0, -1.79366e-43, 0, 0, 5.60519e-43, 0, 0.0131991, -1.78875e-08, 0.00313384, 0]
+    trim_state = trim_state_and_control[:aircraft.num_states]
+    trim_control = trim_state_and_control[aircraft.num_states:]
     aircraft.com = np.array(trim_state_and_control[-3:])
     filepath = Path(DATAPATH) / 'trajectories' / 'basic_test.h5'
 
@@ -115,6 +125,7 @@ def main():
     controller_opts = {'time':'progress', 'quaternion':'integration', 'integration':'explicit'}
     controller = Controller(aircraft=aircraft, filepath=filepath, opts = controller_opts, num_nodes=400)
     guess = controller.initialise(ca.DM(trim_state_and_control[:aircraft.num_states]))
+    print("Coeffs start: ",aircraft.coefficients(trim_state, trim_control))
     controller.setup(guess)
     controller.logging = False
     

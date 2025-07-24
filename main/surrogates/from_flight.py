@@ -1,5 +1,12 @@
 # %%
 
+"""
+Script to perform sysid based on in flight data containing:
+- forces
+- moments
+We assume the data has keys: [Fx, Fy, Fz, Mx, My, Mz]
+"""
+
 import pandas as pd
 import numpy as np
 from aircraft.config import DATAPATH
@@ -7,10 +14,97 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 from scipy.integrate import cumulative_trapezoid as cumtrapz
 from mpl_toolkits.mplot3d import Axes3D
+
+from aircraft.utils.utils import TrajectoryConfiguration
+from pathlib import Path
+from aircraft.config import NETWORKPATH
+from aircraft.dynamics.aircraft import AircraftOpts, Aircraft
 # %%
 datapath = Path(DATAPATH) / "raw"/ "flight_data" / 'flight.csv'#"example_flight_data.csv"
 data = pd.DataFrame(pd.read_csv(datapath))
 
+import numpy as np
+import pandas as pd
+from scipy.spatial.transform import Rotation as R
+import json
+
+
+def main():
+    traj_dict = json.load(open('data/glider/problem_definition.json'))
+
+    trajectory_config = TrajectoryConfiguration(traj_dict)
+
+    aircraft_config = trajectory_config.aircraft
+
+    poly_path = Path(NETWORKPATH) / 'fitted_models_casadi.pkl'
+    opts = AircraftOpts(coeff_model_type='poly', coeff_model_path=poly_path, aircraft_config=aircraft_config, physical_integration_substeps=1)
+
+    aircraft = Aircraft(opts = opts)
+
+def body_to_inertial(accel_body, q):
+    """Rotate body-frame acceleration to inertial frame."""
+    rot = R.from_quat(q)
+    return rot.apply(accel_body)
+
+def compute_alpha_beta(v_body):
+    """Compute angle of attack and sideslip from body velocities."""
+    u, v, w = v_body.T
+    V = np.linalg.norm(v_body, axis=1)
+    alpha = np.arctan2(w, u)
+    beta = np.arcsin(v / V)
+    return alpha, beta, V
+
+def estimate_forces(df, mass, g=9.81):
+    """Estimate aerodynamic forces from IMU and GPS-derived states."""
+    # gravity in NED (0, 0, g), rotate to body frame
+    gravity_ned = np.array([0, 0, g])
+    accel_inertial = df[['accel_x', 'accel_y', 'accel_z']].values
+    quats = df[['q0', 'q1', 'q2', 'q3']].values
+
+    F_aero = []
+    for acc_body, q in zip(accel_inertial, quats):
+        g_body = R.from_quat(q).inv().apply(gravity_ned)
+        F = mass * (acc_body - g_body)
+        F_aero.append(F)
+
+    return np.array(F_aero)  # shape (N, 3)
+
+def estimate_coefficients(df, F_aero, rho, S, c):
+    """Estimate C_L, C_D, C_m using linear regression."""
+    alpha, _, V = compute_alpha_beta(df[['vel_n', 'vel_e', 'vel_d']].values)
+    q_pitch = df['gyro_y'].values
+    delta_e = df['delta_e'].values
+
+    q_hat = q_pitch * c / (2 * V)
+    dyn_pressure = 0.5 * rho * V**2
+
+    L = -F_aero[:, 2]  # Z-axis in body frame is downward
+    D = -F_aero[:, 0]  # X-axis is forward
+    M = df['moments_pitch'].values  # You need to estimate or log this too
+
+    # Normalize
+    C_L = L / (dyn_pressure * S)
+    C_D = D / (dyn_pressure * S)
+    C_m = M / (dyn_pressure * S * c)
+
+    # Linear regression
+    X = np.vstack([np.ones_like(alpha), alpha, q_hat, delta_e]).T
+    coeffs_CL = np.linalg.lstsq(X, C_L, rcond=None)[0]
+    coeffs_CD = np.linalg.lstsq(X, C_D, rcond=None)[0]
+    coeffs_Cm = np.linalg.lstsq(X, C_m, rcond=None)[0]
+
+    return coeffs_CL, coeffs_CD, coeffs_Cm
+
+import matplotlib.pyplot as plt
+
+def plot_fit(y, y_pred, label):
+    plt.figure()
+    plt.plot(y, label='Measured')
+    plt.plot(y_pred, label='Fitted')
+    plt.title(label)
+    plt.legend()
+    plt.grid(True)
+    plt.show()
 print(data.keys())
 # # %%
 # # ax, ay, az = data['X [g]'], data['Y [g]'], data['Z [g]']

@@ -37,13 +37,15 @@ class AircraftControl(ControlProblem):
         self.constraint(
             self.opti.bounded(self.control_limits["rudder"][0], node.control[2], self.control_limits["rudder"][1]), 
             description="Rudder Constraint")
+        if hasattr(self.aircraft, '_flaps'):
+            self.constraint(self.opti.bounded(0, node.control[6], 1), description = 'Flaps constraint')
         
 
     def state_constraint(self, node: ControlNode, next: ControlNode) -> None:
         super().state_constraint(node, next)
         v_rel = self.aircraft.v_frd_rel(node.state, node.control)
         self.constraint(
-            self.opti.bounded(20**2, ca.dot(v_rel, v_rel), 80**2), # type: ignore[arg-type]
+            self.opti.bounded(20**2, ca.dot(v_rel, v_rel), 100**2), # type: ignore[arg-type]
             description="Speed constraint")
         # self.constraint(
         #     self.opti.bounded(-np.deg2rad(90), self.aircraft.phi(node.state), np.deg2rad(90)), 

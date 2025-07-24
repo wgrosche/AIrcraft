@@ -436,6 +436,8 @@ class TrajectoryPlotter:
         self._update_or_create_line(ax, '_delta_a_line', control[0, :], x_data = times, label = r'$\delta_a$', drawstyle='steps-post')
         self._update_or_create_line(ax, '_delta_e_line', control[1, :], x_data = times, label = r'$\delta_e$', drawstyle='steps-post')
         self._update_or_create_line(ax, '_delta_r_line', control[2, :], x_data = times, label = r'$\delta_r$', drawstyle='steps-post')
+        if control.shape[0] >= 7:
+            self._update_or_create_line(ax, '_delta_f_line', control[6, :], x_data = times, label = r'$Flaps$', drawstyle='steps-post')
 
         ax.legend()
         ax.grid(True)
