@@ -1,0 +1,29 @@
+name: Sync PDF from Private Docs
+
+on:
+  workflow_dispatch:  # Manual trigger
+  schedule:
+    - cron: '0 0 * * 1'  # Weekly on Monday
+
+jobs:
+  update-pdf:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout AIrcraft with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+
+      - name: Copy latest PDF
+        run: |
+          mkdir -p public-docs
+          cp docs/main.pdf public-docs/aircraft-documentation.pdf
+
+      - name: Commit and push PDF
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add public-docs/aircraft-documentation.pdf
+          git commit -m "Update public PDF from private docs" || echo "No changes"
+          git push
