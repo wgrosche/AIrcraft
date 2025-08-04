@@ -30,7 +30,7 @@ class Controller(AircraftControl):#, SaveMixin):#, ProgressTimeMixin):
         # ProgressTimeMixin._init_progress_time(self, self.opti, num_nodes)
         
 
-    def loss(self, nodes, time):
+    def loss(self, nodes, time = None):
         """
         Try to scale everything to order 1
         """

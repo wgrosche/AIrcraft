@@ -59,7 +59,7 @@ class AircraftControl(ControlProblem):
         self.constraint(node.state[2] < 0, description="Height constraint")
 
     def loss(self, nodes, time=None):
-        loss = super().loss(nodes, time)
+        loss = super().loss(nodes, time = time)
         # return loss
         control_loss = ca.sumsqr(self.control[:, 1:] / 10 - self.control[:, :-1] / 10) / self.num_nodes
         height_loss = ca.sumsqr((self.state[2, -1] - self.state[2, 0]))
