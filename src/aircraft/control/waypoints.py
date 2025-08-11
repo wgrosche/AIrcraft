@@ -17,19 +17,19 @@ class ControlNodeWaypoints(ControlNode):
     mu:Optional[ca.MX] = None
     nu:Optional[ca.MX] = None
 
-    @classmethod
-    def from_control_node(cls, node:ControlNode, lam:Optional[ca.MX] = None,
-                            mu:Optional[ca.MX] = None,
-                            nu:Optional[ca.MX] = None):
-        return cls(
-            index = node.index,
-            state = node.state,
-            control = node.control,
-            progress = node.progress,
-            lam = lam,
-            mu = mu,
-            nu = nu
-        )
+    # @classmethod
+    # def from_control_node(cls, node:ControlNode, lam:Optional[ca.MX] = None,
+    #                         mu:Optional[ca.MX] = None,
+    #                         nu:Optional[ca.MX] = None):
+    #     return cls(
+    #         index = node.index,
+    #         state = node.state,
+    #         control = node.control,
+    #         progress = node.progress,
+    #         lam = lam,
+    #         mu = mu,
+    #         nu = nu
+    #     )
 
 
 class WaypointControl(ControlProblem):
@@ -82,7 +82,7 @@ class WaypointControl(ControlProblem):
     def _setup_step(self, index:int, current_node:ControlNode, guess:np.ndarray):
         opti = self.opti
 
-        next_node = ControlNodeWaypoints.from_control_node(
+        next_node = ControlNodeWaypoints.from_parent(
             super()._setup_step(index, current_node, guess), 
             lam = opti.variable(self.num_waypoints),
             mu=opti.variable(self.num_waypoints),
@@ -102,7 +102,7 @@ class WaypointControl(ControlProblem):
     
     def _setup_initial_node(self, guess:np.ndarray):
         opti = self.opti
-        current_node = ControlNodeWaypoints.from_control_node(
+        current_node = ControlNodeWaypoints.from_parent(
             super()._setup_initial_node(guess), 
             lam = opti.variable(self.num_waypoints),
             mu=opti.variable(self.num_waypoints),

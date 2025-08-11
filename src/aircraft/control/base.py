@@ -1,9 +1,9 @@
 import casadi as ca
 import numpy as np
-from dataclasses import dataclass
+from dataclasses import dataclass, fields, asdict
 import os
 import h5py
-from typing import List, Protocol, runtime_checkable, Optional, Union, Sequence, Generic, TypeVar
+from typing import List, Protocol, runtime_checkable, Optional, Union, Sequence, Generic, TypeVar, Type
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -15,21 +15,32 @@ from aircraft.dynamics.base import SixDOF
 
 __all__ = ['ControlNode', 'SaveMixin', 'ControlProblem']
 
+T = TypeVar("T", bound="ControlNode")
+
 @dataclass
 class ControlNode:
-    """
-    A data structure representing a single node in the control horizon.
+    index: int
+    state: ca.MX
+    control: ca.MX
+    progress: ca.MX
 
-    Attributes:
-        index (Optional[int]): Index of the node in the trajectory.
-        state (Optional[ca.MX]): Symbolic representation of the state at this node.
-        control (Optional[ca.MX]): Symbolic representation of the control at this node.
-    """
-    index:int
-    state:ca.MX
-    control:ca.MX
-    progress:Union[ca.MX, float] # sqrt of the progress/time variable (to assure positivity)
+    @classmethod
+    def from_parent(cls: Type[T], control_node: "ControlNode", **kwargs) -> T:
+        """
+        Create a new node of type `cls` from any ControlNode (or subclass),
+        keeping all matching attributes and optionally overriding via kwargs.
+        """
+        # All dataclass fields of the actual instance
+        base_data = asdict(control_node)
 
+        # Add/override with provided arguments
+        base_data.update(kwargs)
+
+        # Filter for only the fields that belong to the target class
+        allowed_fields = {f.name for f in fields(cls)}
+        filtered_data = {k: v for k, v in base_data.items() if k in allowed_fields}
+
+        return cls(**filtered_data)
 @runtime_checkable
 class SaveProgressProtocol(Protocol):
     def _save_progress(self, iteration: int, states:list[ca.MX], controls:list[ca.MX], times:list[ca.MX]) -> None: ...

@@ -422,39 +422,40 @@ class TrajectoryPlotter:
         ax.set_title('Thrust (N)')
 
     def plot_progress_variables(self, trajectory_data:TrajectoryData):
-        ax = self.axes.progress
-        lam = trajectory_data.lam
-        times = trajectory_data.times
-        mu = trajectory_data.mu
-        nu = trajectory_data.nu
+        pass
+        # ax = self.axes.progress
+        # lam = trajectory_data.lam
+        # times = trajectory_data.times
+        # mu = trajectory_data.mu
+        # nu = trajectory_data.nu
 
-        print('lam: ', lam, 'mu: ', mu, 'nu: ', nu)
+        # print('lam: ', lam, 'mu: ', mu, 'nu: ', nu)
 
-        coeffs = self.six_dof.coefficients(state, control).full()
+        # coeffs = self.six_dof.coefficients(trajectory_data.state, trajectory_data.control).full()
 
-        self._update_or_create_line(ax, '_nu_line', coeffs[0, :], x_data = times, label = r'$CX$')
-        self._update_or_create_line(ax, '_mu_line', coeffs[1, :], x_data = times, label = r'$CY$')
-        self._update_or_create_line(ax, '_phuuu_line', coeffs[2, :], x_data = times, label = r'$CZ$')
+        # self._update_or_create_line(ax, '_nu_line', coeffs[0, :], x_data = times, label = r'$CX$')
+        # self._update_or_create_line(ax, '_mu_line', coeffs[1, :], x_data = times, label = r'$CY$')
+        # self._update_or_create_line(ax, '_phuuu_line', coeffs[2, :], x_data = times, label = r'$CZ$')
 
-        ax.legend()
-        ax.grid(True)
-        ax.set_title('Aerodynamic Coefficients')
+        # ax.legend()
+        # ax.grid(True)
+        # ax.set_title('Aerodynamic Coefficients')
        
-        if lam is not None and mu is not None and nu is not None:
-            # check that lam is 2dim
-            if len(lam.shape) == 2:
-                for waypoint in range(len(lam)):
-                    self._update_or_create_line(ax, f'_lam_line_{waypoint}', lam[waypoint], x_data = times, label =  r'$\lambda$')
-                    self._update_or_create_line(ax, f'_mu_line_{waypoint}', mu[waypoint], x_data = times, label =  r'$\mu$')
-                    self._update_or_create_line(ax, f'_nu_line_{waypoint}', nu[waypoint], x_data = times, label =  r'$\nu$')
-            else:
-                self._update_or_create_line(ax, '_lam_line', lam, x_data = times, label = r'$\lambda$')
-                self._update_or_create_line(ax, '_mu_line', mu, x_data = times, label = r'$\mu$')
-                self._update_or_create_line(ax, '_nu_line', nu, x_data = times, label = r'$\nu$')
+        # if lam is not None and mu is not None and nu is not None:
+        #     # check that lam is 2dim
+        #     if len(lam.shape) == 2:
+        #         for waypoint in range(len(lam)):
+        #             self._update_or_create_line(ax, f'_lam_line_{waypoint}', lam[waypoint], x_data = times, label =  r'$\lambda$')
+        #             self._update_or_create_line(ax, f'_mu_line_{waypoint}', mu[waypoint], x_data = times, label =  r'$\mu$')
+        #             self._update_or_create_line(ax, f'_nu_line_{waypoint}', nu[waypoint], x_data = times, label =  r'$\nu$')
+        #     else:
+        #         self._update_or_create_line(ax, '_lam_line', lam, x_data = times, label = r'$\lambda$')
+        #         self._update_or_create_line(ax, '_mu_line', mu, x_data = times, label = r'$\mu$')
+        #         self._update_or_create_line(ax, '_nu_line', nu, x_data = times, label = r'$\nu$')
 
-            ax.legend()
-            ax.grid(True)
-            ax.set_title('Progress Variables')
+        #     ax.legend()
+        #     ax.grid(True)
+        #     ax.set_title('Progress Variables')
 
     def plot_control(self, trajectory_data:TrajectoryData):
         control = trajectory_data.control

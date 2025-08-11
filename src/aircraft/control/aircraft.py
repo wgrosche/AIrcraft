@@ -12,7 +12,7 @@ class AircraftControl(ControlProblem):
     """
     plotter: TrajectoryPlotter
     def __init__(self, *, aircraft: Aircraft, **kwargs) -> None:
-
+        super().__init__(system=aircraft, aircraft=aircraft, **kwargs)
         self.aircraft = aircraft
         if kwargs.get('plotting', True):
             if not hasattr(self, 'plotter') or self.plotter is None:
@@ -23,7 +23,7 @@ class AircraftControl(ControlProblem):
                 self.plotter.six_dof = aircraft
         self.control_limits = kwargs.get('control_limits', {"aileron": [-5, 5], "elevator": [-5, 5], "rudder": [-5, 5]})
 
-        super().__init__(system=aircraft, **kwargs)
+        
         
         
     def control_constraint(self, node: ControlNode) -> None:

@@ -49,6 +49,7 @@ from aircraft.surrogates.dataloader import AeroDataset
 from aircraft.plotting.plotting import create_grid
 
 from scipy.optimize import minimize
+from train_nn_surrogate import plot_static_3d
 
 
 DATAPATH = os.path.join(BASEPATH, 'data')
@@ -70,6 +71,45 @@ RETRAIN = False # Flag to retrain the model, otherwise just loads existing
 
 # Determine max number of workers for dataloader
 num_workers = 0# if DEVICE == 'cpu' else 4
+
+import matplotlib.pyplot as plt
+from collections import defaultdict
+
+class NumpyCasadiMock:
+    def __init__(self, array):
+        self._arr = array
+    def full(self):
+        return self._arr
+    def flatten(self):
+        return self._arr.flatten()
+
+def make_casadi_like_functions(tabulated_coeffs, input_features):
+    funcs = {}
+
+    for coeff, model_data in tabulated_coeffs.items():
+        if coeff == 'CX':
+            CD0 = model_data['CD0']
+            k = model_data['k']
+            CL_coefs = tabulated_coeffs['CZ']['coefs']
+            CL_intercept = tabulated_coeffs['CZ']['intercept']
+
+            def cx_func(x):
+                x_T = x.T
+                CL = np.dot(x_T, CL_coefs) + CL_intercept
+                result = (CD0 + k * CL**2).reshape(1, -1)
+                return NumpyCasadiMock(result)
+            funcs['CX'] = cx_func
+        else:
+            coefs = np.array(model_data['coefs'])
+            intercept = model_data['intercept']
+
+            def linear_func(x, c=coefs, b=intercept):
+                x_T = x.T
+                result = (np.dot(x_T, c) + b).reshape(1, -1)
+                return NumpyCasadiMock(result)
+            funcs[coeff] = linear_func
+
+    return funcs
 
 def prepare_datasets(scaling=False, input_features=None, output_features=None):
     if input_features is None:
@@ -176,6 +216,45 @@ def main():
     with open(os.path.join(DATAPATH, 'glider', 'linearised.json'), 'w') as f:
         json.dump(tabulated_coeffs, f)
     coeff_dframe.to_csv(os.path.join(DATAPATH, 'glider', 'linearised.csv'), index=None)
+    # Input features for plotting
+    input_features = ['q', 'alpha', 'beta', 'aileron', 'elevator']
+    output_features = ['CX', 'CY', 'CZ', 'Cl', 'Cm', 'Cn']
+
+    # Prepare inputs (numpy array), targets (true output), outputs (predicted)
+    inputs = dataset[input_features].values  # shape (samples, features)
+
+    # True targets for each output feature
+    targets = np.column_stack([dataset[feat].values for feat in output_features])  # (samples, 6)
+
+    # Predicted outputs from linear models
+    casadi_functions = make_casadi_like_functions(tabulated_coeffs, input_features)
+
+    # Use the functions to predict each output
+    outputs_list = []
+    for feat in output_features:
+        pred = casadi_functions[feat](inputs.T)  # shape (1, samples)
+        outputs_list.append(pred.flatten())
+    outputs = np.column_stack(outputs_list)  # shape (samples, 6)
+
+    # Create a grid for plotting
+    inp_grid = pd.DataFrame(inputs, columns=input_features)
+    x_plotting = create_grid(inp_grid, 10)  # creates grid with 10 steps per feature
+    plotting_features = [r"$C_X$", r"$C_Y$", r"$C_Z$", r"$C_L$", r"$C_M$", r"$C_N$"]
+
+    # Set fixed values for aileron, elevator, q in grid (for visual clarity)
+    x_plotting['aileron'] = 0
+    x_plotting['elevator'] = 0
+    x_plotting['q'] = 60
+    x_plotting = x_plotting.drop_duplicates()
+
+    # Predict on grid with linear models for plotting
+    y_plotting_list = []
+    for feat in output_features:
+        y_plotting_list.append(casadi_functions[feat](x_plotting[input_features].values.T).flatten())
+    y_plotting = np.column_stack(y_plotting_list)
+
+    # Call your plotting function
+    plot_static_3d(inputs, targets, outputs, x_plotting, y_plotting, casadi_functions, output_features, plotting_features, VISUPATH)
 
 
 if __name__ == '__main__':

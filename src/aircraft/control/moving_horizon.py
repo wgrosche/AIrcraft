@@ -15,20 +15,20 @@ class ProgressNode(ControlNode):
     progress_rate:Optional[ca.MX] = None
     tracking_error: Optional[ca.MX] = None
 
-    @classmethod
-    def from_control_node(cls, control_node: ControlNode, 
-                          track_progress: Optional[ca.MX] = None, 
-                          progress_rate: Optional[ca.MX] = None,
-                          tracking_error: Optional[ca.MX] = None):
-        return cls(
-            index=control_node.index,
-            state=control_node.state,
-            control=control_node.control,
-            progress=control_node.progress,
-            track_progress=track_progress,
-            progress_rate = progress_rate,
-            tracking_error = tracking_error
-        )
+    # @classmethod
+    # def from_control_node(cls, control_node: ControlNode, 
+    #                       track_progress: Optional[ca.MX] = None, 
+    #                       progress_rate: Optional[ca.MX] = None,
+    #                       tracking_error: Optional[ca.MX] = None):
+    #     return cls(
+    #         index=control_node.index,
+    #         state=control_node.state,
+    #         control=control_node.control,
+    #         progress=control_node.progress,
+    #         track_progress=track_progress,
+    #         progress_rate = progress_rate,
+    #         tracking_error = tracking_error
+    #     )
 
 class MHTT(ControlProblem):
     def __init__(self, *, track:DubinsInitialiser, dt, **kwargs):
@@ -130,7 +130,7 @@ class MHTT(ControlProblem):
         
         control_node = super()._make_node(index, guess, enforce_state_constraint)
 
-        progress_node = ProgressNode.from_control_node(control_node, track_progress=self.opti.variable())
+        progress_node = ProgressNode.from_parent(control_node, track_progress=self.opti.variable())
         self.constraint(
             self.opti.bounded(0, progress_node.track_progress, 1),
             description="Progress Bounds"

@@ -33,6 +33,7 @@ trajectory_config = TrajectoryConfiguration(traj_dict)
 aircraft_config = trajectory_config.aircraft
 
 opts = AircraftOpts(coeff_model_type='poly', coeff_model_path=poly_path, aircraft_config=aircraft_config)
+opts = AircraftOpts(coeff_model_type='linear', coeff_model_path=linear_path, aircraft_config=aircraft_config)
 
 # opts = AircraftOpts(coeff_model_type='neural', coeff_model_path=model_path, aircraft_config=aircraft_config)
 
@@ -103,6 +104,7 @@ def main():
     control_list = np.zeros((aircraft.num_controls, int(tf / dt)))
     for i in tqdm(range(int(tf / dt)), desc = 'Simulating Trajectory:'):
         print(aircraft.coefficients(state, control))
+        print(state)
         if np.isnan(state[0]):
             print('Aircraft crashed')
             break
