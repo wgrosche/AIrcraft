@@ -12,19 +12,17 @@ jobs:
   update-pdf:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout AIrcraft (no submodules)
+      - name: Checkout AIrcraft (with submodules)
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          submodules: recursive
 
       - name: Update docs submodule to latest origin/main
         shell: bash
         run: |
           set -euxo pipefail
-          git submodule sync --recursive
-          git submodule update --init --recursive
-
           cd docs
           git fetch --prune origin main
           git checkout -B main origin/main
