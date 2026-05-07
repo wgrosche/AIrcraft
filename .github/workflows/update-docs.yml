@@ -44,6 +44,7 @@ jobs:
           set -euxo pipefail
           mkdir -p public-docs
           cp docs/main.pdf public-docs/aircraft-documentation.pdf
+          cp docs/main.pdf ./documentation.pdf
 
       - name: Commit and push PDF
         run: |
