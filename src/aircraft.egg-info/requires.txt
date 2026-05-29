@@ -3,3 +3,6 @@ casadi
 matplotlib
 scipy
 h5py
+liecasadi
+pandas
+scikit-learn

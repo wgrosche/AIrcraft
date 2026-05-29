@@ -12,7 +12,10 @@ dependencies = [
     "casadi",
     "matplotlib",
     "scipy",
-    "h5py"
+    "h5py",
+    "liecasadi",
+    "pandas",
+    "scikit-learn"
 ]
 
 

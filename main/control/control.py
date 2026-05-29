@@ -14,7 +14,8 @@ from aircraft.control.variable_time import ProgressTimeMixin
 from aircraft.config import DATAPATH
 import matplotlib.pyplot as plt
 from aircraft.plotting.plotting import TrajectoryPlotter, TrajectoryData
-
+from aircraft.config import VISUPATH
+import os
 def smooth_max(xs, k=20):
     return (1 / k) * ca.log(ca.sum1(ca.exp(k * xs)))
 
@@ -24,6 +25,7 @@ def l0_smooth(x, epsilon=1e-3):
 class Controller(AircraftControl):#, SaveMixin):#, ProgressTimeMixin):
     def __init__(self, *, aircraft:Aircraft, num_nodes:int=300, dt:float=.01, opts:dict = {}, filepath:str|Path = '', **kwargs:Any):
         super().__init__(aircraft=aircraft, num_nodes=num_nodes, opts = opts, dt = dt, **kwargs)
+        self.loop = 0
         if filepath:
             self.save_path = filepath
         # SaveMixin._init_saving(self, self.save_path, force_overwrite=True)
@@ -34,20 +36,25 @@ class Controller(AircraftControl):#, SaveMixin):#, ProgressTimeMixin):
         """
         Try to scale everything to order 1
         """
-        self.goal = ca.DM([150, 0])
+
+        self.goal_param = self.opti.parameter(2)
+        self.vel_param = self.opti.parameter()
+        self.time_param = self.opti.parameter()
+
+        
         time_loss = self.times[-1]
         # control_loss = 10000 * ca.sumsqr(self.control[:, 1:] / 10 - self.control[:, :-1] / 10) / self.num_nodes
         du = self.control[:, 1:] - self.control[:, :-1]
         control_loss = 100 * ca.sum1(l0_smooth(du, 1e-2)) # suppress over actuating controls
         # self.constraint(smooth_max(self.state[0, :]) >= 150, "Goal Constraint")
         actuation_loss = 0#10*ca.sum1(ca.dot(self.control[:, :], self.control[:, :]))
-        indices = self.goal.shape[0]
+        indices = self.goal_param.shape[0]
         self.constraint(self.state[3, -1] < -2, description="final velocity constraint")
         # self.constraint(self.state[4, -1]**2 < 4, description="final velocity constraint")
         # self.constraint(self.state[5, -1]**2 < 4, description="final velocity constraint")
-        goal_loss = 1000 * ca.sumsqr(self.state[:indices, -1] - self.goal)
+        goal_loss = 1000 * ca.sumsqr(self.state[:indices, -1] - self.goal_param)
         # final_velocity_loss=0
-        final_velocity_loss = 1000 * self.state[3, -1]
+        final_velocity_loss = self.vel_param * 1000 * self.state[3, -1]
         final_velocity_loss += 1000 * self.state[4, -1]**2
         final_velocity_loss += 1000 * self.state[5, -1]**2
 
@@ -104,6 +111,50 @@ class Controller(AircraftControl):#, SaveMixin):#, ProgressTimeMixin):
             """
             super().callback(iteration)
 
+def plot_guess(guess, iteration, state_dim, control_dim):
+    """
+    Simple diagnostic plot for the guess array:
+    - guess: (state_dim + control_dim, num_nodes+1)
+    - iteration: integer iteration number
+    """
+    num_nodes = guess.shape[1]
+
+    # Split guess into state and control parts
+    state_guess = guess[:state_dim, :]
+    control_guess = guess[state_dim:state_dim+control_dim, :]
+
+    # Quick figure
+    fig, axes = plt.subplots(3, 1, figsize=(10, 8), sharex=True)
+    fig.suptitle(f"Guess Debug Plot — Iteration {iteration}", fontsize=14)
+
+    # ---- 1. Position components
+    axes[0].plot(state_guess[0, :], label="x")
+    if state_dim > 1: axes[0].plot(state_guess[1, :], label="y")
+    if state_dim > 2: axes[0].plot(state_guess[2, :], label="z")
+    axes[0].set_ylabel("Position")
+    axes[0].legend()
+    axes[0].grid()
+
+    # ---- 2. Velocity components
+    vel_idx = [3, 4, 5]
+    for i, idx in enumerate(vel_idx):
+        if idx < state_dim:
+            axes[1].plot(state_guess[idx, :], label=f"v{ i }")
+    axes[1].set_ylabel("Velocity")
+    axes[1].legend()
+    axes[1].grid()
+
+    # ---- 3. Control guess
+    for i in range(control_dim):
+        axes[2].plot(control_guess[i, :], label=f"u{i}")
+    axes[2].set_ylabel("Control")
+    axes[2].set_xlabel("Node index")
+    axes[2].legend()
+    axes[2].grid()
+
+    plt.tight_layout()
+    plt.show()
+
 def main():
     traj_dict = json.load(open('data/glider/problem_definition.json'))
 
@@ -122,23 +173,48 @@ def main():
     filepath = Path(DATAPATH) / 'trajectories' / 'basic_test.h5'
 
     # controller_opts = {'time':'fixed', 'quaternion':'', 'integration':'explicit'}
+    curr_state = trim_state
+    curr_control = trim_control
+    times = []
     controller_opts = {'time':'progress', 'quaternion':'integration', 'integration':'explicit'}
-    controller = Controller(aircraft=aircraft, filepath=filepath, opts = controller_opts, num_nodes=400)
-    guess = controller.initialise(ca.DM(trim_state_and_control[:aircraft.num_states]))
-    print("Coeffs start: ",aircraft.coefficients(trim_state, trim_control))
-    controller.setup(guess)
-    controller.logging = False
-    
-    sol = controller.solve()
-    # print("Solution Status: ", sol.stats())
-    final_state = controller.opti.debug.value(controller.state)[:, -1]
-    final_control = controller.opti.debug.value(controller.control)[:, -1]
-    final_time = controller.opti.debug.value(controller.times)[-1]
-    print("Final State: ", final_state, " Final Control: ", final_control, " Final Forces: ", aircraft.forces_frd(final_state, final_control), " Final Time: ", final_time)
-    plt.show(block = True)
+    for iteration in range(5):
+        controller = Controller(aircraft=aircraft, filepath=filepath, opts = controller_opts, num_nodes=400)
+        guess = controller.initialise(ca.DM(curr_state))
+        print("Coeffs start: ",aircraft.coefficients(curr_state, curr_control))
+        controller.setup(guess)
 
     
-    
+
+        if iteration % 2 == 0:
+            goal = ca.DM([150, 0])
+            
+        else:
+            goal = ca.DM([0, 0])
+
+        controller.opti.set_value(controller.vel_param, (-1)**iteration)
+        controller.opti.set_value(controller.goal_param, goal)
+        # controller.opti.set_value(controller.time_param, final_time)
+        guess = controller.initialise(ca.DM(curr_state))
+        plot_guess(
+            guess,
+            iteration,
+            controller.state_dim,
+            controller.control_dim
+        )
+        # controller.opti.set_value(controller.state_guess_parameter, guess[:controller.state_dim, :])
+        # controller.opti.set_value(controller.control_guess_parameter, guess[controller.state_dim:controller.state_dim + controller.control_dim, :])
+        # print(guess)
+        controller.logging = False
+        
+        sol = controller.solve()
+        # print("Solution Status: ", sol.stats())
+        curr_state = controller.opti.debug.value(controller.state)[:, -1]
+        curr_control = controller.opti.debug.value(controller.control)[:, -1]
+        final_time = controller.opti.debug.value(controller.times)[-1]
+        times.append(final_time)
+        print("Final State: ", curr_state, " Final Control: ", curr_control, " Final Forces: ", aircraft.forces_frd(curr_state, curr_control), " Final Time: ", final_time)
+        controller.plotter.save(save_path = os.path.join(VISUPATH, f'trajectory_image_{iteration}.png'))
+
     
 if __name__ =="__main__":
     main()

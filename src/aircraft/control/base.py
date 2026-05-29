@@ -352,10 +352,10 @@ class ControlProblem(ABC):
         node = ControlNode(index=index, state=state, control=control, progress=progress)
 
         # Set initial guesses
-        state_guess = guess[:self.state_dim, index]
-        control_guess = guess[self.state_dim:self.state_dim + self.control_dim, index]
-        opti.set_initial(node.state, state_guess)
-        opti.set_initial(node.control, control_guess)
+        # state_guess = guess[:self.state_dim, index]
+        # control_guess = guess[self.state_dim:self.state_dim + self.control_dim, index]
+        opti.set_initial(node.state, self.opti.value(self.state_guess_parameter[:, index]))
+        opti.set_initial(node.control, self.opti.value(self.control_guess_parameter[:, index]))
 
         # Progress constraint
         if self.opts.get('time', 'fixed') == 'progress':

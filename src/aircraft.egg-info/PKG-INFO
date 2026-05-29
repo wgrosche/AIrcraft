@@ -10,4 +10,7 @@ Requires-Dist: casadi
 Requires-Dist: matplotlib
 Requires-Dist: scipy
 Requires-Dist: h5py
+Requires-Dist: liecasadi
+Requires-Dist: pandas
+Requires-Dist: scikit-learn
 Dynamic: license-file
