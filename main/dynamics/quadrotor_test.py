@@ -15,7 +15,7 @@ import h5py
 
 from aircraft.config import BASEPATH, NETWORKPATH, DATAPATH, DEVICE
 from aircraft.surrogates.models import ScaledModel
-from aircraft.utils.utils import load_model, TrajectoryConfiguration, AircraftConfiguration, perturb_quaternion
+from aircraft.utils import load_model, TrajectoryConfiguration, AircraftConfiguration, perturb_quaternion
 
 from dataclasses import dataclass
 from aircraft.dynamics.base import SixDOFOpts, SixDOF

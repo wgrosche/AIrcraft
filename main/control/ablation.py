@@ -5,7 +5,7 @@ Study comparing convergence impact of:
  - Variable time implementation
 """
 
-# from aircraft.utils.utils import TrajectoryConfiguration
+# from aircraft.utils import TrajectoryConfiguration
 # from pathlib import Path
 # from aircraft.config import NETWORKPATH
 # from aircraft.dynamics.aircraft import AircraftOpts, Aircraft
@@ -22,7 +22,7 @@ Study comparing convergence impact of:
 # from aircraft.plotting.plotting import TrajectoryPlotter, TrajectoryData
 # from aircraft.dynamics.coefficient_models import COEFF_MODEL_REGISTRY
 
-from aircraft.utils.utils import TrajectoryConfiguration
+from aircraft.utils import TrajectoryConfiguration
 from pathlib import Path
 from aircraft.config import NETWORKPATH
 from aircraft.dynamics.aircraft import AircraftOpts, Aircraft

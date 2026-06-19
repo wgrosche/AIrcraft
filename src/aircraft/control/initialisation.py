@@ -1,6 +1,6 @@
 import numpy as np
 # import dubins # https://github.com/AgRoboticsResearch/pydubins.git
-from aircraft.utils.utils import TrajectoryConfiguration
+from aircraft.utils import TrajectoryConfiguration
 from scipy.interpolate import CubicSpline
 # from dubins import _DubinsPath
 import numpy as np
@@ -14,7 +14,7 @@ from typing import Optional, Union, Type, Tuple, cast
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
-from aircraft.utils.utils import Point, Points, DubinsPoints, Vector, Point2d
+from aircraft.utils import Point, Points, DubinsPoints, Vector, Point2d
 
 from numpy.polynomial.chebyshev import chebfit
 from aircraft.dubins.dubins2d import DubinsManeuver2D

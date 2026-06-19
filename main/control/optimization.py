@@ -13,10 +13,14 @@ import os
 BASEPATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__))).split('AIrcraft', 1)[0] + 'AIrcraft/'
 sys.path.append(BASEPATH)
 from aircraft.dynamics.aircraft import Aircraft, AircraftOpts
-from aircraft.planner import Planner
-from aircraft.utils.utils import TrajectoryConfiguration
-from aircraft.plotting_minimal import TrajectoryPlotter, TrajectoryData
+from aircraft.utils import TrajectoryConfiguration
+from aircraft.plotting.plotting import TrajectoryPlotter, TrajectoryData
 import casadi as ca
+
+try:
+    from aircraft.planner import Planner
+except ImportError:
+    Planner = None
 
 from pathlib import Path
 import json
@@ -82,10 +86,17 @@ class CallbackPlot(ca.Callback):
 
 cp = CallbackPlot(pos='xy', vel='xya', ori='xyzw', rate='xyz', inputs='u', prog='mn')
 
-planner = Planner(aircraft, track, {'tolerance': 1.0, 'nodes_per_gate': 30, 'vel_guess': 80.0})
-# planner.setup()
-# planner.set_iteration_callback(cp)
-x = planner.solve()
+if __name__ == '__main__':
+    if Planner is None:
+        raise ImportError(
+            "Legacy dependency missing: aircraft.planner. "
+            "Update this script to use aircraft.control modules."
+        )
+
+    planner = Planner(aircraft, track, {'tolerance': 1.0, 'nodes_per_gate': 30, 'vel_guess': 80.0})
+    # planner.setup()
+    # planner.set_iteration_callback(cp)
+    x = planner.solve()
 
 # traj = Trajectory(x, NPW=planner.NPW, wp=planner.wp)
 # traj.save(BASEPATH2 + '/example/result_cpc_format.csv', False)

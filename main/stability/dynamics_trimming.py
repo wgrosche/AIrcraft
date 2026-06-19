@@ -1,23 +1,15 @@
 
 
 import casadi as ca
-from abc import ABC, abstractmethod
-from typing import Union, Tuple, Optional
 import numpy as np
 import matplotlib.pyplot as plt
 plt.switch_backend('TkAgg')
-from mpl_toolkits.mplot3d import Axes3D
-from l4casadi import L4CasADi
-from l4casadi.naive import NaiveL4CasADiModule
-from l4casadi.realtime import RealTimeL4CasADi
 from liecasadi import Quaternion
-from scipy.spatial.transform import Rotation as R
 import torch
 import json
 import os
 from pathlib import Path
 import sys
-import pandas as pd
 from tqdm import tqdm
 # from numba import jit
 import h5py
@@ -28,14 +20,10 @@ DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else
                       ("mps" if torch.backends.mps.is_available() else "cpu"))
 sys.path.append(BASEPATH)
 
-from aircraft.surrogates.models import ScaledModel
-from aircraft.utils.utils import load_model, TrajectoryConfiguration
-from aircraft.plotting_minimal import TrajectoryPlotter
-from dataclasses import dataclass
+from aircraft.utils import load_model, TrajectoryConfiguration
+from aircraft.plotting.plotting import TrajectoryPlotter
 
 from aircraft.dynamics.aircraft import AircraftTrim, AircraftOpts
-
-print(DEVICE)
     
 
 

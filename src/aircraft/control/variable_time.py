@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from aircraft.dynamics.aircraft import Aircraft
 from collections import namedtuple
 from scipy.spatial.transform import Rotation as R
-from aircraft.utils.utils import TrajectoryConfiguration, load_model
+from aircraft.utils import TrajectoryConfiguration, load_model
 from matplotlib.pyplot import spy
 import json
 import matplotlib.pyplot as plt
@@ -21,7 +21,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 from aircraft.dynamics.aircraft import AircraftOpts
-from aircraft.utils.utils import cumulative_distances
+from aircraft.utils import cumulative_distances
 from abc import abstractmethod
 from aircraft.config import default_solver_options, BASEPATH, NETWORKPATH, DATAPATH, DEVICE, rng
 from aircraft.control.base import ControlNode, ControlProblem

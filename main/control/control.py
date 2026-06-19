@@ -1,4 +1,4 @@
-from aircraft.utils.utils import TrajectoryConfiguration
+from aircraft.utils import TrajectoryConfiguration
 from pathlib import Path
 from aircraft.config import NETWORKPATH
 from aircraft.dynamics.aircraft import AircraftOpts, Aircraft
@@ -328,7 +328,7 @@ if __name__ =="__main__":
 #     control_problem.solve()
 
 
-# from aircraft.utils.utils import TrajectoryConfiguration
+# from aircraft.utils import TrajectoryConfiguration
 # from pathlib import Path
 # from aircraft.config import NETWORKPATH
 # from aircraft.dynamics.aircraft import AircraftOpts, Aircraft

@@ -8,7 +8,7 @@ from aircraft.control.base import ControlNode, ControlProblem
 from typing import List, Optional
 from dataclasses import dataclass
 
-from aircraft.utils.utils import TrajectoryConfiguration
+from aircraft.utils import TrajectoryConfiguration
 from aircraft.dynamics.base import SixDOF
 
 @dataclass

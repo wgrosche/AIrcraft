@@ -2,7 +2,7 @@ import json
 from aircraft.dynamics.aircraft import Aircraft, AircraftOpts
 from pathlib import Path
 from aircraft.config import NETWORKPATH, DATAPATH
-from aircraft.utils.utils import TrajectoryConfiguration
+from aircraft.utils import TrajectoryConfiguration
 
 
 from aircraft.control.initialisation import DubinsInitialiser, vis_traj_embed

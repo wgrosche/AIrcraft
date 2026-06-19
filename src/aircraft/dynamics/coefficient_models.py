@@ -10,7 +10,7 @@ from pathlib import Path
 import pandas as pd
 import pickle
 
-from aircraft.utils.utils import load_model
+from aircraft.utils import load_model
 
 if TYPE_CHECKING:
     from aircraft.dynamics.aircraft import Aircraft 

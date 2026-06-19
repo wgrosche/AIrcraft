@@ -8,7 +8,7 @@ import numpy as np
 from pathlib import Path
 import pandas as pd
 import pickle
-from aircraft.utils.utils import load_model, AircraftConfiguration
+from aircraft.utils import load_model, AircraftConfiguration
 from dataclasses import dataclass
 from aircraft.dynamics.base import SixDOFOpts, SixDOF
 from aircraft.dynamics.coefficient_models import DefaultModel

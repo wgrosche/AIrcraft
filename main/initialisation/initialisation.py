@@ -1,5 +1,5 @@
 from aircraft.control.initialisation import DubinsInitialiser, visualize_trajectory
-from aircraft.utils.utils import TrajectoryConfiguration
+from aircraft.utils import TrajectoryConfiguration
 import json
 import casadi as ca
 import numpy as np

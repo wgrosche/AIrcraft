@@ -15,7 +15,7 @@ import h5py
 
 from aircraft.config import BASEPATH, NETWORKPATH, DATAPATH, DEVICE
 from aircraft.surrogates.models import ScaledModel
-from aircraft.utils.utils import load_model, TrajectoryConfiguration, AircraftConfiguration, perturb_quaternion
+from aircraft.utils import load_model, TrajectoryConfiguration, AircraftConfiguration, perturb_quaternion
 
 from dataclasses import dataclass
 from aircraft.dynamics.base import SixDOFOpts, SixDOF
@@ -32,10 +32,10 @@ traj_dict = json.load(open('data/glider/problem_definition.json'))
 trajectory_config = TrajectoryConfiguration(traj_dict)
 aircraft_config = trajectory_config.aircraft
 
-opts = AircraftOpts(coeff_model_type='poly', coeff_model_path=poly_path, aircraft_config=aircraft_config)
-opts = AircraftOpts(coeff_model_type='linear', coeff_model_path=linear_path, aircraft_config=aircraft_config)
+# opts = AircraftOpts(coeff_model_type='poly', coeff_model_path=poly_path, aircraft_config=aircraft_config)
+# opts = AircraftOpts(coeff_model_type='linear', coeff_model_path=linear_path, aircraft_config=aircraft_config)
 
-# opts = AircraftOpts(coeff_model_type='neural', coeff_model_path=model_path, aircraft_config=aircraft_config)
+opts = AircraftOpts(coeff_model_type='neural', coeff_model_path=model_path, aircraft_config=aircraft_config)
 
 def setup_parser() -> ArgumentParser:
     parser = ArgumentParser(
@@ -83,10 +83,10 @@ def main():
     # aircraft.STEPS = 100
     dyn = aircraft.state_update
 
-    print("Is state symbolic?", aircraft.state.is_symbolic())
-    print("Is control symbolic?", aircraft.control.is_symbolic())
-    print("Is state_derivative symbolic?", aircraft.state_derivative(aircraft.state, aircraft.control).is_symbolic())
-    print("Symbolic dependencies of state_derivative:", ca.symvar(aircraft.state_derivative(aircraft.state, aircraft.control)))
+    # print("Is state symbolic?", aircraft.state.is_symbolic())
+    # print("Is control symbolic?", aircraft.control.is_symbolic())
+    # print("Is state_derivative symbolic?", aircraft.state_derivative(aircraft.state, aircraft.control).is_symbolic())
+    # print("Symbolic dependencies of state_derivative:", ca.symvar(aircraft.state_derivative(aircraft.state, aircraft.control)))
 
     jacobian_elevator = ca.jacobian(aircraft.state_derivative(aircraft.state, aircraft.control), aircraft.control[1])
     jacobian_func = ca.Function('jacobian_func', [aircraft.state, aircraft.control], [jacobian_elevator])
@@ -94,8 +94,8 @@ def main():
 
     print("Jacobian of state derivatives w.r.t. elevator:")
     print(jacobian_elevator_val)
-    dt = .01
-    tf = 5
+    dt = .1
+    tf = 50
     state_list = np.zeros((aircraft.num_states, int(tf / dt)))
     times_list = np.zeros((int(tf / dt)))
     t = 0
@@ -103,8 +103,8 @@ def main():
     ail_pos = True
     control_list = np.zeros((aircraft.num_controls, int(tf / dt)))
     for i in tqdm(range(int(tf / dt)), desc = 'Simulating Trajectory:'):
-        print(aircraft.coefficients(state, control))
-        print(state)
+        # print(aircraft.coefficients(state, control))
+        # print(state)
         if np.isnan(state[0]):
             print('Aircraft crashed')
             break

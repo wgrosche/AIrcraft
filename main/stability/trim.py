@@ -133,7 +133,7 @@ DATAPATH = os.path.join(BASEPATH, 'data')
 sys.path.append(BASEPATH)
 
 from aircraft.dynamics.aircraft import Aircraft, AircraftOpts
-from aircraft.utils.utils import load_model, aero_to_state, TrajectoryConfiguration
+from aircraft.utils import load_model, aero_to_state, TrajectoryConfiguration
 
 # Wrap functions for aerodynamic derivatives
 def wrap_aero(func, control):

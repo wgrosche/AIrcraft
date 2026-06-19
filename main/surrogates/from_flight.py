@@ -1,10 +1,12 @@
 # %%
 
 """
+Not currently runnable, data missing.
+
 Script to perform sysid based on in flight data containing:
 - forces
 - moments
-We assume the data has keys: [Fx, Fy, Fz, Mx, My, Mz]
+
 """
 
 import pandas as pd
@@ -15,7 +17,7 @@ import matplotlib.pyplot as plt
 from scipy.integrate import cumulative_trapezoid as cumtrapz
 from mpl_toolkits.mplot3d import Axes3D
 
-from aircraft.utils.utils import TrajectoryConfiguration
+from aircraft.utils import TrajectoryConfiguration
 from pathlib import Path
 from aircraft.config import NETWORKPATH
 from aircraft.dynamics.aircraft import AircraftOpts, Aircraft
