@@ -68,7 +68,7 @@ def main():#
     DATA_PATH = os.path.join(BASEPATH, 'data', 'processed')
     # load dataset
     input_features = ['q','alpha','beta','aileron','elevator']
-    output_features = ['CD', 'CY', 'CL', 'Cl', 'Cm', 'Cn']
+    output_features = ['CX', 'CY', 'CZ', 'Cl', 'Cm', 'Cn']
     dataset = AeroDataset(DATA_PATH, input_features, output_features)
 
     # create dataloader

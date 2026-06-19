@@ -10,7 +10,7 @@ The position is w.l.o.g $\text{state}[4:7] = (0,0,0)$
 
 The velocity should be within the region of validity for our CFD results $30 < |\text{state}[7:10]| < 70$ and we want to be flying forwards $\text{state}[7] > 0$
 
-The attitude of our aircraft should not be changing so our angular rates should be 0. $|state[10:]| = 0$. This may be hard to enforce as a hard constraint so we will replace it with  $|state[10:]| < \epsilon$
+The attitude of our aircraft should not be changing so our angular rates should be 0. $|state[10:]| = 0$. This may be hard to enforce as a hard constraint so we will replace it with  $|state[10:]| < epsilon$
 
 
 
@@ -229,7 +229,7 @@ def main():
     poly_path = Path(NETWORKPATH) / 'fitted_models_casadi.pkl'
 
     # opts = AircraftOpts(nn_model_path=model_path, aircraft_config=aircraft_config)
-    opts = AircraftOpts(poly_path=poly_path, aircraft_config=aircraft_config)
+    opts = AircraftOpts(coeff_model_type='poly', coeff_model_path=poly_path, aircraft_config=aircraft_config)
     # opts = AircraftOpts(linear_path=linear_path, aircraft_config=aircraft_config)
 
     aircraft = Aircraft(opts = opts)
@@ -276,12 +276,10 @@ def main():
     control[-3:] = traj_dict['aircraft']['aero_centre_offset']
 
     # define jacobians, we use the notation F_x to mean jacobian of F wrt. x
-    moments_aero = jacobian_wrapper(aircraft._moments_frd, aircraft.state, aircraft.control, aero = True)
-    # moments_state = jacobian_wrapper(aircraft._moments_frd, aircraft.state, aircraft.control, aero = False)
+    moments_aero = jacobian_wrapper(aircraft.moments_frd, aircraft.state, aircraft.control, aero = True)
+    # moments_state = jacobian_wrapper(aircraft.moments_frd, aircraft.state, aircraft.control, aero = False)
 
-    forces_aero = jacobian_wrapper(aircraft._forces_frd, aircraft.state, aircraft.control, aero = True)
-    # forces_state = jacobian_wrapper(aircraft._forces_frd, aircraft.state, aircraft.control, aero = False)
-
+    forces_aero = jacobian_wrapper(aircraft.forces_frd, aircraft.state, aircraft.control, aero = True)
     constraints = ca.vertcat(
         # ca.vec(moments_aero(aircraft._qbar(aircraft.state, aircraft.control), 
         #                     aircraft._alpha(aircraft.state, aircraft.control), 
@@ -295,12 +293,12 @@ def main():
         
 
         ca.dot(aircraft.state[:4], aircraft.state[:4]) - 1,# - [0, 0, 0, 1], # Orientation
-        ca.dot(aircraft._v_frd_rel(aircraft.state, aircraft.control), 
-               aircraft._v_frd_rel(aircraft.state, aircraft.control)), # Velocity
+         ca.dot(aircraft.v_frd_rel(aircraft.state, aircraft.control), 
+             aircraft.v_frd_rel(aircraft.state, aircraft.control)), # Velocity
         aircraft.state[10:], # Angular rates
-        aircraft.throttle,
+         aircraft._thrust,
         aircraft.com,
-        aircraft.v_wind_ned
+         ca.MX.zeros(3)
         
     )
 

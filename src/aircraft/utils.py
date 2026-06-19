@@ -349,7 +349,7 @@ class TrajectoryConfiguration:
 def perturb_quaternion(q:Quaternion, delta_theta=0.01):
     """ Perturbs a quaternion by a small rotation. """
     # Generate a small random rotation axis
-    quat_coeffs = q.coeffs()
+    quat_coeffs = q.coeffs() if hasattr(q, 'coeffs') else np.asarray(q)
     axis = rng.standard_normal(3)
     axis /= np.linalg.norm(axis)  # Normalize to unit vector
     

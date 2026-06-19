@@ -28,13 +28,13 @@ def main(mode:Optional[int] = None) -> None:
 
     if mode == 0:
         model_path = Path(NETWORKPATH) / 'model-dynamics.pth'
-        opts = AircraftOpts(nn_model_path=model_path, aircraft_config=aircraft_config)
+        opts = AircraftOpts(coeff_model_type='nn', coeff_model_path=model_path, aircraft_config=aircraft_config)
     elif mode == 1:
         poly_path = Path(NETWORKPATH) / 'fitted_models_casadi.pkl'
-        opts = AircraftOpts(poly_path=poly_path, aircraft_config=aircraft_config, physical_integration_substeps=1)
+        opts = AircraftOpts(coeff_model_type='poly', coeff_model_path=poly_path, aircraft_config=aircraft_config, physical_integration_substeps=1)
     elif mode == 2:
         linear_path = Path(DATAPATH) / 'glider' / 'linearised.csv'
-        opts = AircraftOpts(linear_path=linear_path, aircraft_config=aircraft_config)
+        opts = AircraftOpts(coeff_model_type='linear', coeff_model_path=linear_path, aircraft_config=aircraft_config)
 
     aircraft = Aircraft(opts = opts)
     state = ca.vertcat(trim_state_and_control[:aircraft.num_states])

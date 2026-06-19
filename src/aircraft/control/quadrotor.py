@@ -2,14 +2,23 @@ import numpy as np
 from aircraft.control.base import ControlNode, ControlProblem
 from aircraft.dynamics.quadrotor import Quadrotor
 import matplotlib.pyplot as plt
-from typing import List, Optional
+from typing import Optional
 import casadi as ca
 from aircraft.plotting.plotting import TrajectoryData, TrajectoryPlotter
 class QuadrotorControl(ControlProblem):
     def __init__(self, quad, **kwargs):
-        dynamics = quad.state_update
-        super().__init__(dynamics=dynamics, **kwargs)
+        super().__init__(system=quad, **kwargs)
+        self.target_param = self.opti.parameter(3)
         self.plotter = TrajectoryPlotter(quad)
+
+    def loss(self, nodes, time=None):
+        loss = super().loss(nodes, time=time)
+
+        # Encourage reaching the target while keeping control effort smooth.
+        goal_loss = ca.sumsqr(self.state[:3, -1] - self.target_param)
+        control_effort = ca.sum2(ca.dot(self.control, self.control))
+
+        return loss + 1000 * goal_loss + 0.1 * control_effort
         
     def control_constraint(self, node):
         opti = self.opti
@@ -21,8 +30,12 @@ class QuadrotorControl(ControlProblem):
     def setup(self, guess, target=None):
         super().setup(guess)
         if target is not None:
-            self.opti.minimize(ca.sumsqr(self.state[:3, -1] -  target))
-            self.constraint(self.state[:3, -1] ==  target)
+            self.opti.set_value(self.target_param, target)
+        else:
+            self.opti.set_value(self.target_param, np.zeros(3))
+
+        if target is not None:
+            self.constraint(self.state[:3, -1] == target)
             # self.opti.subject_to(self.state[:3, -1] ==  target)
             # self.constraint_descriptions.append(('goal constraint', self.state[:3, -1], '=='))
             
@@ -36,25 +49,26 @@ class QuadrotorControl(ControlProblem):
             trajectory_data = TrajectoryData(
                 state=np.array(self.opti.debug.value(self.state))[:, 1:],
                 control=np.array(self.opti.debug.value(self.control)),
-                time=np.array(self.opti.debug.value(self.time))
+                times=np.array(self.opti.debug.value(self.times))
             )
             self.plotter.plot(trajectory_data=trajectory_data)
             plt.draw()
             self.plotter.figure.canvas.start_event_loop(0.0002)
 
     def solve(self, warm_start:Optional[ca.OptiSol] = None):
-        super().solve(warm_start=warm_start)
+        sol = super().solve(warm_start=warm_start)
 
         trajectory_data = TrajectoryData(
                 state=np.array(self.opti.debug.value(self.state))[:, 1:],
                 control=np.array(self.opti.debug.value(self.control)),
-                time=np.array(self.opti.debug.value(self.time))
+                times=np.array(self.opti.debug.value(self.times))
             )
         self.plotter.plot(trajectory_data=trajectory_data)
         plt.draw()
         self.plotter.figure.canvas.start_event_loop(0.0002)
 
         plt.show(block = True)
+        return sol
     
 
 

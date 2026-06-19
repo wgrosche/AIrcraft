@@ -40,7 +40,7 @@ if __name__ == '__main__':
     poly_path = Path(NETWORKPATH) / 'fitted_models_casadi.pkl'
 
     # opts = AircraftOpts(nn_model_path=model_path, aircraft_config=aircraft_config)
-    opts = AircraftOpts(poly_path=poly_path, aircraft_config=aircraft_config)
+    opts = AircraftOpts(coeff_model_type='poly', coeff_model_path=poly_path, aircraft_config=aircraft_config)
     # opts = AircraftOpts(linear_path=linear_path, aircraft_config=aircraft_config)
 
     aircraft = AircraftTrim(opts = opts)
@@ -98,6 +98,7 @@ if __name__ == '__main__':
     ele_pos = True
     ail_pos = True
     control_list = np.zeros((aircraft.num_controls, int(tf / dt)))
+    times_list = np.zeros(int(tf / dt))
     for i in tqdm(range(int(tf / dt)), desc = 'Simulating Trajectory:'):
         if np.isnan(state[0]):
             print('Aircraft crashed')
@@ -106,7 +107,7 @@ if __name__ == '__main__':
             state_list[:, i] = state.full().flatten()
             control_list[:, i] = control
             state = dyn(state, control, dt)
-                    
+            times_list[i] = i * dt
             t += 1
     print(state)
 
@@ -117,6 +118,7 @@ if __name__ == '__main__':
             grp = h5file.create_group(f'iteration_0')
             grp.create_dataset('state', data=state_list[:, :t])
             grp.create_dataset('control', data=control_list[:, :t])
+            grp.create_dataset('times', data=times_list[:t])
     
     
     filepath = os.path.join("data", "trajectories", "simulation.h5")

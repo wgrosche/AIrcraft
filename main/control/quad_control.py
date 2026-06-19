@@ -1,16 +1,11 @@
-from aircraft.control.aircraft import TrajectoryConfiguration
-from pathlib import Path
-from aircraft.config import NETWORKPATH
-from aircraft.dynamics.aircraft import AircraftOpts, Aircraft
-import numpy as np
-from tqdm import tqdm
-import casadi as ca
 import json
+import numpy as np
+import casadi as ca
+from tqdm import tqdm
+
+from aircraft.utils import TrajectoryConfiguration
 from aircraft.control.quadrotor import QuadrotorControl
 from aircraft.dynamics.quadrotor import Quadrotor
-from aircraft.control.initialisation import DubinsInitialiser
-from aircraft.plotting.plotting import TrajectoryData, TrajectoryPlotter
-import matplotlib.pyplot as plt
 
 
 def debug_jacobian(control_problem):
@@ -116,204 +111,81 @@ def debug_jacobian(control_problem):
         
         return None
 
+
+def initialise_guess(quad, initial_state, initial_control, num_nodes, dt):
+    """Roll out dynamics to create an initial guess, matching control.py style."""
+    guess = np.zeros((quad.num_states + quad.num_controls, num_nodes + 1))
+
+    state = ca.DM(initial_state)
+    control = np.array(initial_control, dtype=float)
+    dyn = quad.state_update
+
+    for i in tqdm(range(num_nodes), desc='Initialising Trajectory:'):
+        guess[:quad.num_states, i] = state.full().flatten()
+        guess[quad.num_states:, i] = control
+        state = dyn(state, control, dt)
+
+    guess[:quad.num_states, -1] = state.full().flatten()
+    guess[quad.num_states:, -1] = control
+
+    return guess
+
 def main():
     """
-    Minimal test of quadrotor control class
+    Minimal quadrotor control setup following the control.py flow.
     """
-    
+
     quad = Quadrotor()
-    quad.STEPS = 1
-    # create guess with dubins initialiser
+    quad.physical_integration_substeps = 1
+
     traj_dict = json.load(open('data/glider/problem_definition.json'))
-
-    # poly_path = Path(NETWORKPATH) / 'fitted_models_casadi.pkl'
-    
-    
-
     trajectory_config = TrajectoryConfiguration(traj_dict)
-    # aircraft_config = trajectory_config.aircraft
 
-    # opts = AircraftOpts(poly_path=poly_path, aircraft_config=aircraft_config, physical_integration_substeps=1)
-    # aircraft = Aircraft(opts = opts)
+    # Build an initial state from trajectory metadata and the quad state layout.
+    initial_position = np.array(trajectory_config.waypoints.initial_position)
+    initial_velocity = np.array([5.0, 0.0, 0.0])
+    initial_quaternion = np.array([0.0, 0.0, 0.0, 1.0])
+    initial_rates = np.array([0.0, 0.0, 0.0])
+    initial_state = np.concatenate(
+        [initial_position, initial_velocity, initial_quaternion, initial_rates]
+    )
 
-    plotter = TrajectoryPlotter(quad)
-            
-    
-    initialiser = DubinsInitialiser(trajectory_config)
-    initial_guess = initialiser.guess
+    initial_control = np.ones(quad.num_controls)
 
-    initial_guess = np.zeros((21, 13))
-    initial_guess[:, 9] = 1
-    initial_guess[:, 3] = 5
-    initial_guess = np.concat((initial_guess, np.ones((initial_guess.shape[0],quad.num_controls ))), axis = 1).T
-    num_nodes = initial_guess.shape[1] - 1
-    i = 0
-    state_list = initial_guess
-    state = ca.DM(initial_guess[:quad.num_states, 0])
-    time_intervals = [1/num_nodes for _ in range(num_nodes + 1)]#initialiser.time_intervals
-    # dt = 5/200
-    for interval in tqdm(time_intervals, desc = 'Simulating Trajectory:'):
-        if np.isnan(state[0]):
-            print('Aircraft crashed')
-            break
-        else:
-            state_list[:quad.num_states, i] = state.full().flatten()
-            state = quad.state_update(state, initial_guess[quad.num_states:, i], interval)
-        i += 1
-    
-    print(state_list[:, 0])
-    print(quad.num_states)
-    print(state_list[:quad.num_states, :].shape)
-    # plotter.plot(TrajectoryData(state = state_list[:quad.num_states, :], control = state_list[quad.num_states:, :]))
-    # plt.show(block = True)
-    # return None
+    num_nodes = 200
+    dt = 0.05
 
-    print(num_nodes)
-    control_problem = QuadrotorControl(quad, num_nodes)
-    print(initialiser.guess.T[:control_problem.state_dim, 0])
-    # control_problem.setup(initial_guess, target = initial_guess.T[:3, -1])
-    control_problem.setup(state_list, target = [100, 10, 10])
-    # control_problem.setup(state_list, target = state_list.T[:3, -1])
+    guess = initialise_guess(
+        quad=quad,
+        initial_state=initial_state,
+        initial_control=initial_control,
+        num_nodes=num_nodes,
+        dt=dt,
+    )
+
+    controller_opts = {
+        'time': 'fixed',
+        'quaternion': 'integration',
+        'integration': 'explicit',
+    }
+
+    control_problem = QuadrotorControl(quad, num_nodes=num_nodes, dt=dt, opts=controller_opts)
+    target = np.array([100.0, 10.0, 10.0])
+    control_problem.setup(guess, target=target)
+
     try:
         sol = control_problem.solve()
+        final_state = control_problem.opti.debug.value(control_problem.state)[:, -1]
+        final_control = control_problem.opti.debug.value(control_problem.control)[:, -1]
+        final_time = control_problem.opti.debug.value(control_problem.times)[-1]
+        print(
+            "Final State:", final_state,
+            "Final Control:", final_control,
+            "Final Time:", final_time,
+        )
     except Exception as e:
         print(f"Solver failed with error: {e}")
-        
-        # Debug the Jacobian
-        jac_g_val = debug_jacobian(control_problem)
-        
-        # If you want to visualize the Jacobian (if it's not too large)
-        if jac_g_val is not None and jac_g_val.size1() < 100 and jac_g_val.size2() < 100:
-            try:
-                import matplotlib.pyplot as plt
-                
-                # Convert to numpy array and replace NaN with a specific value for visualization
-                jac_np = np.array(jac_g_val)
-                jac_np_no_nan = np.nan_to_num(jac_np, nan=-999)  # Replace NaN with -999
-                
-                plt.figure(figsize=(10, 8))
-                plt.imshow(jac_np_no_nan, cmap='viridis')
-                plt.colorbar(label='Jacobian Value')
-                plt.title('Jacobian Matrix (NaN values shown as -999)')
-                plt.xlabel('Variable Index')
-                plt.ylabel('Constraint Index')
-                
-                # Highlight the problematic element
-                plt.plot(0, 21, 'rx', markersize=10)
-                
-                plt.savefig('jacobian_visualization.png')
-                print("Jacobian visualization saved to 'jacobian_visualization.png'")
-            except Exception as viz_e:
-                print(f"Error visualizing Jacobian: {viz_e}")
-
-    # try:
-    #     sol = control_problem.solve()
-    # except Exception as e:
-    #     print(f"Solver failed with error: {e}")
-        
-    #     # Try to access debug information
-    #     try:
-    #         debug = control_problem.opti.debug
-            
-    #         # Check for NaN values in the state and control
-    #         state_vals = debug.value(control_problem.state)
-    #         control_vals = debug.value(control_problem.control)
-            
-    #         if np.any(np.isnan(state_vals)):
-    #             print("NaN values detected in state variables")
-    #             nan_indices = np.where(np.isnan(state_vals))
-    #             print(f"NaN state indices: {list(zip(*nan_indices))}")
-                
-    #         if np.any(np.isnan(control_vals)):
-    #             print("NaN values detected in control variables")
-    #             nan_indices = np.where(np.isnan(control_vals))
-    #             print(f"NaN control indices: {list(zip(*nan_indices))}")
-            
-    #         # For constraints, use proper CasADi methods to access elements
-    #         # Instead of iterating over debug.g directly, use CasADi's methods
-    #         g = debug.g
-    #         n_g = g.numel()  # Get number of elements
-    #         print(f"Length of constraint defs: {len(control_problem.constraint_descriptions)}")
-    #         print(f"Number of constraints: {n_g}")
-
-    #         for i in range(n_g):
-    #             try:
-    #                 g_i = g[i]
-    #                 value = debug.value(g_i)
-
-    #                 print(f"{i}: {control_problem.constraint_descriptions[i]}")
-
-    #                 if i >= len(control_problem.constraint_descriptions):
-    #                     print(f"Constraint {i} has no description.")
-    #                     continue
-
-    #                 desc = control_problem.constraint_descriptions[i]
-
-    #                 if np.isnan(value):
-    #                     print(f"NaN detected in constraint {i}, {desc}")
-    #                     continue
-
-    #                 # Equality constraint check
-    #                 if "==" in desc:
-    #                     if abs(value) > 1e-6:
-    #                         print(f"[Violation] Equality constraint {i}: {desc} --> Residual: {value}")
-
-    #                 # Inequality (<= or >=)
-    #                 elif "<=" in desc or ">=" in desc:
-    #                     if value > 1e-6:  # Positive residual → violation for ≤
-    #                         print(f"[Violation] Inequality constraint {i}: {desc} --> Residual: {value}")
-
-    #                 # Bounded constraints — try to detect chained comparisons
-    #                 elif "<=" in desc and ">=" in desc or "<=" in desc and "opti" in desc:
-    #                     if value > 1e-6:
-    #                         print(f"[Violation] Bounded constraint {i}: {desc} --> Residual: {value}")
-
-    #                 # Greater-than constraint (`>`), interpreted as `-expr <= 0`
-    #                 elif ">" in desc:
-    #                     if value < -1e-6:
-    #                         print(f"[Violation] '>' constraint {i}: {desc} --> Residual: {value}")
-
-    #                 else:
-    #                     # Fallback if type can't be determined
-    #                     if abs(value) > 1e-6:
-    #                         print(f"[Violation] Unknown-type constraint {i}: {desc} --> Residual: {value}")
-
-    #             except Exception as e:
-    #                 print(f"Could not evaluate constraint {i}: {e}")
-
-            
-    #         # # Check each constraint individually
-    #         # for i in range(n_g):
-    #         #     try:
-    #         #         # Use CasADi's element access method
-    #         #         g_i = g[i]
-    #         #         value = debug.value(g_i)
-    #         #         if i >= len(control_problem.constraint_descriptions):
-    #         #             break
-    #         #         if np.isnan(value):
-    #         #             print(f"NaN detected in constraint {i}, {control_problem.constraint_descriptions[i]}")
-    #         #         # distinguish types
-    #         #         elif '==' in control_problem.constraint_descriptions[i]:
-    #         #             if abs(value) > 1e-6:  # Check for violations
-    #         #                 print(f"Constraint {i} {control_problem.constraint_descriptions[i]} violated: {value}")
-    #         #         elif '<=' in control_problem.constraint_descriptions[i]:
-    #         #             if value > 0:
-    #         #                 print(f"Constraint {i} {control_problem.constraint_descriptions[i]} violated: {value}")
-    #         #         elif '>' in control_problem.constraint_descriptions[i][2]:
-    #         #             if value < 0:
-    #         #                 print(f"Constraint {i} {control_problem.constraint_descriptions[i]} violated: {value}")
-
-    #         #         else:
-    #         #             print(control_problem.constraint_descriptions[i])
-    #         #     except Exception as inner_e:
-    #         #         print(f"Could not evaluate constraint {i}: {inner_e}")
-                    
-    #     except Exception as debug_e:
-    #         print(f"Could not access debug information: {debug_e}")
-
-
-
-
+        debug_jacobian(control_problem)
 
 if __name__ =="__main__":
     main()

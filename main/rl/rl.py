@@ -33,7 +33,7 @@ trajectory_config = TrajectoryConfiguration(traj_dict)
 aircraft_config = trajectory_config.aircraft
 
 poly_path = Path(NETWORKPATH) / 'fitted_models_casadi.pkl'
-opts = AircraftOpts(poly_path=poly_path, aircraft_config=aircraft_config, physical_integration_substeps=1)
+opts = AircraftOpts(coeff_model_type='poly', coeff_model_path=poly_path, aircraft_config=aircraft_config, physical_integration_substeps=1)
 
 aircraft = Aircraft(opts = opts)
     
