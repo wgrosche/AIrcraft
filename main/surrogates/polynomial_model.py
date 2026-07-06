@@ -58,6 +58,8 @@ MOMENTUM = 0.7
 SCALING = False
 DATA_DIR = os.path.join(BASEPATH, 'data', 'processed')
 MODEL_DIR = os.path.join(DATA_DIR, 'models')
+RETRAIN = False  # Set to True to retrain the model and regenerate plots
+PLOT_CACHE_PATH = os.path.join(NETWORKPATH, 'precomputed_aero_plot.npz')
 
 def prepare_datasets(scaling=False, input_features=None, output_features=None):
     if input_features is None:
@@ -101,96 +103,120 @@ def create_casadi_function(output, fitted_models, input_features, used_features)
 
     return casadi_func
 
-def create_interactive_aero_plot(data, casadi_functions, 
-                                 input_features=['q', 'alpha', 'beta', 'aileron', 'elevator'], 
-                                 output_features=['CX', 'CY', 'CZ', 'Cl', 'Cm', 'Cn']):
+def create_interactive_aero_plot(data, casadi_functions,
+                                 input_features=['q', 'alpha', 'beta', 'aileron', 'elevator'],
+                                 output_features=['CX', 'CY', 'CZ', 'Cl', 'Cm', 'Cn'],
+                                 retrain=True,
+                                 cache_path=PLOT_CACHE_PATH):
     fig = plt.figure(figsize=(18, 10))
     plt.subplots_adjust(bottom=0.2)
-    
-    # Create grid for input features (q, alpha, beta) and discretize aileron/elevator
-    grid_alpha_beta = create_grid(data[input_features[:3]], 10)  # Grid for q, alpha, beta
+
+    grid_alpha_beta = create_grid(data[input_features[:3]], 10)
     aileron_values = np.linspace(data['aileron'].min(), data['aileron'].max(), 10)
     elevator_values = np.linspace(data['elevator'].min(), data['elevator'].max(), 10)
-    min_airspeed = 0
-    max_airspeed = 200
+    min_airspeed, max_airspeed = 0, 200
     airspeed_values = np.linspace(min_airspeed, max_airspeed, 50)
-    
-    # Precompute aerodynamic outputs
-    precomputed_outputs = {output: {} for output in output_features}
-    for airspeed in airspeed_values:
-        for aileron in aileron_values:
-            for elevator in elevator_values:
-                temp_grid = grid_alpha_beta.copy()
-                temp_grid['aileron'] = aileron
-                temp_grid['elevator'] = elevator
-                temp_grid['q'] = airspeed**2 / 1.225 / 2
-                key = (airspeed, aileron, elevator)
-                
-                for output in output_features:
-                    y_pred = casadi_functions[output](temp_grid.values.T).full().flatten()
-                    precomputed_outputs[output][key] = y_pred
 
-    # Initialize 3D scatter plots
+    # precomputed shape: (n_airspeed, n_aileron, n_elevator, n_grid, n_outputs)
+    loaded = False
+    if not retrain and os.path.exists(cache_path):
+        try:
+            npz = np.load(cache_path)
+            precomputed = npz['precomputed']
+            grid_alpha_beta = pd.DataFrame({'alpha': npz['grid_alpha'], 'beta': npz['grid_beta']})
+            airspeed_values = npz['airspeed_values']
+            aileron_values = npz['aileron_values']
+            elevator_values = npz['elevator_values']
+            loaded = True
+            print(f"Loaded precomputed plot data from {cache_path}")
+        except Exception as e:
+            print(f"Cache load failed ({e}), recomputing...")
+
+    if not loaded:
+        n_grid = len(grid_alpha_beta)
+        precomputed = np.empty((len(airspeed_values), len(aileron_values),
+                                len(elevator_values), n_grid, len(output_features)))
+        for ai, airspeed in enumerate(airspeed_values):
+            for ali, aileron in enumerate(aileron_values):
+                for eli, elevator in enumerate(elevator_values):
+                    temp_grid = grid_alpha_beta.copy()
+                    temp_grid['aileron'] = aileron
+                    temp_grid['elevator'] = elevator
+                    temp_grid['q'] = airspeed**2 / 1.225 / 2
+                    for oi, output in enumerate(output_features):
+                        precomputed[ai, ali, eli, :, oi] = (
+                            casadi_functions[output](temp_grid.values.T).full().flatten()
+                        )
+        os.makedirs(NETWORKPATH, exist_ok=True)
+        np.savez_compressed(cache_path,
+                            precomputed=precomputed,
+                            grid_alpha=grid_alpha_beta['alpha'].values,
+                            grid_beta=grid_alpha_beta['beta'].values,
+                            airspeed_values=airspeed_values,
+                            aileron_values=aileron_values,
+                            elevator_values=elevator_values)
+        print(f"Saved precomputed plot data to {cache_path}")
+
+    # Precompute training-data indices per slider combo — eliminates O(N) mask scan on every drag
+    data_q = data['q'].values
+    data_aileron = data['aileron'].values
+    data_elevator = data['elevator'].values
+    train_indices = {}
+    for ai, airspeed in enumerate(airspeed_values):
+        for ali, aileron in enumerate(aileron_values):
+            for eli, elevator in enumerate(elevator_values):
+                mask = (
+                    (np.abs(data_q - airspeed**2 * 1.225 / 2) < 1e1) &
+                    (np.abs(data_aileron - aileron) < 1e-0) &
+                    (np.abs(data_elevator - elevator) < 1e-0)
+                )
+                train_indices[(ai, ali, eli)] = np.where(mask)[0]
+
+    # Cache numpy arrays for the update closure to avoid repeated .values calls
+    grid_alpha = grid_alpha_beta['alpha'].values
+    grid_beta = grid_alpha_beta['beta'].values
+    data_alpha = data['alpha'].values
+    data_beta = data['beta'].values
+    data_outputs = {out: data[out].values for out in output_features}
+
     scatter_plots = []
     training_data_scatter = []
     for i, output in enumerate(output_features):
         ax = fig.add_subplot(2, 3, i + 1, projection='3d')
-        scatter = ax.scatter(grid_alpha_beta['alpha'], grid_alpha_beta['beta'], 
-                             precomputed_outputs[output][(airspeed_values[40], aileron_values[0], elevator_values[0])], 
+        scatter = ax.scatter(grid_alpha, grid_beta, precomputed[40, 0, 0, :, i],
                              marker='o', label='sim')
         scatter_plots.append(scatter)
-        
-        # Additional scatter for training data
         train_scatter = ax.scatter([], [], [], marker='x', color='red', label='training data')
         training_data_scatter.append(train_scatter)
-        
         ax.set_xlabel('alpha')
         ax.set_ylabel('beta')
         ax.set_zlabel(output)
         ax.legend()
-    
-    # Create sliders
+
     ax_airspeed = plt.axes([0.2, 0.15, 0.6, 0.03])
     ax_aileron = plt.axes([0.2, 0.1, 0.6, 0.03])
     ax_elevator = plt.axes([0.2, 0.05, 0.6, 0.03])
-    
+
     s_aileron = Slider(ax_aileron, 'Aileron', data['aileron'].min(), data['aileron'].max(), valinit=0)
     s_elevator = Slider(ax_elevator, 'Elevator', data['elevator'].min(), data['elevator'].max(), valinit=0)
     s_airspeed = Slider(ax_airspeed, 'Airspeed', min_airspeed, max_airspeed, valinit=airspeed_values[40])
 
     def update(val):
-        # Find nearest precomputed grid values
-        airspeed_idx = np.argmin(np.abs(airspeed_values - s_airspeed.val))
-        aileron_idx = np.argmin(np.abs(aileron_values - s_aileron.val))
-        elevator_idx = np.argmin(np.abs(elevator_values - s_elevator.val))
-        key = (airspeed_values[airspeed_idx], aileron_values[aileron_idx], elevator_values[elevator_idx])
-        
-        for ax, scatter, train_scatter, output in zip(fig.axes, scatter_plots, training_data_scatter, output_features):
-            # Update precomputed outputs
-            y_pred = precomputed_outputs[output][key]
-            scatter._offsets3d = (grid_alpha_beta['alpha'], 
-                                grid_alpha_beta['beta'], 
-                                y_pred)
-            
-            # Update training data scatter points
-            mask = (
-                (np.abs(data['q'] - airspeed_values[airspeed_idx]**2 * 1.225 / 2) < 1e1) &
-                (np.abs(data['aileron'] - aileron_values[aileron_idx]) < 1e-0) &
-                (np.abs(data['elevator'] - elevator_values[elevator_idx]) < 1e-0)
-            )
-            train_alpha = data.loc[mask, 'alpha']
-            train_beta = data.loc[mask, 'beta']
-            train_output = data.loc[mask, output]
-            
-            train_scatter._offsets3d = (train_alpha, train_beta, train_output)
-            
-            # Adjust axis limits to fit new data
-            ax.set_xlim(grid_alpha_beta['alpha'].min(), grid_alpha_beta['alpha'].max())
-            ax.set_ylim(grid_alpha_beta['beta'].min(), grid_alpha_beta['beta'].max())
-            ax.set_zlim(y_pred.min(), y_pred.max())
-        
-        fig.canvas.draw_idle()
+        airspeed_idx = int(np.argmin(np.abs(airspeed_values - s_airspeed.val)))
+        aileron_idx = int(np.argmin(np.abs(aileron_values - s_aileron.val)))
+        elevator_idx = int(np.argmin(np.abs(elevator_values - s_elevator.val)))
+        idx = train_indices[(airspeed_idx, aileron_idx, elevator_idx)]
 
+        for i, (ax, scatter, train_scatter, output) in enumerate(
+                zip(fig.axes, scatter_plots, training_data_scatter, output_features)):
+            y_pred = precomputed[airspeed_idx, aileron_idx, elevator_idx, :, i]
+            scatter._offsets3d = (grid_alpha, grid_beta, y_pred)
+            train_scatter._offsets3d = (data_alpha[idx], data_beta[idx], data_outputs[output][idx])
+            ax.set_xlim(grid_alpha.min(), grid_alpha.max())
+            ax.set_ylim(grid_beta.min(), grid_beta.max())
+            ax.set_zlim(y_pred.min(), y_pred.max())
+
+        fig.canvas.draw_idle()
 
     s_aileron.on_changed(update)
     s_elevator.on_changed(update)
@@ -237,7 +263,7 @@ def main():
         casadi_functions[output] = create_casadi_function(output, fitted_models, input_features, used_features)
 
     # Create interactive plot
-    create_interactive_aero_plot(train_data, casadi_functions)
+    create_interactive_aero_plot(train_data, casadi_functions, retrain=RETRAIN)
 
 
     # Save the fitted models and CasADi functions

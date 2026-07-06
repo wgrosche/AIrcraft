@@ -170,7 +170,7 @@ def main():
     }
 
     control_problem = QuadrotorControl(quad, num_nodes=num_nodes, dt=dt, opts=controller_opts)
-    target = np.array([100.0, 10.0, 10.0])
+    target = np.array([100.0, 100.0, -200.0])
     control_problem.setup(guess, target=target)
 
     try:

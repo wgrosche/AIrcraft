@@ -3,6 +3,7 @@ README.md
 pyproject.toml
 src/aircraft/__init__.py
 src/aircraft/config.py
+src/aircraft/utils.py
 src/aircraft.egg-info/PKG-INFO
 src/aircraft.egg-info/SOURCES.txt
 src/aircraft.egg-info/dependency_links.txt
@@ -29,14 +30,11 @@ src/aircraft/dynamics/coefficient_models.py
 src/aircraft/dynamics/numpydynamics.py
 src/aircraft/dynamics/pid.py
 src/aircraft/dynamics/quadrotor.py
-src/aircraft/integrators/__init__.py
-src/aircraft/integrators/integrators.py
 src/aircraft/plotting/__init__.py
 src/aircraft/plotting/plotting.py
 src/aircraft/reinforce/__init__.py
 src/aircraft/reinforce/curriculum.py
 src/aircraft/reinforce/rl.py
-src/aircraft/spectral/chebyshev.py
 src/aircraft/surrogates/__init__.py
 src/aircraft/surrogates/dataloader.py
 src/aircraft/surrogates/models.py
@@ -44,6 +42,3 @@ src/aircraft/tests/__init__.py
 src/aircraft/tests/test_dynamics.py
 src/aircraft/tests/test_utils.py
 src/aircraft/tests/tests.py
-src/aircraft/utils/__init__.py
-src/aircraft/utils/types.py
-src/aircraft/utils/utils.py

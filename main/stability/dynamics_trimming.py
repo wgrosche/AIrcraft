@@ -68,7 +68,7 @@ if __name__ == '__main__':
         # control[6:9] = traj_dict['aircraft']['aero_centre_offset']
 
     dyn = aircraft.state_update
-    dt = .1
+    dt = .01
     tf = 30
     state_list = np.zeros((aircraft.num_states, int(tf / dt)))
     # investigate stiffness:
